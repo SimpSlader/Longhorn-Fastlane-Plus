@@ -1,5 +1,5 @@
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
-import { Suspense, StrictMode } from 'react';
+import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
@@ -10,7 +10,13 @@ import RegistrationAssistant from './RegistrationAssistant';
 export const HOST_ID = 'fastlane-registration-assistant';
 
 function Bootstrap({ host }: { host: HTMLElement }) {
-    suspendUntilStoresReady([FastlaneSettingsStore, FastlaneQueueStore, FastlaneAuditStore, FastlanePlanStore, UserScheduleStore]);
+    suspendUntilStoresReady([
+        FastlaneSettingsStore,
+        FastlaneQueueStore,
+        FastlaneAuditStore,
+        FastlanePlanStore,
+        UserScheduleStore,
+    ]);
     return <RegistrationAssistant host={host} />;
 }
 

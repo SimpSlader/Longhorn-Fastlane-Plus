@@ -5,12 +5,12 @@ import ConflictsWithWarning from '@views/components/common/ConflictsWithWarning'
 import ExtensionRoot from '@views/components/common/ExtensionRoot/ExtensionRoot';
 import type { JSX } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { analyzeRow, scheduleTimes, sectionFromCourse } from 'src/fastlane/adapters/utrp';
 import { detectConflicts } from 'src/fastlane/core/meetings';
 import { toSectionTimes } from 'src/fastlane/core/sections';
 import RowInsights from 'src/fastlane/injected/RowInsights';
 import { FastlaneSettingsStore } from 'src/fastlane/storage/stores';
-import { createPortal } from 'react-dom';
 import ChartBarFillIcon from '~icons/ph/chart-bar-fill';
 
 import styles from './TableRow.module.scss';

@@ -35,7 +35,8 @@ async function pdfLines(buffer: ArrayBuffer): Promise<string[]> {
     const pdfjs = await import('pdfjs-dist');
     const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, disableFontFace: true }).promise;
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, disableFontFace: true })
+        .promise;
     const lines: string[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
         const page = await doc.getPage(p);
@@ -47,7 +48,8 @@ async function pdfLines(buffer: ArrayBuffer): Promise<string[]> {
 }
 
 export async function importAuditFile(file: File): Promise<ParsedAudit> {
-    if (file.size > MAX_AUDIT_BYTES) throw new Error('That file is larger than 15 MB. Save only the audit results page.');
+    if (file.size > MAX_AUDIT_BYTES)
+        throw new Error('That file is larger than 15 MB. Save only the audit results page.');
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     if (isPdf) {
         return parseAuditText(await pdfLines(await file.arrayBuffer()), file.name);

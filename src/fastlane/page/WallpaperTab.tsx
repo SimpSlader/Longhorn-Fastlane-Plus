@@ -39,10 +39,15 @@ export default function WallpaperTab() {
             }),
         [schedule, options.colorByCourse, options.theme]
     );
-    const semester = schedule?.courses[0] ? `${schedule.courses[0].semester.season} ${schedule.courses[0].semester.year}` : 'My schedule';
+    const semester = schedule?.courses[0]
+        ? `${schedule.courses[0].semester.season} ${schedule.courses[0].semester.year}`
+        : 'My schedule';
 
     useEffect(() => {
-        if ((options.style === 'map' || options.style === 'hybrid') && !map) void loadImage(MAP_URL).then(setMap).catch(() => setMap(null));
+        if ((options.style === 'map' || options.style === 'hybrid') && !map)
+            void loadImage(MAP_URL)
+                .then(setMap)
+                .catch(() => setMap(null));
     }, [options.style, map]);
 
     useEffect(() => {
@@ -90,31 +95,54 @@ export default function WallpaperTab() {
                     </label>
                     <label className='field'>
                         Style
-                        <select value={options.style} onChange={e => set('style', e.target.value as WallpaperOptions['style'])}>
+                        <select
+                            value={options.style}
+                            onChange={e => set('style', e.target.value as WallpaperOptions['style'])}
+                        >
                             <option value='minimal'>Minimal schedule</option>
                             <option value='aesthetic'>Aesthetic schedule</option>
                             <option value='map'>Campus map</option>
                             <option value='hybrid'>Schedule + map</option>
                         </select>
                     </label>
-                    <div className='tabs' role='group' aria-label='Theme'>
-                        <button type='button' aria-pressed={options.theme === 'light'} onClick={() => set('theme', 'light')}>
+                    <fieldset className='tabs' aria-label='Theme'>
+                        <button
+                            type='button'
+                            aria-pressed={options.theme === 'light'}
+                            onClick={() => set('theme', 'light')}
+                        >
                             Light
                         </button>
-                        <button type='button' aria-pressed={options.theme === 'dark'} onClick={() => set('theme', 'dark')}>
+                        <button
+                            type='button'
+                            aria-pressed={options.theme === 'dark'}
+                            onClick={() => set('theme', 'dark')}
+                        >
                             Dark
                         </button>
-                    </div>
+                    </fieldset>
                     <label className='check'>
-                        <input type='checkbox' checked={options.showRoom} onChange={e => set('showRoom', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={options.showRoom}
+                            onChange={e => set('showRoom', e.target.checked)}
+                        />
                         Room numbers (otherwise building only)
                     </label>
                     <label className='check'>
-                        <input type='checkbox' checked={options.showProfessor} onChange={e => set('showProfessor', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={options.showProfessor}
+                            onChange={e => set('showProfessor', e.target.checked)}
+                        />
                         Professor names
                     </label>
                     <label className='check'>
-                        <input type='checkbox' checked={options.colorByCourse} onChange={e => set('colorByCourse', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={options.colorByCourse}
+                            onChange={e => set('colorByCourse', e.target.checked)}
+                        />
                         Color by course
                     </label>
                     {!classes.length && <div className='notice small'>Add classes to your active schedule first.</div>}
@@ -124,7 +152,13 @@ export default function WallpaperTab() {
                     <canvas
                         ref={canvas}
                         aria-label='Wallpaper preview'
-                        style={{ width: 300, height: (300 * preset.height) / preset.width, borderRadius: 28, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}
+                        style={{
+                            width: 300,
+                            height: (300 * preset.height) / preset.width,
+                            borderRadius: 28,
+                            border: '1px solid var(--border)',
+                            boxShadow: 'var(--shadow)',
+                        }}
                     />
                 </div>
             </div>

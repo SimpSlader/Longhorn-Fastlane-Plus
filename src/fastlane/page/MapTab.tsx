@@ -39,7 +39,10 @@ function nodeFor(code?: string) {
     return code ? graphNodes[code] : undefined;
 }
 
-function estimatedPath(from: string, to: string): { points: Array<{ x: number; y: number }>; estimated: 'walkway' | 'straight' } {
+function estimatedPath(
+    from: string,
+    to: string
+): { points: Array<{ x: number; y: number }>; estimated: 'walkway' | 'straight' } {
     try {
         const ids = finder.findPath(from, to);
         const points = ids.map(id => graphNodes[id]).filter(Boolean) as Array<{ x: number; y: number }>;
@@ -54,7 +57,8 @@ function estimatedPath(from: string, to: string): { points: Array<{ x: number; y
 
 function pathLength(points: Array<{ x: number; y: number }>): number {
     let d = 0;
-    for (let i = 1; i < points.length; i++) d += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+    for (let i = 1; i < points.length; i++)
+        d += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
     return d;
 }
 
@@ -77,18 +81,30 @@ export default function MapTab() {
                 title='Campus map'
                 subtitle={`Your active schedule (${schedule?.name ?? 'none'}) by weekday. Works offline with the bundled campus map.`}
                 actions={
-                    <div className='tabs' role='group' aria-label='Day'>
+                    <fieldset className='tabs' aria-label='Day'>
                         {DAYS.map(([d, label]) => (
-                            <button key={d} type='button' aria-pressed={day === d} onClick={() => setDay(d)} style={day === d ? { background: DAY_COLORS[d], borderColor: DAY_COLORS[d] } : undefined}>
+                            <button
+                                key={d}
+                                type='button'
+                                aria-pressed={day === d}
+                                onClick={() => setDay(d)}
+                                style={
+                                    day === d ? { background: DAY_COLORS[d], borderColor: DAY_COLORS[d] } : undefined
+                                }
+                            >
                                 {label.slice(0, 3)} ({stopsForDay(sections, d).length})
                             </button>
                         ))}
-                    </div>
+                    </fieldset>
                 }
             />
             <div className='grid2' style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(260px, 2fr)' }}>
                 <div className='map-wrap'>
-                    <svg viewBox={`0 0 ${W} ${H}`} role='img' aria-label={`Campus map for ${DAYS.find(d => d[0] === day)?.[1]}`}>
+                    <svg
+                        viewBox={`0 0 ${W} ${H}`}
+                        role='img'
+                        aria-label={`Campus map for ${DAYS.find(d => d[0] === day)?.[1]}`}
+                    >
                         <image href={MAP_URL} x={0} y={0} width={W} height={H} />
                         {dayLegs.map(leg => {
                             const from = leg.from.building!;
@@ -121,7 +137,15 @@ export default function MapTab() {
                                         {s.order}
                                     </text>
                                     <g transform='translate(14,-10)'>
-                                        <rect x={0} y={0} rx={4} width={Math.max(84, s.section.courseCode.length * 6.6 + 12)} height={30} fill='#fff' stroke={color} />
+                                        <rect
+                                            x={0}
+                                            y={0}
+                                            rx={4}
+                                            width={Math.max(84, s.section.courseCode.length * 6.6 + 12)}
+                                            height={30}
+                                            fill='#fff'
+                                            stroke={color}
+                                        />
                                         <text x={6} y={12} fontSize={10} fontWeight={700} fill='#111'>
                                             {s.section.courseCode}
                                         </text>
@@ -141,10 +165,19 @@ export default function MapTab() {
                         const fromName = buildingName(prev?.building);
                         const toName = buildingName(s.building);
                         const leg = dayLegs.find(l => l.to === s);
-                        const est = leg && nodeFor(leg.from.building) && nodeFor(leg.to.building) ? estimatedPath(leg.from.building!, leg.to.building!) : null;
-                        const minutes = est ? Math.round((pathLength(est.points) * PIXELS_TO_FEET) / WALKING_SPEED) : null;
+                        const est =
+                            leg && nodeFor(leg.from.building) && nodeFor(leg.to.building)
+                                ? estimatedPath(leg.from.building!, leg.to.building!)
+                                : null;
+                        const minutes = est
+                            ? Math.round((pathLength(est.points) * PIXELS_TO_FEET) / WALKING_SPEED)
+                            : null;
                         return (
-                            <div key={`${s.section.uniqueId}-${s.order}`} className='card' style={{ borderLeft: `4px solid ${color}` }}>
+                            <div
+                                key={`${s.section.uniqueId}-${s.order}`}
+                                className='card'
+                                style={{ borderLeft: `4px solid ${color}` }}
+                            >
                                 <div className='row between'>
                                     <b>
                                         {s.order}. {s.section.courseCode}
@@ -155,29 +188,52 @@ export default function MapTab() {
                                 </div>
                                 <div className='small muted'>{s.section.title}</div>
                                 <div className='small'>
-                                    {s.building ? `${toName ?? s.building} · ${s.building} ${s.room ?? ''}` : 'Online / no room listed'}
-                                    {s.building && !nodeFor(s.building) && ' · not on the bundled map (shown by name only)'}
+                                    {s.building
+                                        ? `${toName ?? s.building} · ${s.building} ${s.room ?? ''}`
+                                        : 'Online / no room listed'}
+                                    {s.building &&
+                                        !nodeFor(s.building) &&
+                                        ' · not on the bundled map (shown by name only)'}
                                 </div>
                                 {leg && (
                                     <div className='small' style={{ marginTop: 4 }}>
                                         {leg.gapMinutes} min between classes
-                                        {minutes !== null && ` · about ${minutes} min walk (${est?.estimated === 'walkway' ? 'estimated along campus walkways' : 'straight-line estimate'})`}
-                                        {minutes !== null && minutes > leg.gapMinutes && <span className='chip bad' style={{ marginLeft: 6 }}>Tight</span>}
+                                        {minutes !== null &&
+                                            ` · about ${minutes} min walk (${est?.estimated === 'walkway' ? 'estimated along campus walkways' : 'straight-line estimate'})`}
+                                        {minutes !== null && minutes > leg.gapMinutes && (
+                                            <span className='chip bad' style={{ marginLeft: 6 }}>
+                                                Tight
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                                 {fromName && toName && prev?.building !== s.building && (
-                                    <a className='small' href={walkingDirectionsUrl(fromName, toName)} target='_blank' rel='noopener noreferrer'>
+                                    <a
+                                        className='small'
+                                        href={walkingDirectionsUrl(fromName, toName)}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                    >
                                         Open walking directions ↗
                                     </a>
                                 )}
                             </div>
                         );
                     })}
-                    {unmapped.length > 0 && <div className='small muted'>Some buildings are not in the bundled map data; they are listed by name only.</div>}
-                    {onlineOnly.length > 0 && <div className='small muted'>No campus location: {onlineOnly.map(s => s.courseCode).join(', ')}</div>}
+                    {unmapped.length > 0 && (
+                        <div className='small muted'>
+                            Some buildings are not in the bundled map data; they are listed by name only.
+                        </div>
+                    )}
+                    {onlineOnly.length > 0 && (
+                        <div className='small muted'>
+                            No campus location: {onlineOnly.map(s => s.courseCode).join(', ')}
+                        </div>
+                    )}
                     <div className='notice small'>
-                        Lines follow UT Registration Plus’s campus walkway graph and are estimates, not verified routes. Dashed lines are straight-line connections
-                        showing order only. Use “Open walking directions” for real routing (opens Google Maps).
+                        Lines follow UT Registration Plus’s campus walkway graph and are estimates, not verified routes.
+                        Dashed lines are straight-line connections showing order only. Use “Open walking directions” for
+                        real routing (opens Google Maps).
                     </div>
                 </div>
             </div>

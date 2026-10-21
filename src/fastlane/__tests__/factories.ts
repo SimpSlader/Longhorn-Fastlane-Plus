@@ -19,7 +19,9 @@ export function sectionFixture(
         complete?: boolean;
     } = {}
 ): SectionRecord {
-    const { meetings, complete } = meetingsFromRaw((opts.times ?? []).map(([d, h, r]) => ({ daysText: d, hoursText: h, roomText: r ?? '' })));
+    const { meetings, complete } = meetingsFromRaw(
+        (opts.times ?? []).map(([d, h, r]) => ({ daysText: d, hoursText: h, roomText: r ?? '' }))
+    );
     const core = opts.core ?? [];
     return {
         uniqueId,

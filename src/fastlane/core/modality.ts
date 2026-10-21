@@ -49,7 +49,9 @@ export function classifyModality({ instructionModeText, meetings }: ModalityInpu
     if (isInternet) {
         const reasons = [`Instruction mode listed as "${instructionModeText.trim()}"`];
         if (physicalRooms.length) {
-            reasons.push(`Listing also shows a physical room (${physicalRooms.join(', ')}), so attendance may be required`);
+            reasons.push(
+                `Listing also shows a physical room (${physicalRooms.join(', ')}), so attendance may be required`
+            );
             return { modality: 'unknown', reasons };
         }
         if (timedLines.length === 0 && !hasTba) {
@@ -57,7 +59,9 @@ export function classifyModality({ instructionModeText, meetings }: ModalityInpu
             return { modality: 'async-online', reasons };
         }
         if (parsed.length > 0 && complete) {
-            reasons.push(`Scheduled online meetings: ${timedLines.map(l => `${l.daysText.trim()} ${l.hoursText.trim()}`).join('; ')}`);
+            reasons.push(
+                `Scheduled online meetings: ${timedLines.map(l => `${l.daysText.trim()} ${l.hoursText.trim()}`).join('; ')}`
+            );
             return { modality: 'live-online', reasons };
         }
         reasons.push('Meeting times are incomplete or TBA, so live sessions cannot be ruled out');

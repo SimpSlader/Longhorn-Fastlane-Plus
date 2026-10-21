@@ -37,5 +37,8 @@ const manifest = {
     ],
 };
 writeFileSync(join(dataDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-writeFileSync(join(outDir, 'index.html'), '<!doctype html><title>Fastlane datasets</title><p>Data files for Longhorn Fastlane Plus. See data/manifest.json.</p>');
+writeFileSync(
+    join(outDir, 'index.html'),
+    '<!doctype html><title>Fastlane datasets</title><p>Data files for Fastlane Course Planner. See data/manifest.json.</p>'
+);
 console.log(`dataset site written to ${outDir} (manifest → ${baseUrl}/manifest.json)`);

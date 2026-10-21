@@ -6,10 +6,13 @@ import type { DatasetDescriptor, DatasetStore, InstalledDataset } from '../data/
 import { checkForUpdates, isNewer, isStale, sha256Hex, validateManifest, verifyFormat } from '../data/datasets';
 import { idbDatasetStore, idbGetAll, idbPutMany, resetDbConnection, STORES } from '../data/idb';
 
-const HOSTS = ['longhorn-fastlane.github.io'];
+const HOSTS = ['fastlane-planner.github.io'];
 const NOW = Date.UTC(2026, 9, 21);
 
-function memoryStore(initial?: InstalledDataset, payload?: ArrayBuffer): DatasetStore & { payloads: Map<string, ArrayBuffer> } {
+function memoryStore(
+    initial?: InstalledDataset,
+    payload?: ArrayBuffer
+): DatasetStore & { payloads: Map<string, ArrayBuffer> } {
     const installed = new Map<string, InstalledDataset>();
     const payloads = new Map<string, ArrayBuffer>();
     if (initial) installed.set(initial.descriptor.id, initial);
@@ -38,7 +41,7 @@ async function descriptorFor(payload: ArrayBuffer, patch: Partial<DatasetDescrip
         version: '2026.10.1',
         schemaVersion: 1,
         format: 'json',
-        url: 'https://longhorn-fastlane.github.io/data/catalog-2026.10.1.json',
+        url: 'https://fastlane-planner.github.io/data/catalog-2026.10.1.json',
         sha256: await sha256Hex(payload),
         bytes: payload.byteLength,
         publishedAt: '2026-10-01T00:00:00Z',
@@ -65,7 +68,7 @@ describe('manifest validation', () => {
     it('rejects non-HTTPS or non-allow-listed hosts, unknown schemas, future dates and executable formats', async () => {
         const base = await descriptorFor(json({}));
         const cases: Array<Partial<DatasetDescriptor>> = [
-            { url: 'http://longhorn-fastlane.github.io/x.json' },
+            { url: 'http://fastlane-planner.github.io/x.json' },
             { url: 'https://evil.example.com/x.json' },
             { schemaVersion: 99 },
             { publishedAt: '2030-01-01T00:00:00Z' },
@@ -74,7 +77,11 @@ describe('manifest validation', () => {
             { license: '' },
         ];
         for (const patch of cases) {
-            const r = validateManifest({ manifestVersion: 1, generatedAt: '', datasets: [{ ...base, ...patch }] }, HOSTS, NOW);
+            const r = validateManifest(
+                { manifestVersion: 1, generatedAt: '', datasets: [{ ...base, ...patch }] },
+                HOSTS,
+                NOW
+            );
             expect(r.ok, JSON.stringify(patch)).toBe(false);
         }
         expect(validateManifest({ manifestVersion: 2, datasets: [] }, HOSTS, NOW).ok).toBe(false);
@@ -101,7 +108,7 @@ describe('manifest validation', () => {
 });
 
 describe('checkForUpdates', () => {
-    const manifestUrl = 'https://longhorn-fastlane.github.io/data/manifest.json';
+    const manifestUrl = 'https://fastlane-planner.github.io/data/manifest.json';
 
     it('installs a verified newer dataset', async () => {
         const payload = json({ dataset: 'catalog', schemaVersion: 1, records: [{ uniqueId: 1 }] });
@@ -112,7 +119,11 @@ describe('checkForUpdates', () => {
             [d.url]: () => new Response(payload),
         });
         const report = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, fetchFn, now: NOW });
-        expect(report).toMatchObject({ checked: true, installed: [{ id: 'catalog', version: '2026.10.1' }], errors: [] });
+        expect(report).toMatchObject({
+            checked: true,
+            installed: [{ id: 'catalog', version: '2026.10.1' }],
+            errors: [],
+        });
         expect(store.payloads.get('catalog')?.byteLength).toBe(payload.byteLength);
     });
 
@@ -123,7 +134,12 @@ describe('checkForUpdates', () => {
         const tampered = json({ dataset: 'catalog', schemaVersion: 1, records: ['tampered'] });
         const d = await descriptorFor(json({ dataset: 'catalog', schemaVersion: 1, records: ['expected'] }));
         const fetchFn = fakeFetch({
-            [manifestUrl]: () => Response.json({ manifestVersion: 1, generatedAt: '', datasets: [{ ...d, bytes: tampered.byteLength }] }),
+            [manifestUrl]: () =>
+                Response.json({
+                    manifestVersion: 1,
+                    generatedAt: '',
+                    datasets: [{ ...d, bytes: tampered.byteLength }],
+                }),
             [d.url]: () => new Response(tampered),
         });
         const report = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, fetchFn, now: NOW });
@@ -138,7 +154,13 @@ describe('checkForUpdates', () => {
         const failing = fakeFetch({});
         const r1 = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, fetchFn: failing, now: NOW });
         expect(r1.errors[0]).toContain('Failed to fetch');
-        const r2 = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, fetchFn: failing, now: NOW + 1000 });
+        const r2 = await checkForUpdates({
+            manifestUrl,
+            allowedHosts: HOSTS,
+            store,
+            fetchFn: failing,
+            now: NOW + 1000,
+        });
         expect(r2.skippedReason).toBe('throttled');
         const r3 = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, online: false, now: NOW });
         expect(r3.skippedReason).toBe('offline');
@@ -149,7 +171,13 @@ describe('checkForUpdates', () => {
 
     it('rejects a manifest served from a host that is not allow-listed', async () => {
         const fetchFn = fakeFetch({});
-        const r = await checkForUpdates({ manifestUrl: 'https://example.com/m.json', allowedHosts: HOSTS, store: memoryStore(), fetchFn, now: NOW });
+        const r = await checkForUpdates({
+            manifestUrl: 'https://example.com/m.json',
+            allowedHosts: HOSTS,
+            store: memoryStore(),
+            fetchFn,
+            now: NOW,
+        });
         expect(r.errors[0]).toContain('allowed');
         expect(fetchFn).not.toHaveBeenCalled();
     });
@@ -157,10 +185,26 @@ describe('checkForUpdates', () => {
     it('does not re-download data identical to (or older than) the bundled copy', async () => {
         const payload = json({ dataset: 'catalog', schemaVersion: 1, records: [] });
         const d = await descriptorFor(payload);
-        const fetchFn = fakeFetch({ [manifestUrl]: () => Response.json({ manifestVersion: 1, generatedAt: '', datasets: [d] }) });
-        const same = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store: memoryStore(), fetchFn, now: NOW, bundled: { catalog: { sha256: d.sha256, publishedAt: d.publishedAt } } });
+        const fetchFn = fakeFetch({
+            [manifestUrl]: () => Response.json({ manifestVersion: 1, generatedAt: '', datasets: [d] }),
+        });
+        const same = await checkForUpdates({
+            manifestUrl,
+            allowedHosts: HOSTS,
+            store: memoryStore(),
+            fetchFn,
+            now: NOW,
+            bundled: { catalog: { sha256: d.sha256, publishedAt: d.publishedAt } },
+        });
         expect(same.installed).toEqual([]);
-        const older = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store: memoryStore(), fetchFn, now: NOW, bundled: { catalog: { sha256: 'x', publishedAt: '2026-10-05T00:00:00Z' } } });
+        const older = await checkForUpdates({
+            manifestUrl,
+            allowedHosts: HOSTS,
+            store: memoryStore(),
+            fetchFn,
+            now: NOW,
+            bundled: { catalog: { sha256: 'x', publishedAt: '2026-10-05T00:00:00Z' } },
+        });
         expect(older.installed).toEqual([]);
         expect(fetchFn).toHaveBeenCalledTimes(2); // manifest only, never the payload
     });
@@ -169,7 +213,9 @@ describe('checkForUpdates', () => {
         const payload = json({ dataset: 'catalog', schemaVersion: 1, records: [] });
         const d = await descriptorFor(payload);
         const store = memoryStore({ descriptor: d, installedAt: 0, origin: 'downloaded' }, payload);
-        const fetchFn = fakeFetch({ [manifestUrl]: () => Response.json({ manifestVersion: 1, generatedAt: '', datasets: [d] }) });
+        const fetchFn = fakeFetch({
+            [manifestUrl]: () => Response.json({ manifestVersion: 1, generatedAt: '', datasets: [d] }),
+        });
         const r = await checkForUpdates({ manifestUrl, allowedHosts: HOSTS, store, fetchFn, now: NOW, force: true });
         expect(r.installed).toEqual([]);
         expect(fetchFn).toHaveBeenCalledTimes(1);

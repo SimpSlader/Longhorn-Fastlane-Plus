@@ -10,6 +10,7 @@ import type { SectionRecord } from '../core/sections';
 export function useGradeStats(sections: SectionRecord[], threshold: GradeThreshold): Map<number, GradeStat | null> {
     const key = sections.map(s => s.uniqueId).join(',');
     const [raw, setRaw] = useState<Map<number, Awaited<ReturnType<typeof lookupGrades>>>>(new Map());
+    // biome-ignore lint/correctness/useExhaustiveDependencies: `key` (the joined unique numbers) stands in for the sections array
     useEffect(() => {
         let alive = true;
         void Promise.all(
@@ -27,25 +28,29 @@ export function useGradeStats(sections: SectionRecord[], threshold: GradeThresho
         return () => {
             alive = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands in for the sections array
     return useMemo(() => {
         const out = new Map<number, GradeStat | null>();
         for (const s of sections) {
             if (!raw.has(s.uniqueId)) continue;
             const r = raw.get(s.uniqueId) ?? null;
-            out.set(s.uniqueId, s.course && r ? gradeStatFrom(new Course(s.course as Serialized<Course>), r, threshold) : null);
+            out.set(
+                s.uniqueId,
+                s.course && r ? gradeStatFrom(new Course(s.course as Serialized<Course>), r, threshold) : null
+            );
         }
         return out;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [raw, threshold, key]);
 }
 
+function readHash() {
+    const [tab = 'plan', query = ''] = window.location.hash.replace(/^#/, '').split('?');
+    return { tab: tab || 'plan', params: new URLSearchParams(query) };
+}
+
 export function useHashRoute(): [string, URLSearchParams, (tab: string, params?: Record<string, string>) => void] {
-    const read = () => {
-        const [tab = 'plan', query = ''] = window.location.hash.replace(/^#/, '').split('?');
-        return { tab: tab || 'plan', params: new URLSearchParams(query) };
-    };
+    const read = readHash;
     const [route, setRoute] = useState(read);
     useEffect(() => {
         const on = () => setRoute(read());

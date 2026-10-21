@@ -158,7 +158,9 @@ export function describeSemesters(semesters: string[]): string {
     return `${sorted.length} semesters (${sorted[0]} – ${sorted[sorted.length - 1]})`;
 }
 
-export function buildGradeStat(input: Omit<GradeStat, 'smallSample' | 'semesters'> & { semesters: string[] }): GradeStat {
+export function buildGradeStat(
+    input: Omit<GradeStat, 'smallSample' | 'semesters'> & { semesters: string[] }
+): GradeStat {
     return {
         ...input,
         semesters: sortSemesterLabels(input.semesters),

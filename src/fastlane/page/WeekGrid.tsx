@@ -38,7 +38,9 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
     const last = Math.max(18 * 60, ...ends.map(t => Math.ceil(t / 60) * 60));
     const px = HOUR_PX / 60;
     const height = (last - first) * px;
-    const conflicted = new Set(scheduleConflicts(sections.map(toSectionTimes)).flatMap(([a, b]) => [a.uniqueId, b.uniqueId]));
+    const conflicted = new Set(
+        scheduleConflicts(sections.map(toSectionTimes)).flatMap(([a, b]) => [a.uniqueId, b.uniqueId])
+    );
     const hours: number[] = [];
     for (let t = first; t <= last; t += 60) hours.push(t);
     const untimed = sections.filter(s => !s.meetings.length);
@@ -50,7 +52,11 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                     <div className='dayhead'>&nbsp;</div>
                     <div style={{ position: 'relative', height }}>
                         {hours.map(h => (
-                            <div key={h} className='hour' style={{ position: 'absolute', top: (h - first) * px - 10, right: 0 }}>
+                            <div
+                                key={h}
+                                className='hour'
+                                style={{ position: 'absolute', top: (h - first) * px - 10, right: 0 }}
+                            >
                                 {hourLabel(h)}
                             </div>
                         ))}
@@ -61,14 +67,23 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                         <div className='dayhead'>{label}</div>
                         <div style={{ position: 'relative', height }}>
                             {hours.map(h => (
-                                <div key={h} style={{ position: 'absolute', left: 0, right: 0, top: (h - first) * px, borderTop: '1px solid var(--grid)' }} />
+                                <div
+                                    key={h}
+                                    style={{
+                                        position: 'absolute',
+                                        left: 0,
+                                        right: 0,
+                                        top: (h - first) * px,
+                                        borderTop: '1px solid var(--grid)',
+                                    }}
+                                />
                             ))}
                             {sections.flatMap((s, i) =>
                                 s.meetings
                                     .filter(m => m.days.includes(day))
-                                    .map((m, j) => (
+                                    .map(m => (
                                         <div
-                                            key={`${s.uniqueId}-${j}`}
+                                            key={`${s.uniqueId}-${m.days.join('')}-${m.start}`}
                                             className={`block ${conflicted.has(s.uniqueId) ? 'conflict' : ''}`}
                                             style={{
                                                 top: (m.start - first) * px + 1,

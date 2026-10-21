@@ -1,9 +1,10 @@
-import { chromium, type BrowserContext, test as base, type Worker } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { type BrowserContext, test as base, chromium, type Worker } from '@playwright/test';
 
-const EXTENSION = resolve(process.cwd(), 'dist');
+/** Built extension under test: dist/ by default, or an unzipped release ZIP via FASTLANE_EXTENSION_DIR. */
+export const EXTENSION = resolve(process.env.FASTLANE_EXTENSION_DIR || resolve(process.cwd(), 'dist'));
 
 export const test = base.extend<{ context: BrowserContext; extensionId: string; sw: Worker; userDataDir: string }>({
     // biome-ignore lint/correctness/noEmptyPattern: playwright fixture signature
@@ -13,9 +14,14 @@ export const test = base.extend<{ context: BrowserContext; extensionId: string; 
     context: async ({ userDataDir }, use) => {
         const context = await chromium.launchPersistentContext(userDataDir, {
             headless: true,
-            executablePath: process.env.PW_CHROMIUM_PATH || undefined,
+            // Extensions need full Chromium (new headless). Playwright's default "headless shell" cannot
+            // load extensions, so use the 'chromium' channel unless a specific binary is provided.
+            ...(process.env.PW_CHROMIUM_PATH
+                ? { executablePath: process.env.PW_CHROMIUM_PATH }
+                : { channel: 'chromium' }),
             args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
             viewport: { width: 1440, height: 1000 },
+            permissions: ['clipboard-read', 'clipboard-write'],
         });
         await use(context);
         await context.close();

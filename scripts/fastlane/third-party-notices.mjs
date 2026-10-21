@@ -7,7 +7,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const raw = JSON.parse(execFileSync('pnpm', ['licenses', 'list', '--prod', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+const raw = JSON.parse(
+    execFileSync('pnpm', ['licenses', 'list', '--prod', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+);
 const entries = Object.entries(raw).flatMap(([license, pkgs]) => pkgs.map(p => ({ license, ...p })));
 entries.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -21,9 +23,9 @@ function licenseText(paths) {
 }
 
 const out = [];
-out.push('LONGHORN FASTLANE PLUS — THIRD-PARTY NOTICES');
+out.push('FASTLANE COURSE PLANNER — THIRD-PARTY NOTICES');
 out.push('');
-out.push('Longhorn Fastlane Plus is an independent, student-developed project. It is not affiliated with,');
+out.push('Fastlane Course Planner is an independent, student-developed project. It is not affiliated with,');
 out.push('endorsed by, or approved by The University of Texas at Austin or the UT Registration Plus team.');
 out.push('');
 out.push('='.repeat(78));
@@ -63,7 +65,12 @@ for (const e of entries) {
         continue;
     }
     seenTexts.set(text, e.name);
-    out.push(text.split('\n').map(l => `  ${l}`).join('\n'));
+    out.push(
+        text
+            .split('\n')
+            .map(l => `  ${l}`)
+            .join('\n')
+    );
 }
 writeFileSync('public/THIRD_PARTY_NOTICES.txt', `${out.join('\n')}\n`);
 console.log(`wrote public/THIRD_PARTY_NOTICES.txt (${entries.length} packages)`);

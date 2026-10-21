@@ -35,9 +35,9 @@ export function SmallLogo({ className }: LogoIconProps): JSX.Element {
         <div className={clsx('flex items-center gap-2', className)}>
             <LogoIcon />
             <div className='mt-1 flex flex-col text-lg font-medium leading-[1em]'>
-                <p className='text-nowrap text-ut-burntorange'>Longhorn Fastlane</p>
+                <p className='text-nowrap text-ut-burntorange'>Fastlane</p>
                 <p className='text-ut-burntorange'>
-                    Plus{' '}
+                    Course Planner{' '}
                     <span className='text-xs'>
                         {import.meta.env.VITE_BETA_BUILD ? `(${import.meta.env.VITE_PACKAGE_VERSION})` : ''}
                     </span>
@@ -58,9 +58,9 @@ export function LargeLogo({ className }: LogoIconProps): JSX.Element {
         <div className={clsx('flex items-center gap-spacing-3', className)}>
             <LogoIcon className='h-12 w-12' />
             <div className='mt-1 flex flex-col text-[1.35rem] font-medium leading-[1em] screenshot:flex'>
-                <p className='text-nowrap text-ut-burntorange'>Longhorn Fastlane</p>
+                <p className='text-nowrap text-ut-burntorange'>Fastlane</p>
                 <p className='text-ut-burntorange'>
-                    Plus{' '}
+                    Course Planner{' '}
                     <span className='text-sm'>
                         {import.meta.env.VITE_BETA_BUILD ? `(${import.meta.env.VITE_PACKAGE_VERSION})` : ''}
                     </span>

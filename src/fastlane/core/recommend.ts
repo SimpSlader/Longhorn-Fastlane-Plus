@@ -76,7 +76,10 @@ export interface Recommendation {
 
 function defaultEligibility(section: SectionRecord): Eligibility {
     if (section.isReserved) {
-        return { status: 'restricted', notes: ['Some seats are reserved; check the reserved-seat details on UT’s listing'] };
+        return {
+            status: 'restricted',
+            notes: ['Some seats are reserved; check the reserved-seat details on UT’s listing'],
+        };
     }
     return { status: 'unknown', notes: ['Prerequisites not verified — check the course description'] };
 }
@@ -170,7 +173,11 @@ export function recommend(input: RecommendInput): Recommendation[] {
         if (conflict.status === 'clear') reasons.push('No known conflicts with your active schedule');
         if (conflict.status === 'unknown') warnings.push('Conflict status unknown — some meeting times are missing');
         if (conflict.status === 'conflict') {
-            warnings.push(`Conflicts with ${conflictingSections(conflict).map(s => s.label).join(', ')}`);
+            warnings.push(
+                `Conflicts with ${conflictingSections(conflict)
+                    .map(s => s.label)
+                    .join(', ')}`
+            );
         }
         if (section.modality !== 'in-person') reasons.push(MODALITY_LABELS[section.modality]);
         if (grade) {

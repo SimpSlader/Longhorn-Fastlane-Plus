@@ -23,7 +23,8 @@ export function CatalogHeader() {
                     title='Percentage of letter grades at or above this grade (historical data)'
                     value={threshold}
                     onChange={e => {
-                        if (isGradeThreshold(e.target.value)) void FastlaneSettingsStore.set('gradeThreshold', e.target.value as GradeThreshold);
+                        if (isGradeThreshold(e.target.value))
+                            void FastlaneSettingsStore.set('gradeThreshold', e.target.value as GradeThreshold);
                     }}
                     style={{ fontSize: 11, padding: '1px 2px', borderRadius: 4 }}
                 >

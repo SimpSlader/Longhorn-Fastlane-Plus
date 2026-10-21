@@ -239,15 +239,10 @@ export class GitHubStatsService {
     }
 
     private async fetchGitHub(route: string): Promise<unknown> {
-        try {
-            const url = new URL(route, 'https://github.cachedapi.com');
-            const response = await fetch(url);
-            return await response.json();
-        } catch {
-            const url = new URL(route, 'https://api.github.com');
-            const response = await fetch(url);
-            return await response.json();
-        }
+        // Fastlane: GitHub's own API only (upstream first tried a third-party caching proxy)
+        const url = new URL(route, 'https://api.github.com');
+        const response = await fetch(url, { credentials: 'omit' });
+        return await response.json();
     }
 
     private async fetchContributorStats(): Promise<Record<string, GitHubStats>> {

@@ -37,7 +37,11 @@ const RESTRICTION_PATTERN =
 export function classifyCategory(section: string, text: string, tags: string[]): RequirementCategory {
     if (tags.some(t => t.startsWith('CORE')) || /core curriculum/i.test(section)) return 'core';
     if (/\bgpa\b|grade point/i.test(`${section} ${text}`)) return 'gpa';
-    if (/total hours|upper[- ]division hours|hours in residence|minimum of \d+ (semester )?hours/i.test(`${section} ${text}`)) {
+    if (
+        /total hours|upper[- ]division hours|hours in residence|minimum of \d+ (semester )?hours/i.test(
+            `${section} ${text}`
+        )
+    ) {
         return 'hours';
     }
     if (/major|minor|degree|program|certificate|requirements|b\.?a\.?|b\.?s\.?/i.test(section)) return 'major';
@@ -149,7 +153,9 @@ function collectRestrictions(texts: string[]): string[] {
 }
 
 function deriveCreditHours(reqs: AuditRequirement[]): ParsedAudit['creditHours'] {
-    const total = reqs.find(r => r.category === 'hours' && /total|minimum of \d+/i.test(r.text) && r.required?.unit !== 'courses');
+    const total = reqs.find(
+        r => r.category === 'hours' && /total|minimum of \d+/i.test(r.text) && r.required?.unit !== 'courses'
+    );
     if (!total) return { confidence: 'low' };
     return {
         required: total.required?.value,
@@ -168,7 +174,8 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
     const pendingCodes = new Set(transfer.pending.map(c => normalizeCourseCode(c.code)));
     const requirements: AuditRequirement[] = [];
     const sections = [...doc.querySelectorAll('#requirements table.results')];
-    if (sections.length === 0) warnings.push('No requirement tables found. Is this an Interactive Degree Audit results page?');
+    if (sections.length === 0)
+        warnings.push('No requirement tables found. Is this an Interactive Degree Audit results page?');
 
     sections.forEach((table, tableIndex) => {
         const titleTh = table.querySelector('thead th.section_title');
@@ -231,7 +238,9 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
  * derived from the Required / Counted / Lacking numbers and every item is at most medium confidence.
  */
 export function parseAuditText(lines: string[], fileName?: string, now = Date.now()): ParsedAudit {
-    const warnings = ['Parsed from PDF text: completion icons are not available, so statuses come from the hours columns. Please review.'];
+    const warnings = [
+        'Parsed from PDF text: completion icons are not available, so statuses come from the hours columns. Please review.',
+    ];
     const courses: AuditCourse[] = [];
     const requirements: AuditRequirement[] = [];
     let semester = '';
@@ -242,10 +251,13 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
 
     const courseLine =
         /^(?:(in progress|planned|future)\s+)?([A-Z][A-Z ]{0,6}?)\s+([FSNW]?\d{3}[A-Z]{0,2})\s+(.+?)\s+(?:([A-F][+-]?|CR|NC|P|F|IP|PEND\w*)\s+)?(\d{5})?\s*(In-Residence|Transfer(?: pending)?|Pending Transfer|Credit By Exam)\s+(\d+(?:\.\d+)?)\b/i;
-    const ruleNumbers = /(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s*(.*)$/i;
+    const ruleNumbers =
+        /(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s*(.*)$/i;
 
     const flushRule = (numbersMatch: RegExpMatchArray, head: string) => {
-        const text = clean([...buffer, head].join(' ')).replace(/^\d+\s+/, '').replace(/^(completed|not completed|partially completed|done)\s+/i, '');
+        const text = clean([...buffer, head].join(' '))
+            .replace(/^\d+\s+/, '')
+            .replace(/^(completed|not completed|partially completed|done)\s+/i, '');
         buffer = [];
         if (!text) return;
         const unit = (s: string) => (/course/i.test(s) ? 'courses' : 'hours') as Progress['unit'];
@@ -323,7 +335,10 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
             }
         }
         // a requirement section title usually stands alone, e.g. "Core Curriculum (42 hours required ...)"
-        if (/^(core curriculum|major requirements|.*requirements\b.*|total hours.*|gpa.*)$/i.test(line) && !ruleNumbers.test(line)) {
+        if (
+            /^(core curriculum|major requirements|.*requirements\b.*|total hours.*|gpa.*)$/i.test(line) &&
+            !ruleNumbers.test(line)
+        ) {
             if (mode !== 'coursework' || /core curriculum|requirements/i.test(line)) {
                 section = line.replace(/\s*\(.*\)$/, '');
                 mode = 'requirements';
@@ -343,7 +358,8 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
         }
     }
 
-    if (requirements.length === 0) warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
+    if (requirements.length === 0)
+        warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
     const transfer = splitTransfer(courses);
     return {
         source: 'pdf',
@@ -383,7 +399,9 @@ export function correctRequirement(
 ): ParsedAudit {
     return {
         ...audit,
-        requirements: audit.requirements.map(r => (r.id === id ? { ...r, ...patch, reviewed: true, confidence: 'high' as const } : r)),
+        requirements: audit.requirements.map(r =>
+            r.id === id ? { ...r, ...patch, reviewed: true, confidence: 'high' as const } : r
+        ),
     };
 }
 

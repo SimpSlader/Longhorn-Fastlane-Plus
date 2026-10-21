@@ -124,14 +124,16 @@ export async function activateSection(scheduleId: string, slotId: string, unique
     const plan = await loadPlan(schedule);
     const { plan: next, swap } = activateCandidate(plan, slotId, uniqueId);
     if (!swap) return;
-    if (!swap.add.course) throw new Error('This backup was saved without full course details; re-add it from the UT course schedule.');
+    if (!swap.add.course)
+        throw new Error('This backup was saved without full course details; re-add it from the UT course schedule.');
     const schedules = await UserScheduleStore.get('schedules');
     const target = schedules.find(s => s.id === scheduleId);
     if (!target) throw new Error('That schedule no longer exists');
     const incoming = new Course(swap.add.course as Serialized<Course>);
     const kept = target.courses.filter(c => c.uniqueId !== swap.remove.uniqueId && c.uniqueId !== incoming.uniqueId);
     const removed = target.courses.find(c => c.uniqueId === swap.remove.uniqueId);
-    incoming.colors = removed?.colors ?? getUnusedColor(new UserSchedule({ ...target, courses: kept } as never), incoming);
+    incoming.colors =
+        removed?.colors ?? getUnusedColor(new UserSchedule({ ...target, courses: kept } as never), incoming);
     target.courses = [...kept, incoming] as never;
     target.updatedAt = Date.now();
     await UserScheduleStore.set('schedules', schedules);

@@ -7,9 +7,9 @@ import ShadedResults from '@views/components/injected/SearchResultShader';
 import getSiteSupport, { SiteSupport } from '@views/lib/getSiteSupport';
 import React, { Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
-import { FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
 import { mountRegistrationAssistant } from 'src/fastlane/injected/registration/mount';
+import { FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
+import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
 const support = getSiteSupport(window.location.href);
 

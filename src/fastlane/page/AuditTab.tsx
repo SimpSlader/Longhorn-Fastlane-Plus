@@ -1,7 +1,6 @@
 import { useState } from 'react';
-
-import { confirmRequirement, correctRequirement, needsReview, outstandingTags } from '../audit/parseAudit';
 import { importAuditFile } from '../audit/importFile';
+import { confirmRequirement, correctRequirement, needsReview, outstandingTags } from '../audit/parseAudit';
 import type { AuditRequirement, ParsedAudit, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
 import { FastlaneAuditStore } from '../storage/stores';
@@ -46,13 +45,19 @@ function RequirementRow({ r, onChange }: { r: AuditRequirement; onChange: (a: Pa
                         ))}
                     </div>
                 )}
-                {flagged && <div className='small' style={{ color: 'var(--warn)' }}>Check this: {r.issues.join('; ')}</div>}
+                {flagged && (
+                    <div className='small' style={{ color: 'var(--warn)' }}>
+                        Check this: {r.issues.join('; ')}
+                    </div>
+                )}
             </td>
             <td>
                 <select
                     aria-label='Requirement status'
                     value={r.status}
-                    onChange={e => onChange(correctRequirement(audit, r.id, { status: e.target.value as RequirementStatus }))}
+                    onChange={e =>
+                        onChange(correctRequirement(audit, r.id, { status: e.target.value as RequirementStatus }))
+                    }
                 >
                     {(['completed', 'in-progress', 'not-started'] as const).map(s => (
                         <option key={s} value={s}>
@@ -74,7 +79,11 @@ function RequirementRow({ r, onChange }: { r: AuditRequirement; onChange: (a: Pa
     );
 }
 
-export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, params?: Record<string, string>) => void }) {
+export default function AuditTab({
+    onNavigate,
+}: {
+    onNavigate: (tab: string, params?: Record<string, string>) => void;
+}) {
     const audit = FastlaneAuditStore.useStore(s => s.audit) as ParsedAudit | null;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -89,7 +98,8 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
         setError(null);
         try {
             const parsed = await importAuditFile(file);
-            if (!parsed.requirements.length && !parsed.courses.length) throw new Error(parsed.warnings.join(' ') || 'Nothing could be read from that file.');
+            if (!parsed.requirements.length && !parsed.courses.length)
+                throw new Error(parsed.warnings.join(' ') || 'Nothing could be read from that file.');
             await save(parsed);
             setFilter(needsReview(parsed).length ? 'review' : 'remaining');
         } catch (e) {
@@ -101,7 +111,8 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
 
     const review = audit ? needsReview(audit) : [];
     const reqs = audit?.requirements ?? [];
-    const shown = filter === 'review' ? review : filter === 'remaining' ? reqs.filter(r => r.status !== 'completed') : reqs;
+    const shown =
+        filter === 'review' ? review : filter === 'remaining' ? reqs.filter(r => r.status !== 'completed') : reqs;
     const core = reqs.filter(r => r.category === 'core');
     const major = reqs.filter(r => r.category === 'major');
     const count = (list: AuditRequirement[], s: RequirementStatus) => list.filter(r => r.status === s).length;
@@ -132,10 +143,16 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
                     void onFile(e.dataTransfer.files[0]);
                 }}
             >
-                <input type='file' accept='.pdf,.html,.htm,application/pdf,text/html' className='sr-only' onChange={e => void onFile(e.target.files?.[0])} />
+                <input
+                    type='file'
+                    accept='.pdf,.html,.htm,application/pdf,text/html'
+                    className='sr-only'
+                    onChange={e => void onFile(e.target.files?.[0])}
+                />
                 <b>{busy ? 'Reading audit…' : 'Drop your audit here or click to choose a file'}</b>
                 <div className='small muted'>
-                    In IDA, open your audit results and use the browser’s <i>Save page as… → Webpage, HTML only</i> (most accurate) or <i>Print → Save as PDF</i>.
+                    In IDA, open your audit results and use the browser’s <i>Save page as… → Webpage, HTML only</i>{' '}
+                    (most accurate) or <i>Print → Save as PDF</i>.
                 </div>
             </label>
             {error && (
@@ -179,29 +196,40 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
                             <span>accepted transfer/exam credits</span>
                         </div>
                         <div className='metric'>
-                            <b style={{ color: audit.transfer.pending.length ? 'var(--warn)' : undefined }}>{audit.transfer.pending.length}</b>
+                            <b style={{ color: audit.transfer.pending.length ? 'var(--warn)' : undefined }}>
+                                {audit.transfer.pending.length}
+                            </b>
                             <span>pending transfer (not counted)</span>
                         </div>
                     </div>
                     {audit.transfer.pending.length > 0 && (
                         <div className='notice warn'>
-                            Pending transfer credit is not treated as awarded: {audit.transfer.pending.map(c => `${c.code} (${c.hours} hrs)`).join(', ')}.
-                            Requirements that rely on it stay in progress until UT posts the credit.
+                            Pending transfer credit is not treated as awarded:{' '}
+                            {audit.transfer.pending.map(c => `${c.code} (${c.hours} hrs)`).join(', ')}. Requirements
+                            that rely on it stay in progress until UT posts the credit.
                         </div>
                     )}
                     <div className='card stack'>
                         <div className='row between'>
-                            <div className='tabs' role='group' aria-label='Filter requirements'>
-                                <button type='button' aria-pressed={filter === 'review'} onClick={() => setFilter('review')}>
+                            <fieldset className='tabs' aria-label='Filter requirements'>
+                                <button
+                                    type='button'
+                                    aria-pressed={filter === 'review'}
+                                    onClick={() => setFilter('review')}
+                                >
                                     Needs review ({review.length})
                                 </button>
-                                <button type='button' aria-pressed={filter === 'remaining'} onClick={() => setFilter('remaining')}>
+                                <button
+                                    type='button'
+                                    aria-pressed={filter === 'remaining'}
+                                    onClick={() => setFilter('remaining')}
+                                >
                                     Remaining ({reqs.filter(r => r.status !== 'completed').length})
                                 </button>
                                 <button type='button' aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
                                     All ({reqs.length})
                                 </button>
-                            </div>
+                            </fieldset>
                             <button
                                 type='button'
                                 className='btn primary'
@@ -212,7 +240,9 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
                             </button>
                         </div>
                         {shown.length === 0 ? (
-                            <div className='muted small'>{filter === 'review' ? 'Everything has been reviewed.' : 'Nothing here.'}</div>
+                            <div className='muted small'>
+                                {filter === 'review' ? 'Everything has been reviewed.' : 'Nothing here.'}
+                            </div>
                         ) : (
                             <table className='list'>
                                 <thead>
@@ -242,7 +272,8 @@ export default function AuditTab({ onNavigate }: { onNavigate: (tab: string, par
                         </div>
                     )}
                     <div className='small muted'>
-                        Imported {new Date(audit.parsedAt).toLocaleString()} from {audit.fileName ?? 'file'} ({audit.source.toUpperCase()}). {audit.courses.length} courses read.
+                        Imported {new Date(audit.parsedAt).toLocaleString()} from {audit.fileName ?? 'file'} (
+                        {audit.source.toUpperCase()}). {audit.courses.length} courses read.
                     </div>
                 </>
             )}

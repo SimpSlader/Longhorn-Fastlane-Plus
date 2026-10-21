@@ -28,7 +28,9 @@ const succeed = (s: QueueState) => recordOutcome(s, currentItem(s)!.id, 'success
 describe('registration queue', () => {
     it('starts with the student priority list', () => {
         const q = defaultQueue();
-        expect(q.items.map(i => i.uniqueId)).toEqual([65555, 65705, 65605, 34240, 23095, 33515, 33505, 55675, 31830, 31925, 31875, 65600]);
+        expect(q.items.map(i => i.uniqueId)).toEqual([
+            65555, 65705, 65605, 34240, 23095, 33515, 33505, 55675, 31830, 31925, 31875, 65600,
+        ]);
         expect(cur(q)).toBe(65555);
         expect(nextFallback(q)).toMatchObject({ item: { uniqueId: 65705 }, sameGroup: true });
     });
@@ -116,6 +118,9 @@ describe('registration queue', () => {
 describe('result message detection (optional, suggestion only)', () => {
     it('classifies UT-style messages', () => {
         expect(classifyMessage('Requested class is filled to closing limit.')).toBe('full');
+        expect(classifyMessage('Requested class 65555 is filled to closing limit.')).toBe('full');
+        expect(classifyMessage('The class 23095 is closed.')).toBe('full');
+        expect(classifyMessage('Section is full')).toBe('full');
         expect(classifyMessage('You have added 23095 to your schedule.')).toBe('success');
         expect(classifyMessage('Time conflict with another class.')).toBe('conflict');
         expect(classifyMessage('This class is restricted to certain majors.')).toBe('restriction');
@@ -125,9 +130,15 @@ describe('result message detection (optional, suggestion only)', () => {
 
     it('ignores messages that predate the copy and messages about other unique numbers', () => {
         const baseline = new Set(['requested class is filled to closing limit for 65555.']);
-        expect(suggestOutcome(['Requested class is filled to closing limit for 65555.'], { uniqueId: 65555, baseline })).toBeNull();
-        expect(suggestOutcome(['You added 11111 to your schedule.'], { uniqueId: 65555, baseline: new Set() })).toBeNull();
-        expect(suggestOutcome(['You added 65555 to your schedule.'], { uniqueId: 65555, baseline: new Set() })).toMatchObject({
+        expect(
+            suggestOutcome(['Requested class is filled to closing limit for 65555.'], { uniqueId: 65555, baseline })
+        ).toBeNull();
+        expect(
+            suggestOutcome(['You added 11111 to your schedule.'], { uniqueId: 65555, baseline: new Set() })
+        ).toBeNull();
+        expect(
+            suggestOutcome(['You added 65555 to your schedule.'], { uniqueId: 65555, baseline: new Set() })
+        ).toMatchObject({
             kind: 'success',
         });
     });

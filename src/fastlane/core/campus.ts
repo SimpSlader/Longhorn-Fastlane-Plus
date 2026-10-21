@@ -22,7 +22,11 @@ export function splitLocation(location?: string): { building?: string; room?: st
 
 export function stopsForDay(sections: SectionRecord[], day: DayCode): Stop[] {
     const stops = sections
-        .flatMap(section => section.meetings.filter(m => m.days.includes(day)).map(meeting => ({ section, meeting, ...splitLocation(meeting.location) })))
+        .flatMap(section =>
+            section.meetings
+                .filter(m => m.days.includes(day))
+                .map(meeting => ({ section, meeting, ...splitLocation(meeting.location) }))
+        )
         .sort((a, b) => a.meeting.start - b.meeting.start);
     return stops.map((s, i) => ({ ...s, order: i + 1 }));
 }

@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  Structure of UT Austin's add/drop page (utdirect.utexas.edu/registration/registration.WBX), reconstructed
+  from public sources: field names/ids used by public projects that target the page (s_unique_add,
+  s_unique_drop, s_swap_unique_drop, s_swap_unique_add, s_request radios, s_submit) and a public replica.
+  NOT a verified capture of the live page. Used only to test that Fastlane picks the ADD field and
+  never touches the drop/swap fields or the submit button.
+-->
+<html><head><title>Registration</title></head>
+<body>
+<div id="service_content">
+  <div id="e_message"></div>
+  <div id="regContent">
+    <div id="n_message"><div><span class="notification">Please select a registration action.</span></div></div>
+    <form action="registration.WBX" name="regform" id="regform" method="post">
+      <div id="message"></div>
+      <div id="message2"></div>
+      <input type="hidden" name="s_ccyys" id="s_ccyys" value="20272">
+      <input type="hidden" name="s_student_eid" id="s_student_eid" value="">
+      <table width="100%" cellpadding="3"><tbody>
+        <tr><th class="radio">SELECT</th><th class="uniqueText">UNIQUE NUMBER</th><th class="transactionText">TRANSACTION</th></tr>
+        <tr><td><input type="radio" name="s_request" id="ds_request_STADD" value="STADD" checked></td>
+            <td><input type="text" name="s_unique_add" id="s_unique_add" size="6" maxlength="5" value=""></td>
+            <td class="transactionText">REGISTER for or ADD</td></tr>
+        <tr><td><input type="radio" name="s_request" id="s_request_STDRP" value="STDRP"></td>
+            <td><select name="s_unique_drop" id="s_unique_drop"><option value=" ">Select unique to:</option></select></td>
+            <td class="transactionText">DROP</td></tr>
+        <tr><td><input type="radio" name="s_request" id="s_request_STSWP" value="STSWP"></td>
+            <td><select name="s_swap_unique_drop" id="s_swap_unique_drop"><option value=" ">Select unique to:</option></select></td>
+            <td class="transactionText">DROP DEPENDENT UPON successfully ADDING
+              <input type="text" name="s_swap_unique_add" id="s_swap_unique_add" value="" size="6" maxlength="5"></td></tr>
+      </tbody></table>
+      <input type="submit" name="s_submit" id="s_submit" value="Submit">
+    </form>
+  </div>
+</div>
+</body></html>

@@ -16,7 +16,10 @@ const statFor = (percent: number, graded: number, scope: 'instructor' | 'course'
         scope,
         courseCode: 'X',
         instructor: scope === 'instructor' ? 'Smith' : undefined,
-        result: computeThreshold({ A: Math.round((percent / 100) * graded), B: graded - Math.round((percent / 100) * graded) }, 'A-')!,
+        result: computeThreshold(
+            { A: Math.round((percent / 100) * graded), B: graded - Math.round((percent / 100) * graded) },
+            'A-'
+        )!,
         semesters: ['Fall 2025'],
         source: 'test',
         datasetVersion: '1',
@@ -48,9 +51,20 @@ describe('recommend (emergency backups)', () => {
         sectionFixture(20002, 'T D 301', { core: ARTS, times: [['TTH', '2:00 p.m.-3:30 p.m.']] }),
         sectionFixture(20003, 'MUS 307', { core: ARTS, modality: 'async-online' }),
         sectionFixture(20004, 'ARH 301', { core: ARTS, times: [['MW', 'TBA']], complete: false }), // unknown
-        sectionFixture(20005, 'GOV 310L', { core: ['American and Texas Government'], times: [['TTH', '8:00 a.m.-9:30 a.m.']] }),
-        sectionFixture(20006, 'F A 308', { core: ARTS, times: [['TTH', '3:30 p.m.-5:00 p.m.']], semester: { year: 2026, season: 'Fall' } }),
-        sectionFixture(20007, 'MUS 303M', { core: ARTS, times: [['MWF', '1:00 p.m.-2:00 p.m.']], status: { value: 'CANCELLED', observedAt: NOW, source: 'x' } }),
+        sectionFixture(20005, 'GOV 310L', {
+            core: ['American and Texas Government'],
+            times: [['TTH', '8:00 a.m.-9:30 a.m.']],
+        }),
+        sectionFixture(20006, 'F A 308', {
+            core: ARTS,
+            times: [['TTH', '3:30 p.m.-5:00 p.m.']],
+            semester: { year: 2026, season: 'Fall' },
+        }),
+        sectionFixture(20007, 'MUS 303M', {
+            core: ARTS,
+            times: [['MWF', '1:00 p.m.-2:00 p.m.']],
+            status: { value: 'CANCELLED', observedAt: NOW, source: 'x' },
+        }),
     ];
     const grades: Record<number, GradeStat> = {
         20002: statFor(81, 400, 'instructor'),
@@ -107,7 +121,11 @@ describe('recommend (emergency backups)', () => {
         const rec = recommend(base).find(r => r.section.uniqueId === 20001)!;
         expect(rec.conflict.status).toBe('conflict');
         expect(rec.warnings.join(' ')).toContain('Conflicts with M 408C (00001)');
-        expect(recommend(base).find(r => r.section.uniqueId === 20004)!.warnings.join(' ')).toContain('No historical grade data');
+        expect(
+            recommend(base)
+                .find(r => r.section.uniqueId === 20004)!
+                .warnings.join(' ')
+        ).toContain('No historical grade data');
     });
 
     it('returns nothing when there are no outstanding requirements', () => {
@@ -118,7 +136,10 @@ describe('recommend (emergency backups)', () => {
 describe('availabilityDisplay', () => {
     it('only says open with a fresh observed status and timestamp', () => {
         expect(availabilityDisplay(undefined, NOW)).toEqual({ tone: 'check', text: 'Check availability' });
-        const fresh = availabilityDisplay({ value: 'OPEN', observedAt: NOW - 5 * 60_000, source: 'UT course schedule' }, NOW);
+        const fresh = availabilityDisplay(
+            { value: 'OPEN', observedAt: NOW - 5 * 60_000, source: 'UT course schedule' },
+            NOW
+        );
         expect(fresh.tone).toBe('open');
         expect(fresh.text).toMatch(/^Open as of .+ \(UT course schedule\)$/);
         const stale = availabilityDisplay({ value: 'OPEN', observedAt: NOW - 3 * 60 * 60_000, source: 'x' }, NOW);

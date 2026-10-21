@@ -1,9 +1,10 @@
+import { background } from '@shared/messages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
-import { background } from '@shared/messages';
 import { LogoIcon } from '@views/components/common/LogoIcon';
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { Suspense, useEffect } from 'react';
+import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 import CalendarDotsIcon from '~icons/ph/calendar-dots';
 import DeviceMobileIcon from '~icons/ph/device-mobile';
 import GearSixIcon from '~icons/ph/gear-six';
@@ -12,8 +13,7 @@ import ListChecksIcon from '~icons/ph/list-checks';
 import MapTrifoldIcon from '~icons/ph/map-trifold';
 import PlusIcon from '~icons/ph/plus';
 import SparkleIcon from '~icons/ph/sparkle';
-import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
-
+import type { PlanMeta } from '../core/plans';
 import {
     FastlaneAuditStore,
     FastlanePlanStore,
@@ -21,7 +21,6 @@ import {
     FastlaneReminderStore,
     FastlaneSettingsStore,
 } from '../storage/stores';
-import type { PlanMeta } from '../core/plans';
 import AuditTab from './AuditTab';
 import { useHashRoute, useOnline } from './hooks';
 import MapTab from './MapTab';
@@ -81,7 +80,7 @@ function Workspace() {
     }, [theme]);
 
     useEffect(() => {
-        document.title = `${TABS.find(t => t[0] === tab)?.[1] ?? 'Fastlane'} · Longhorn Fastlane Plus`;
+        document.title = `${TABS.find(t => t[0] === tab)?.[1] ?? 'Fastlane'} · Fastlane Course Planner`;
     }, [tab]);
 
     return (
@@ -90,9 +89,9 @@ function Workspace() {
                 <div className='logo'>
                     <LogoIcon className='h-11 w-11' style={{ width: 44, height: 44 }} />
                     <div className='logo-text'>
-                        Longhorn Fastlane
+                        Fastlane
                         <br />
-                        Plus
+                        Course Planner
                     </div>
                 </div>
                 <h3>
@@ -112,10 +111,18 @@ function Workspace() {
                 </h3>
                 <div className='sched-list'>
                     {schedules.map(s => (
-                        <button key={s.id} type='button' className='sched-item' onClick={() => void switchSchedule(s.id)} aria-pressed={s.id === active?.id}>
+                        <button
+                            key={s.id}
+                            type='button'
+                            className='sched-item'
+                            onClick={() => void switchSchedule(s.id)}
+                            aria-pressed={s.id === active?.id}
+                        >
                             <span className={`radio ${s.id === active?.id ? 'on' : ''}`} />
                             <span>{s.name}</span>
-                            {plans[s.id] && plans[s.id]!.kind !== 'custom' && <span className='sched-kind'>{plans[s.id]!.kind}</span>}
+                            {plans[s.id] && plans[s.id]!.kind !== 'custom' && (
+                                <span className='sched-kind'>{plans[s.id]!.kind}</span>
+                            )}
                         </button>
                     ))}
                 </div>
@@ -123,7 +130,12 @@ function Workspace() {
                 <h3>Fastlane</h3>
                 <nav className='nav' aria-label='Sections'>
                     {TABS.map(([id, label, Icon]) => (
-                        <button key={id} type='button' aria-current={tab === id ? 'page' : undefined} onClick={() => go(id)}>
+                        <button
+                            key={id}
+                            type='button'
+                            aria-current={tab === id ? 'page' : undefined}
+                            onClick={() => go(id)}
+                        >
                             <Icon aria-hidden='true' /> {label}
                         </button>
                     ))}
@@ -142,7 +154,13 @@ function Workspace() {
                     <span>Independent student project. Not affiliated with UT Austin.</span>
                     <div className='row'>
                         <span>v{chrome.runtime.getManifest().version}</span>
-                        <button type='button' className='icon-btn' aria-label='Settings & privacy' title='Settings & privacy' onClick={() => go('settings')}>
+                        <button
+                            type='button'
+                            className='icon-btn'
+                            aria-label='Settings & privacy'
+                            title='Settings & privacy'
+                            onClick={() => go('settings')}
+                        >
                             <GearSixIcon />
                         </button>
                     </div>
@@ -157,8 +175,9 @@ function Workspace() {
                 {tab === 'wallpaper' && <WallpaperTab />}
                 {tab === 'settings' && <SettingsTab />}
                 <div className='footer-note'>
-                    Planning information comes from UT pages you viewed and bundled public datasets. Always verify unique numbers, availability, restrictions and
-                    rooms in UT’s official course schedule. Historical grades are not predictions.
+                    Planning information comes from UT pages you viewed and bundled public datasets. Always verify
+                    unique numbers, availability, restrictions and rooms in UT’s official course schedule. Historical
+                    grades are not predictions.
                 </div>
             </main>
         </div>

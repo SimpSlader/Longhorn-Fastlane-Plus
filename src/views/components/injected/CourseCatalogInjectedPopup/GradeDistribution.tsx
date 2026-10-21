@@ -4,19 +4,16 @@ import type { Distribution, LetterGrade } from '@shared/types/Distribution';
 import { extendedColors } from '@shared/types/ThemeColors';
 import Link from '@views/components/common/Link';
 import Text from '@views/components/common/Text/Text';
-import Tooltip from '@views/components/common/Tooltip';
 import {
     NoDataError,
     queryAggregateDistribution,
     querySemesterDistribution,
 } from '@views/lib/database/queryDistribution';
-import Highcharts from 'highcharts';
-import type { HighchartsReactRefObject } from 'highcharts-react-official';
-import * as HighchartsReactModule from 'highcharts-react-official';
 import type { ChangeEvent, JSX } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { useEffect, useMemo, useState } from 'react';
 import Skeleton from 'react-loading-skeleton';
+
+import GradeBarChart from './GradeBarChart';
 
 const UT_GRADE_DISTRIBUTION_URL = 'https://reports.utexas.edu/spotlight-data/ut-course-grade-distributions';
 const TOOLTIP_CONTENT =
@@ -34,11 +31,6 @@ const DataStatus = {
 
 type DataStatusType = (typeof DataStatus)[keyof typeof DataStatus];
 
-const HighchartsReact =
-    HighchartsReactModule.default && '$$typeof' in HighchartsReactModule.default
-        ? HighchartsReactModule.default
-        : HighchartsReactModule.HighchartsReact;
-
 const GRADE_COLORS = {
     A: extendedColors.gradeDistribution.a,
     'A-': extendedColors.gradeDistribution.aminus,
@@ -54,6 +46,8 @@ const GRADE_COLORS = {
     F: extendedColors.gradeDistribution.f,
     Other: extendedColors.gradeDistribution.other,
 } as const satisfies Record<LetterGrade, string>;
+
+const GRADE_ORDER: LetterGrade[] = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'Other'];
 
 const semesterOrdering = new Map([
     ['Fall', 0],
@@ -73,26 +67,10 @@ export default function GradeDistribution({ course }: GradeDistributionProps): J
     type Distributions = Record<string, { data: Distribution; instructorIncluded: boolean }>;
     const [distributions, setDistributions] = useState<Distributions>({});
     const [status, setStatus] = useState<DataStatusType>(DataStatus.LOADING);
-    const ref = useRef<HighchartsReactRefObject>(null);
-
-    useEffect(() => {
-        Highcharts.setOptions({
-            chart: { animation: reducedMotion ? false : { duration: 700 } },
-            plotOptions: {
-                series: { animation: reducedMotion ? false : { duration: 700 } },
-                column: { animation: reducedMotion ? false : { duration: 700 } },
-            },
-        });
-    }, [reducedMotion]);
-
+    // Fastlane: column data for the dependency-free SVG chart (replaces Highcharts)
     const chartData = useMemo(() => {
-        if (status === DataStatus.FOUND && distributions[semester]) {
-            return Object.entries(distributions[semester]?.data).map(([grade, count]) => ({
-                y: count,
-                color: GRADE_COLORS[grade as LetterGrade],
-            }));
-        }
-        return Array(13).fill(0);
+        const data = status === DataStatus.FOUND ? distributions[semester]?.data : undefined;
+        return GRADE_ORDER.map(grade => ({ label: grade, value: data?.[grade] ?? 0, color: GRADE_COLORS[grade] }));
     }, [distributions, semester, status]);
 
     useEffect(() => {
@@ -142,140 +120,14 @@ export default function GradeDistribution({ course }: GradeDistributionProps): J
         setSemester(event.target.value);
     };
 
-    const chartOptions: Highcharts.Options = {
-        title: { text: undefined },
-        subtitle: { text: undefined },
-        legend: { enabled: false },
-        xAxis: {
-            labels: {
-                y: 20,
-                style: {
-                    fontSize: '0.6875rem',
-                    fontWeight: '500',
-                    letterSpacing: '0',
-                    lineHeight: 'normal',
-                    fontStyle: 'normal',
-                },
-                useHTML: true,
-                formatter() {
-                    const val = `${this.value}`;
-
-                    return val === 'Other'
-                        ? renderToStaticMarkup(
-                              <Tooltip
-                                  content={TOOLTIP_CONTENT}
-                                  className='underline'
-                                  offsetX={-425}
-                                  offsetY={-175}
-                                  maxWidth={500}
-                              >
-                                  Other
-                              </Tooltip>
-                          )
-                        : val;
-                },
-            },
-            title: {
-                text: 'Grades',
-                style: {
-                    color: '#333F48',
-                    fontSize: '0.80rem',
-                    fontWeight: '400',
-                },
-            },
-
-            categories: ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'Other'],
-            tickInterval: 1,
-            tickWidth: 1,
-            tickLength: 10,
-            tickColor: '#9CADB7',
-            crosshair: { color: `${extendedColors.theme.offwhite}50` },
-            lineColor: '#9CADB7',
-        },
-        yAxis: {
-            labels: {
-                style: {
-                    fontSize: '0.80rem',
-                    fontWeight: '400',
-                    color: '#333F48',
-                    lineHeight: '100%',
-                    fontStyle: 'normal',
-                },
-            },
-            min: 0,
-            title: {
-                text: 'Students',
-                style: {
-                    color: '#333F48',
-                    fontSize: '0.80rem',
-                    fontWeight: '400',
-                },
-            },
-        },
-        chart: {
-            animation: reducedMotion ? false : { duration: 700 },
-            style: {
-                fontFamily: 'Roboto Flex, Roboto Flex Local',
-                fontWeight: '600',
-            },
-            spacingBottom: 25,
-            spacingTop: 25,
-            spacingLeft: 1.5,
-            height: 250,
-        },
-        credits: { enabled: false },
-        accessibility: { enabled: true },
-        tooltip: {
-            headerFormat: '<span style="display:block; font-weight:700;">{point.key}</span>',
-            pointFormat: '<span style="display:block; font-weight:500;">{point.y:.0f} Students</span>',
-            shared: true,
-            useHTML: true,
-            style: {
-                color: 'var(--Other-Colors-UTRP-Black, #1A2024)',
-                textAlign: 'center',
-                fontFamily: 'Roboto Flex, Roboto Flex Local',
-                fontSize: '0.88875rem',
-                lineHeight: 'normal',
-            },
-            backgroundColor: 'white',
-            borderRadius: 4,
-            shadow: {
-                offsetX: 0,
-                offsetY: 1,
-                color: 'rgba(51, 63, 72, 0.30)',
-            },
-            animation: !reducedMotion,
-        },
-        plotOptions: {
-            bar: { pointPadding: 0.2, borderWidth: 0 },
-            series: { animation: reducedMotion ? false : { duration: 700 } },
-            column: { animation: reducedMotion ? false : { duration: 700 } },
-        },
-        series: [
-            {
-                type: 'column',
-                name: 'Grades',
-                data: chartData,
-                animation: reducedMotion ? false : { duration: 700 },
-            },
-        ],
-    };
-
     return (
         <div className='pt-3'>
             {status === DataStatus.LOADING && <Skeleton height={300} enableAnimation={!reducedMotion} />}
             {status === DataStatus.NOT_FOUND && (
-                <HighchartsReact
-                    ref={ref}
-                    highcharts={Highcharts}
-                    options={{
-                        ...chartOptions,
-                        title: {
-                            text: `There is currently no grade distribution data for ${course.department} ${course.getNumberWithoutTerm()}`,
-                        },
-                        tooltip: { enabled: false },
-                    }}
-                    updateArgs={[true, true, !reducedMotion]}
+                <GradeBarChart
+                    bars={chartData}
+                    reducedMotion={reducedMotion}
+                    title={`There is currently no grade distribution data for ${course.department} ${course.getNumberWithoutTerm()}`}
                 />
             )}
             {status === DataStatus.ERROR && (
@@ -336,12 +188,7 @@ export default function GradeDistribution({ course }: GradeDistributionProps): J
                             </Text>
                         </div>
                     )}
-                    <HighchartsReact
-                        ref={ref}
-                        highcharts={Highcharts}
-                        options={chartOptions}
-                        updateArgs={[true, true, !reducedMotion]}
-                    />
+                    <GradeBarChart bars={chartData} reducedMotion={reducedMotion} otherTooltip={TOOLTIP_CONTENT} />
                 </>
             )}
         </div>

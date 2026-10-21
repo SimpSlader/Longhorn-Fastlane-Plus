@@ -22,8 +22,8 @@
     font-style: normal;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Flex:wght@100..1000&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+// Fastlane: fonts are served from the bundled files above. Upstream's remote Google Fonts @import was removed
+// so no page ever requests fonts from a third-party host.
 
 $medium_size: 16px;
 

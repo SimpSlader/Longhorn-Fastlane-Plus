@@ -111,10 +111,13 @@ export default function Calendar(): ReactNode {
     activeScheduleRef.current = activeSchedule;
 
     // silently refreshes course data when the calendar opens or the active schedule changes
+    // Fastlane: only when the student turned on "refresh course data" (off by default), because this
+    // fetches each course page from UT using the student's UT session.
+    const enableDataRefreshing = OptionsStore.useStore(store => store.enableDataRefreshing);
     // biome-ignore lint/correctness/useExhaustiveDependencies: id is a trigger, not a value read
     useEffect(() => {
-        void refreshCourses({ silent: true });
-    }, [activeSchedule.id]);
+        if (enableDataRefreshing) void refreshCourses({ silent: true });
+    }, [activeSchedule.id, enableDataRefreshing]);
 
     useEffect(() => {
         const listener = new MessageListener<CalendarTabMessages>({

@@ -20,12 +20,15 @@ const HOST_OK = /^(\*|https?):\/\/(\*\.)?([a-z0-9-]+\.)*(utexas\.edu|utexas\.col
 if (manifest.manifest_version !== 3) errors.push('manifest_version must be 3');
 for (const p of manifest.permissions ?? []) if (!ALLOWED_PERMISSIONS.has(p)) errors.push(`unexpected permission: ${p}`);
 for (const h of manifest.host_permissions ?? []) if (!HOST_OK.test(h)) errors.push(`unexpected host permission: ${h}`);
-for (const cs of manifest.content_scripts ?? []) for (const m of cs.matches ?? []) if (!HOST_OK.test(m)) errors.push(`content script on non-UT host: ${m}`);
+for (const cs of manifest.content_scripts ?? [])
+    for (const m of cs.matches ?? []) if (!HOST_OK.test(m)) errors.push(`content script on non-UT host: ${m}`);
 for (const war of manifest.web_accessible_resources ?? []) {
-    for (const m of war.matches ?? []) if (m === '<all_urls>' || m === '*://*/*') errors.push(`web_accessible_resources exposed to all sites: ${m}`);
+    for (const m of war.matches ?? [])
+        if (m === '<all_urls>' || m === '*://*/*') errors.push(`web_accessible_resources exposed to all sites: ${m}`);
 }
 const csp = manifest.content_security_policy?.extension_pages ?? '';
-if (!/script-src 'self'/.test(csp) || /unsafe-eval|https?:/.test(csp.replace("'wasm-unsafe-eval'", ''))) errors.push(`weak CSP: ${csp}`);
+if (!/script-src 'self'/.test(csp) || /unsafe-eval|https?:/.test(csp.replace("'wasm-unsafe-eval'", '')))
+    errors.push(`weak CSP: ${csp}`);
 if (manifest.description && manifest.description.length > 132) errors.push('description longer than 132 characters');
 
 function walk(d) {
@@ -38,16 +41,20 @@ function walk(d) {
 const files = walk(dir);
 for (const file of files) {
     const rel = relative(dir, file);
-    if (/sentry-toolbar/.test(rel) && !rel.endsWith('.map')) warnings.push(`dev-only file present (excluded from package): ${rel}`);
+    if (/sentry-toolbar/.test(rel) && !rel.endsWith('.map'))
+        warnings.push(`dev-only file present (excluded from package): ${rel}`);
     if (!/\.(js|html|mjs|json)$/.test(file)) continue;
     const text = readFileSync(file, 'utf8');
     if (file.endsWith('.html')) {
-        for (const m of text.matchAll(/<script[^>]+src=["']([^"']+)["']/g)) if (/^(https?:)?\/\//.test(m[1])) errors.push(`${rel}: remote script ${m[1]}`);
+        for (const m of text.matchAll(/<script[^>]+src=["']([^"']+)["']/g))
+            if (/^(https?:)?\/\//.test(m[1])) errors.push(`${rel}: remote script ${m[1]}`);
     }
     if (/\.(js|mjs)$/.test(file)) {
         if (/importScripts\(\s*["']https?:/.test(text)) errors.push(`${rel}: importScripts from network`);
         if (/import\(\s*["']https?:\/\//.test(text)) errors.push(`${rel}: dynamic import from network`);
-        if (/ingest\.(us\.)?sentry\.io|google-analytics\.com|googletagmanager\.com|segment\.io|mixpanel\.com/.test(text)) {
+        if (
+            /ingest\.(us\.)?sentry\.io|google-analytics\.com|googletagmanager\.com|segment\.io|mixpanel\.com/.test(text)
+        ) {
             errors.push(`${rel}: telemetry/analytics endpoint present`);
         }
     }

@@ -34,7 +34,9 @@ semesters.sort((a, b) => {
 
 let updated = '';
 try {
-    updated = execFileSync('git', ['log', '-1', '--format=%cs', '--', 'src/assets/database/grade_distributions.db'], { cwd: root })
+    updated = execFileSync('git', ['log', '-1', '--format=%cs', '--', 'src/assets/database/grade_distributions.db'], {
+        cwd: root,
+    })
         .toString()
         .trim();
 } catch {}

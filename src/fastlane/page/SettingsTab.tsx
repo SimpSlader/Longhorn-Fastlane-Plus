@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 
 import { GRADE_THRESHOLDS } from '../core/grades';
+import { BUNDLED_GRADE_DATASET } from '../data/activeGradeDataset';
+import bundled from '../data/bundled-datasets.json';
 import type { InstalledDataset, UpdateReport } from '../data/datasets';
 import { isStale } from '../data/datasets';
 import { idbDatasetStore } from '../data/idb';
-import { BUNDLED_GRADE_DATASET } from '../data/activeGradeDataset';
-import bundled from '../data/bundled-datasets.json';
 import { dataManifestConfig } from '../services/dataConfig';
 import { deleteEverything, deleteFastlaneData, exportAll, importAll, validateExport } from '../services/privacy';
 import { sendFastlane } from '../services/runtime';
@@ -18,7 +18,11 @@ function Toggle({ k, label, help }: { k: keyof FastlaneSettings; label: string; 
     const value = FastlaneSettingsStore.useStore(s => s[k]) as boolean;
     return (
         <label className='check'>
-            <input type='checkbox' checked={value} onChange={e => void FastlaneSettingsStore.set(k, e.target.checked as never)} />
+            <input
+                type='checkbox'
+                checked={value}
+                onChange={e => void FastlaneSettingsStore.set(k, e.target.checked as never)}
+            />
             <span>
                 {label}
                 {help && <small>{help}</small>}
@@ -44,19 +48,29 @@ export default function SettingsTab() {
     useEffect(refresh, []);
 
     const grades = bundled.datasets[0]!;
-    const activeVersion = installed?.origin === 'downloaded' ? installed.descriptor.version : BUNDLED_GRADE_DATASET.version;
-    const activeDate = installed?.origin === 'downloaded' ? installed.descriptor.publishedAt.slice(0, 10) : BUNDLED_GRADE_DATASET.updated;
+    const activeVersion =
+        installed?.origin === 'downloaded' ? installed.descriptor.version : BUNDLED_GRADE_DATASET.version;
+    const activeDate =
+        installed?.origin === 'downloaded'
+            ? installed.descriptor.publishedAt.slice(0, 10)
+            : BUNDLED_GRADE_DATASET.updated;
     const stale = isStale({ publishedAt: `${activeDate}T00:00:00Z` } as never);
 
     return (
         <div className='stack'>
-            <PageHead title='Settings & privacy' subtitle='Everything is stored in this browser. No account, no backend, no analytics.' />
+            <PageHead
+                title='Settings & privacy'
+                subtitle='Everything is stored in this browser. No account, no backend, no analytics.'
+            />
             <div className='grid2'>
                 <div className='card stack'>
                     <h2>Course listing</h2>
                     <label className='field'>
                         Grade percentage threshold (applies everywhere)
-                        <select value={settings.gradeThreshold} onChange={e => void FastlaneSettingsStore.set('gradeThreshold', e.target.value as never)}>
+                        <select
+                            value={settings.gradeThreshold}
+                            onChange={e => void FastlaneSettingsStore.set('gradeThreshold', e.target.value as never)}
+                        >
                             {GRADE_THRESHOLDS.map(t => (
                                 <option key={t} value={t}>
                                     {t} or better
@@ -65,11 +79,18 @@ export default function SettingsTab() {
                         </select>
                     </label>
                     <Toggle k='showInlineGrades' label='Show grade percentages beside the grade graph button' />
-                    <Toggle k='highlightAsync' label='Highlight verified asynchronous sections in blue' help='Live online sections get a separate purple label; in-person and hybrid stay normal.' />
+                    <Toggle
+                        k='highlightAsync'
+                        label='Highlight verified asynchronous sections in blue'
+                        help='Live online sections get a separate purple label; in-person and hybrid stay normal.'
+                    />
                     <Toggle k='showConflictDetails' label='Show which planned class causes each conflict' />
                     <label className='field'>
                         Appearance
-                        <select value={settings.themePreference} onChange={e => void FastlaneSettingsStore.set('themePreference', e.target.value as never)}>
+                        <select
+                            value={settings.themePreference}
+                            onChange={e => void FastlaneSettingsStore.set('themePreference', e.target.value as never)}
+                        >
                             <option value='system'>Match system</option>
                             <option value='light'>Light</option>
                             <option value='dark'>Dark</option>
@@ -79,17 +100,27 @@ export default function SettingsTab() {
                 <div className='card stack'>
                     <h2>Data sources</h2>
                     <div className='small'>
-                        <b>Historical grades:</b> {activeVersion} ({installed?.origin === 'downloaded' ? 'downloaded update' : 'bundled'}), updated {activeDate}.
+                        <b>Historical grades:</b> {activeVersion} (
+                        {installed?.origin === 'downloaded' ? 'downloaded update' : 'bundled'}), updated {activeDate}.
                         Covers {grades.firstSemester} – {grades.latestSemester}. {grades.source}.
                     </div>
-                    {stale && <div className='notice warn small'>This grade dataset is more than 200 days old. Newer semesters may be missing.</div>}
+                    {stale && (
+                        <div className='notice warn small'>
+                            This grade dataset is more than 200 days old. Newer semesters may be missing.
+                        </div>
+                    )}
                     <div className='small'>
-                        <b>Course sections:</b> saved from UT course schedule pages you open. Seat status is shown only with the time it was seen.
+                        <b>Course sections:</b> saved from UT course schedule pages you open. Seat status is shown only
+                        with the time it was seen.
                     </div>
                     <Toggle
                         k='dataUpdates'
                         label='Check for newer public datasets (at most once a day)'
-                        help={cfg.manifestUrl ? `Source: ${cfg.manifestUrl}` : 'No update source is configured in this build, so only bundled data is used.'}
+                        help={
+                            cfg.manifestUrl
+                                ? `Source: ${cfg.manifestUrl}`
+                                : 'No update source is configured in this build, so only bundled data is used.'
+                        }
                     />
                     <div className='row'>
                         <button
@@ -107,7 +138,9 @@ export default function SettingsTab() {
                         </button>
                         <span className='small muted'>
                             {online ? 'Online' : 'Offline'}
-                            {meta.lastCheckedAt ? ` · last checked ${new Date(meta.lastCheckedAt).toLocaleString()}` : ''}
+                            {meta.lastCheckedAt
+                                ? ` · last checked ${new Date(meta.lastCheckedAt).toLocaleString()}`
+                                : ''}
                         </span>
                     </div>
                     {report && (
@@ -125,8 +158,9 @@ export default function SettingsTab() {
             <div className='card stack'>
                 <h2>Your data</h2>
                 <p className='small muted' style={{ margin: 0 }}>
-                    Schedules, backups, your registration queue, reminders and any imported degree audit stay in this Chrome profile. Fastlane never sends your EID,
-                    grades, audit, or registration information to any server, and it does not collect browsing history or credentials.
+                    Schedules, backups, your registration queue, reminders and any imported degree audit stay in this
+                    Chrome profile. Fastlane never sends your EID, grades, audit, or registration information to any
+                    server, and it does not collect browsing history or credentials.
                 </p>
                 <div className='row'>
                     <button
@@ -134,13 +168,20 @@ export default function SettingsTab() {
                         className='btn'
                         onClick={async () => {
                             const data = await exportAll(includeAudit);
-                            downloadText(JSON.stringify(data, null, 2), `fastlane-export-${new Date().toISOString().slice(0, 10)}.json`);
+                            downloadText(
+                                JSON.stringify(data, null, 2),
+                                `fastlane-export-${new Date().toISOString().slice(0, 10)}.json`
+                            );
                         }}
                     >
                         Export schedules & plans (JSON)
                     </button>
                     <label className='check small'>
-                        <input type='checkbox' checked={includeAudit} onChange={e => setIncludeAudit(e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={includeAudit}
+                            onChange={e => setIncludeAudit(e.target.checked)}
+                        />
                         Include degree audit
                     </label>
                     <label className='btn'>
@@ -154,7 +195,12 @@ export default function SettingsTab() {
                                 if (!file) return;
                                 try {
                                     const data = validateExport(JSON.parse(await file.text()));
-                                    if (!confirm(`Replace your current schedules and plans with the ${data.schedules.length} schedule(s) in this file?`)) return;
+                                    if (
+                                        !confirm(
+                                            `Replace your current schedules and plans with the ${data.schedules.length} schedule(s) in this file?`
+                                        )
+                                    )
+                                        return;
                                     await importAll(data);
                                     setStatus({ text: 'Imported.', tone: 'ok' });
                                 } catch (err) {
@@ -170,7 +216,12 @@ export default function SettingsTab() {
                         type='button'
                         className='btn danger'
                         onClick={async () => {
-                            if (!confirm('Delete all Fastlane data (backups, queue, audit, reminders, cached sections)? UT Registration Plus schedules are kept.')) return;
+                            if (
+                                !confirm(
+                                    'Delete all Fastlane data (backups, queue, audit, reminders, cached sections)? UT Registration Plus schedules are kept.'
+                                )
+                            )
+                                return;
                             await deleteFastlaneData();
                             setStatus({ text: 'Fastlane data deleted.', tone: 'ok' });
                         }}
@@ -181,7 +232,12 @@ export default function SettingsTab() {
                         type='button'
                         className='btn danger'
                         onClick={async () => {
-                            if (!confirm('Delete EVERYTHING this extension stored, including all schedules? This cannot be undone.')) return;
+                            if (
+                                !confirm(
+                                    'Delete EVERYTHING this extension stored, including all schedules? This cannot be undone.'
+                                )
+                            )
+                                return;
                             await deleteEverything();
                             setStatus({ text: 'All locally saved information was deleted.', tone: 'ok' });
                         }}
@@ -192,9 +248,11 @@ export default function SettingsTab() {
                 {status && <div className={`notice small ${status.tone}`}>{status.text}</div>}
             </div>
             <div className='card small muted'>
-                Longhorn Fastlane Plus is an independent, student-developed project. It is not affiliated with, endorsed by, or approved by The University of Texas at
-                Austin or the UT Registration Plus team. It is built on UT Registration Plus (MIT License, © Sriram Hariharan and contributors) and uses ideas from
-                Degree Audit Plus (MIT License, © Longhorn Developers). See <a href={chrome.runtime.getURL('THIRD_PARTY_NOTICES.txt')}>third-party notices</a>.
+                Fastlane Course Planner is an independent, student-developed project. It is not affiliated with,
+                endorsed by, or approved by The University of Texas at Austin or the UT Registration Plus team. It is
+                built on UT Registration Plus (MIT License, © Sriram Hariharan and contributors) and uses ideas from
+                Degree Audit Plus (MIT License, © Longhorn Developers). See{' '}
+                <a href={chrome.runtime.getURL('THIRD_PARTY_NOTICES.txt')}>third-party notices</a>.
             </div>
         </div>
     );

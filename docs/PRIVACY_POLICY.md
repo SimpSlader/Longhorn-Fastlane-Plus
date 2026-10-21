@@ -1,8 +1,8 @@
-# Longhorn Fastlane Plus — Privacy Policy
+# Fastlane Course Planner — Privacy Policy
 
-_Last updated: October 21, 2026_
+_Last updated: October 21, 2026 (release-readiness audit)_
 
-Longhorn Fastlane Plus ("Fastlane") is an independent, student-developed Chrome extension. It is not affiliated with The University of Texas at Austin or the UT Registration Plus team.
+Fastlane Course Planner ("Fastlane") is an independent, student-developed Chrome extension. It is not affiliated with The University of Texas at Austin or the UT Registration Plus team.
 
 ## Summary
 
@@ -25,12 +25,21 @@ Longhorn Fastlane Plus ("Fastlane") is an independent, student-developed Chrome 
 
 ## Network activity
 
-Fastlane itself makes network requests only in these cases:
+This list was verified by inspecting every URL in the built extension and by recording all requests in automated tests (`e2e/extension.spec.ts`, "network activity matches the privacy policy"; details in `docs/NETWORK_AUDIT.md`). Fastlane never sends your schedules, degree audit, registration queue, EID or grades anywhere.
 
-1. **Optional dataset updates** — if the build is configured with a dataset source and the setting is on, at most once a day Fastlane downloads a public manifest and data files (for example from GitHub Pages). No user data is sent; the host sees an ordinary file request.
-2. **Links you click** — e.g. "Open walking directions" (Google Maps), Rate My Professors, UT pages, or the feedback link (opens a GitHub issue form that *you* submit; it is public).
+**Automatic requests (no personal data included):**
 
-Features inherited from UT Registration Plus make these requests: loading UT course-schedule pages you navigate to (including the next results page when you scroll, and a course's description when you open its grade popup), checking whether you are signed in to UT when you add a course from your schedule list, and fetching public contributor statistics from the GitHub API when you open the Settings page. None of these include Fastlane data. Features that contact UT systems run only when you ask (for example adding a course from a UT page, or the optional "refresh course data", which is off by default). The upstream UT Registration Plus error-reporting service is disabled in Fastlane.
+| When | Request | Why |
+| --- | --- | --- |
+| You open the UT Registration Plus calendar page | `registrar.utexas.edu/schedules` (public UT page) | Lists available semesters for Quick Add (inherited from UT Registration Plus). Fetched by the extension's background worker. |
+| You open the extension's Settings (options) page | `api.github.com` (UT Registration Plus contributor statistics) | Shows the upstream project's contributors (inherited). Cached for a day. |
+| Optional dataset updates | A static file host configured at build time | **Not active in this build**: no update source is configured, so no request is made. |
+
+**Requests that happen only when you act on UT pages (inherited from UT Registration Plus):** loading the next page of results when you scroll a UT course listing, loading a course's description when you open its grade popup, checking your UT sign-in when you add a course by unique number, and — only if you turn on "refresh course data" (off by default) — re-loading your saved courses' UT pages when you open the calendar. These go only to `utdirect.utexas.edu` and use your existing UT session; Fastlane does not read or store your credentials.
+
+**Links you click** open in a new tab: UT pages, Rate My Professors, Google Maps walking directions, and the feedback link (a GitHub issue form that *you* submit publicly).
+
+**Removed from the upstream code in Fastlane:** error telemetry (Sentry), Google Fonts requests (fonts are bundled), a third-party GitHub caching proxy, the "What's New" video loaded from the UT Registration Plus CDN, and the automatic calendar refresh.
 
 ## Reading UT pages
 

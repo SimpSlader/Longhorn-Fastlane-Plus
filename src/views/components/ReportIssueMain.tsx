@@ -1,8 +1,8 @@
 import 'uno.css';
 
-import { feedbackIssueUrl } from 'src/fastlane/config';
 import type { JSX } from 'react';
 import { useState } from 'react';
+import { feedbackIssueUrl } from 'src/fastlane/config';
 import XIcon from '~icons/ph/x';
 
 import { Button } from './common/Button';
@@ -55,7 +55,8 @@ export default function ReportIssueMain({ onClose }: Props): JSX.Element {
                     <span className='h-px -mt-2.5 flex-1 bg-gray' />
                 </div>
                 <Text variant='p' className='text-ut-black'>
-                    A GitHub issue form opened in a new tab with your feedback. Submit it there (public), or close it to cancel.
+                    A GitHub issue form opened in a new tab with your feedback. Submit it there (public), or close it to
+                    cancel.
                 </Text>
                 <div className='flex justify-end mt-1'>
                     <Button variant='filled' color='ut-burntorange' onClick={handleClose}>
@@ -82,7 +83,8 @@ export default function ReportIssueMain({ onClose }: Props): JSX.Element {
                 />
             </div>
             <Text variant='p' as='p' className='text-ut-black mt-1.5'>
-                Help improve Longhorn Fastlane Plus. This opens a public GitHub issue — please leave out personal information.
+                Help improve Fastlane Course Planner. This opens a public GitHub issue — please leave out personal
+                information.
             </Text>
 
             <form onSubmit={submitFeedback} className='flex flex-col gap-3 mt-5'>

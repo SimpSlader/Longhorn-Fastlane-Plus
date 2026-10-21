@@ -6,6 +6,9 @@ on:
   pull_request:
 jobs:
   chromatic:
+    # Fastlane fork: off by default — the embedded token publishes to UT Registration Plus's Chromatic project.
+    # Set repository variable ENABLE_CHROMATIC=true only with this fork's own Chromatic project token.
+    if: vars.ENABLE_CHROMATIC == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

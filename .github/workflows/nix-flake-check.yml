@@ -7,6 +7,9 @@ on:
 jobs:
   nix-flake:
     name: Nix Flake Check
+    # Fastlane fork: opt-in (ENABLE_NIX_CHECK=true). After dependency changes, refresh nix/pnpm-hash with
+    # `nix run .#update-hash` on a machine with Nix before enabling. Not part of the extension release.
+    if: vars.ENABLE_NIX_CHECK == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

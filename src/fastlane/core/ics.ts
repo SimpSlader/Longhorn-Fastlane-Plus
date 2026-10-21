@@ -12,7 +12,10 @@ export interface IcsEvent {
 }
 
 function stamp(epoch: number): string {
-    return new Date(epoch).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    return new Date(epoch)
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d{3}/, '');
 }
 
 export function escapeIcsText(text: string): string {
@@ -32,7 +35,12 @@ export function foldLine(line: string): string {
 }
 
 export function buildIcs(events: IcsEvent[], now = Date.now()): string {
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Longhorn Fastlane Plus//Reminders//EN', 'CALSCALE:GREGORIAN'];
+    const lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Fastlane Course Planner//Reminders//EN',
+        'CALSCALE:GREGORIAN',
+    ];
     for (const e of events) {
         lines.push(
             'BEGIN:VEVENT',
@@ -45,7 +53,13 @@ export function buildIcs(events: IcsEvent[], now = Date.now()): string {
         if (e.description) lines.push(`DESCRIPTION:${escapeIcsText(e.description)}`);
         if (e.url) lines.push(`URL:${e.url}`);
         for (const minutes of e.alarms ?? []) {
-            lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeIcsText(e.summary)}`, `TRIGGER:-PT${minutes}M`, 'END:VALARM');
+            lines.push(
+                'BEGIN:VALARM',
+                'ACTION:DISPLAY',
+                `DESCRIPTION:${escapeIcsText(e.summary)}`,
+                `TRIGGER:-PT${minutes}M`,
+                'END:VALARM'
+            );
         }
         lines.push('END:VEVENT');
     }

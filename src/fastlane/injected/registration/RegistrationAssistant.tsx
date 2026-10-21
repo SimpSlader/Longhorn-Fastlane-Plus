@@ -31,9 +31,7 @@ import { formatUnique } from '../../core/sections';
 import { buildRecommendations } from '../../services/recommendationService';
 import { fastlanePageUrl } from '../../services/runtime';
 import { FastlaneAuditStore, FastlanePlanStore, FastlaneQueueStore, FastlaneSettingsStore } from '../../storage/stores';
-
-const MESSAGE_SELECTORS =
-    '[role="alert"],[role="status"],[aria-live],.alert,.error,.warning,.success,.message,#error,#message,#messages,#status,main p,main li,form p,form td,body>p,body>div>p,table td';
+import { MESSAGE_SELECTORS } from './messageSelectors';
 
 function visibleMessages(host: HTMLElement): string[] {
     const out = new Set<string>();
@@ -74,7 +72,10 @@ const TIME = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digi
 
 export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
     const settings = FastlaneSettingsStore.useStore(s => s);
-    const { queue, lastFilled } = FastlaneQueueStore.useStore(s => s) as unknown as { queue: QueueState; lastFilled: string | null };
+    const { queue, lastFilled } = FastlaneQueueStore.useStore(s => s) as unknown as {
+        queue: QueueState;
+        lastFilled: string | null;
+    };
     const audit = FastlaneAuditStore.useStore(s => s.audit);
     const plans = FastlanePlanStore.useStore(s => s.plans ?? {});
     const schedule = useActiveSchedule();
@@ -110,12 +111,19 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                 manual,
             });
             if (decision.action === 'fill' && field && current) {
-                fillInput(field, decision.code);
                 baseline.current = new Set(visibleMessages(host).map(t => t.toLowerCase()));
+                fillInput(field, decision.code);
                 await save(recordAutofill(queue, current.id), decision.code);
-                setNotice({ text: `Filled ${decision.code}. Review it, then press UT’s submit button yourself.`, tone: 'info' });
-            } else if (decision.action === 'skip' && (manual || decision.reason === 'non-empty' || decision.reason === 'no-field')) {
-                if (!(decision.reason === 'no-field' && !manual)) setNotice({ text: AUTOFILL_SKIP_MESSAGES[decision.reason], tone: 'warn' });
+                setNotice({
+                    text: `Filled ${decision.code}. Review it, then press UT’s submit button yourself.`,
+                    tone: 'info',
+                });
+            } else if (
+                decision.action === 'skip' &&
+                (manual || decision.reason === 'non-empty' || decision.reason === 'no-field')
+            ) {
+                if (!(decision.reason === 'no-field' && !manual))
+                    setNotice({ text: AUTOFILL_SKIP_MESSAGES[decision.reason], tone: 'warn' });
             }
             return decision;
         },
@@ -140,14 +148,20 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
         if (!pendingItem) return;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const scan = () => {
-            const s = suggestOutcome(visibleMessages(host), { uniqueId: pendingItem.uniqueId, baseline: baseline.current });
+            const s = suggestOutcome(visibleMessages(host), {
+                uniqueId: pendingItem.uniqueId,
+                baseline: baseline.current,
+            });
             setSuggestion(s);
         };
         scan();
+        // throttle (not debounce): a page that keeps changing must not postpone the scan forever
         const observer = new MutationObserver(records => {
-            if (records.every(r => host.contains(r.target))) return;
-            clearTimeout(timer);
-            timer = setTimeout(scan, 200);
+            if (records.every(r => host.contains(r.target)) || timer !== undefined) return;
+            timer = setTimeout(() => {
+                timer = undefined;
+                scan();
+            }, 200);
         });
         observer.observe(document.body, { subtree: true, childList: true, characterData: true });
         return () => {
@@ -158,6 +172,7 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
 
     // ---------- recommendations when alternatives run out ----------
     const exhaustedKey = exhausted.map(e => e.group).join('|');
+    // biome-ignore lint/correctness/useExhaustiveDependencies: recompute only when the set of exhausted groups or the schedule changes, not on every queue edit
     useEffect(() => {
         if (!exhausted.length) {
             setRecs(null);
@@ -178,19 +193,22 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
         return () => {
             alive = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [exhaustedKey, schedule?.id]);
 
     // ---------- actions ----------
     const onCopy = useCallback(async () => {
         if (!current || !code) return;
-        if (!(await copyText(code))) {
-            setNotice({ text: 'Clipboard blocked. Select the number above and copy it manually.', tone: 'warn' });
-            return;
-        }
+        // snapshot existing messages at click time, before any await, so a result that appears while the
+        // clipboard write is in flight is not mistaken for an old message
         baseline.current = new Set(visibleMessages(host).map(t => t.toLowerCase()));
+        const copied = await copyText(code);
+        // record the attempt either way: if the clipboard is blocked the student copies the number by hand
         await save(recordCopy(queue, current.id));
-        setNotice({ text: `Copied ${code}. Paste it at UT and submit it yourself.`, tone: 'info' });
+        setNotice(
+            copied
+                ? { text: `Copied ${code}. Paste it at UT and submit it yourself.`, tone: 'info' }
+                : { text: 'Clipboard blocked. Select the number above and copy it manually.', tone: 'warn' }
+        );
     }, [code, current, host, queue, save]);
 
     const mark = async (outcome: Outcome, source: 'manual' | 'detected' = 'manual') => {
@@ -211,7 +229,7 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
         setNotice({ text: 'Undone.' });
     };
 
-    const useRecommendation = async (rec: Recommendation, group: string, requirement: string) => {
+    const queueRecommendation = async (rec: Recommendation, group: string, requirement: string) => {
         const lastIndexInGroup = queue.items.map(i => i.group).lastIndexOf(group);
         try {
             const next = addItem(
@@ -228,7 +246,9 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
             );
             await save(next);
             lastAutoItem.current = null;
-            setNotice({ text: `Queued ${formatUnique(rec.section.uniqueId)}. ${settings.autofill.enabled ? '' : 'Copy it to register.'}` });
+            setNotice({
+                text: `Queued ${formatUnique(rec.section.uniqueId)}. ${settings.autofill.enabled ? '' : 'Copy it to register.'}`,
+            });
         } catch (e) {
             setNotice({ text: (e as Error).message, tone: 'warn' });
         }
@@ -284,7 +304,11 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                     <small>Manual registration · you submit every request</small>
                 </div>
                 <div className='row'>
-                    <button type='button' className='mini' onClick={() => window.open(fastlanePageUrl('register'), '_blank', 'noopener')}>
+                    <button
+                        type='button'
+                        className='mini'
+                        onClick={() => window.open(fastlanePageUrl('register'), '_blank', 'noopener')}
+                    >
                         Plan ↗
                     </button>
                     <button type='button' className='mini' onClick={toggleCollapsed} aria-label='Minimize'>
@@ -304,20 +328,30 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                                 {current.courseCode ? `${current.courseCode} · ` : ''}
                                 {current.label}
                             </div>
-                            <div className='req'>{current.requirement ? describeRequirement(current.requirement) : 'No requirement set'}</div>
+                            <div className='req'>
+                                {current.requirement ? describeRequirement(current.requirement) : 'No requirement set'}
+                            </div>
                         </div>
                         <button type='button' className='primary' onClick={() => void onCopy()}>
                             Copy {code}
                         </button>
                         <div className='row'>
-                            <button type='button' style={{ flex: 1 }} onClick={() => void runAutofill(true)} title='Alt+Shift+F'>
+                            <button
+                                type='button'
+                                style={{ flex: 1 }}
+                                onClick={() => void runAutofill(true)}
+                                title='Alt+Shift+F'
+                            >
                                 Fill next code
                             </button>
                             {settings.autofill.enabled && (
                                 <button
                                     type='button'
                                     onClick={() =>
-                                        void FastlaneSettingsStore.set('autofill', { ...settings.autofill, paused: !settings.autofill.paused })
+                                        void FastlaneSettingsStore.set('autofill', {
+                                            ...settings.autofill,
+                                            paused: !settings.autofill.paused,
+                                        })
                                     }
                                 >
                                     {settings.autofill.paused ? 'Resume autofill' : 'Pause autofill'}
@@ -342,7 +376,12 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                             <button type='button' className='mini' onClick={() => void mark('skipped')}>
                                 Skip
                             </button>
-                            <button type='button' className='mini' onClick={() => void onUndo()} disabled={!queue.undoStack.length}>
+                            <button
+                                type='button'
+                                className='mini'
+                                onClick={() => void onUndo()}
+                                disabled={!queue.undoStack.length}
+                            >
                                 ↶ Undo
                             </button>
                         </div>
@@ -350,7 +389,8 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                             <div className='fallback'>
                                 <span className='note'>{fallback.sameGroup ? 'Next fallback' : 'Then'}</span>
                                 <span>
-                                    <span className='mono'>{formatUnique(fallback.item.uniqueId)}</span> {fallback.item.label}
+                                    <span className='mono'>{formatUnique(fallback.item.uniqueId)}</span>{' '}
+                                    {fallback.item.label}
                                 </span>
                             </div>
                         )}
@@ -363,7 +403,11 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                     <div className='notice info' role='status'>
                         UT’s page appears to say: “{suggestion.message}”
                         <div className='row' style={{ marginTop: 6 }}>
-                            <button type='button' className='mini' onClick={() => void mark(suggestion.kind, 'detected')}>
+                            <button
+                                type='button'
+                                className='mini'
+                                onClick={() => void mark(suggestion.kind, 'detected')}
+                            >
                                 Mark {OUTCOME_LABELS[suggestion.kind]}
                             </button>
                             <button type='button' className='mini ghost' onClick={() => setSuggestion(null)}>
@@ -385,7 +429,8 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                         {recs === null && <div className='note'>Finding options from your saved course data…</div>}
                         {recs?.length === 0 && (
                             <div className='note'>
-                                No cached sections satisfy {exhausted.map(e => describeRequirement(e.requirement)).join(', ')}. Browse that
+                                No cached sections satisfy{' '}
+                                {exhausted.map(e => describeRequirement(e.requirement)).join(', ')}. Browse that
                                 requirement on UT’s course schedule once so Fastlane can suggest options.
                             </div>
                         )}
@@ -395,16 +440,27 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                                 <div className='rec' key={rec.section.uniqueId}>
                                     <div className='top'>
                                         <span>
-                                            <span className='mono'>{formatUnique(rec.section.uniqueId)}</span> {rec.section.courseCode}
+                                            <span className='mono'>{formatUnique(rec.section.uniqueId)}</span>{' '}
+                                            {rec.section.courseCode}
                                         </span>
-                                        <button type='button' className='mini' onClick={() => void useRecommendation(rec, group.group, group.requirement)}>
+                                        <button
+                                            type='button'
+                                            className='mini'
+                                            onClick={() =>
+                                                void queueRecommendation(rec, group.group, group.requirement)
+                                            }
+                                        >
                                             Use
                                         </button>
                                     </div>
                                     <div className='note'>{rec.section.title}</div>
                                     <div className='row'>
-                                        {rec.section.modality === 'async-online' && <span className='badge async'>ASYNC</span>}
-                                        <span className={`badge ${rec.availability.tone === 'open' ? 'open' : ''}`}>{rec.availability.text}</span>
+                                        {rec.section.modality === 'async-online' && (
+                                            <span className='badge async'>ASYNC</span>
+                                        )}
+                                        <span className={`badge ${rec.availability.tone === 'open' ? 'open' : ''}`}>
+                                            {rec.availability.text}
+                                        </span>
                                     </div>
                                     <div className='note'>{rec.reasons.slice(1, 3).join(' · ')}</div>
                                 </div>
@@ -435,7 +491,9 @@ export default function RegistrationAssistant({ host }: { host: HTMLElement }) {
                             ))}
                         </ul>
                     )}
-                    <div className='note'>Shortcuts: Alt+Shift+C copy · Alt+Shift+F fill. Fastlane never submits for you.</div>
+                    <div className='note'>
+                        Shortcuts: Alt+Shift+C copy · Alt+Shift+F fill. Fastlane never submits for you.
+                    </div>
                 </div>
             </div>
         </section>

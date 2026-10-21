@@ -2,6 +2,7 @@ import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 
 import { outstandingTags } from '../audit/parseAudit';
+import { formatMeeting } from '../core/meetings';
 import type { PlanMeta } from '../core/plans';
 import { DuplicateSectionError } from '../core/plans';
 import type { QueueState } from '../core/queue';
@@ -9,7 +10,6 @@ import { addItem } from '../core/queue';
 import type { Recommendation } from '../core/recommend';
 import { CORE_COMPONENTS, coreTag, describeRequirement } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
-import { formatMeeting } from '../core/meetings';
 import { formatObservedTime, formatUnique, semesterKey } from '../core/sections';
 import { addBackupFor } from '../services/planService';
 import { buildRecommendations, loadCachedSections } from '../services/recommendationService';
@@ -40,10 +40,14 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
         void loadCachedSections(null).then(setCache);
     }, []);
 
-    const semesters = useMemo(() => [...new Set(cache.map(s => semesterKey(s.semester)))].filter(s => s !== 'unknown'), [cache]);
+    const semesters = useMemo(
+        () => [...new Set(cache.map(s => semesterKey(s.semester)))].filter(s => s !== 'unknown'),
+        [cache]
+    );
     const newest = cache.reduce((t, s) => Math.max(t, s.capturedAt || 0), 0);
     const plan = schedule ? plans[schedule.id] : undefined;
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: rerank only when inputs that affect ranking change (stable keys instead of object identity)
     useEffect(() => {
         if (!selected.length) {
             setResults([]);
@@ -51,14 +55,24 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
         }
         setResults(null);
         let alive = true;
-        void buildRecommendations({ requirements: selected, schedule, settings, audit, queue, plan, limit: 15 }).then(r => {
-            if (alive) setResults(r);
-        });
+        void buildRecommendations({ requirements: selected, schedule, settings, audit, queue, plan, limit: 15 }).then(
+            r => {
+                if (alive) setResults(r);
+            }
+        );
         return () => {
             alive = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selected.join('|'), settings.targetSemester, settings.preferAsync, settings.preferOnline, settings.avoidFriday, settings.gradeThreshold, schedule?.id, cache.length]);
+    }, [
+        selected.join('|'),
+        settings.targetSemester,
+        settings.preferAsync,
+        settings.preferOnline,
+        settings.avoidFriday,
+        settings.gradeThreshold,
+        schedule?.id,
+        cache.length,
+    ]);
 
     const toggle = (tag: string) => setSelected(s => (s.includes(tag) ? s.filter(t => t !== tag) : [...s, tag]));
 
@@ -107,7 +121,13 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                     <div className='row'>
                         <span className='small muted'>From your degree audit:</span>
                         {outstanding.map(t => (
-                            <button key={t} type='button' className={`btn sm ${selected.includes(t) ? 'primary' : ''}`} aria-pressed={selected.includes(t)} onClick={() => toggle(t)}>
+                            <button
+                                key={t}
+                                type='button'
+                                className={`btn sm ${selected.includes(t) ? 'primary' : ''}`}
+                                aria-pressed={selected.includes(t)}
+                                onClick={() => toggle(t)}
+                            >
                                 {describeRequirement(t)}
                             </button>
                         ))}
@@ -119,7 +139,14 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                         const tag = coreTag(c.code);
                         if (outstanding.includes(tag)) return null;
                         return (
-                            <button key={tag} type='button' className={`btn sm ${selected.includes(tag) ? 'primary' : ''}`} aria-pressed={selected.includes(tag)} onClick={() => toggle(tag)} title={c.name}>
+                            <button
+                                key={tag}
+                                type='button'
+                                className={`btn sm ${selected.includes(tag) ? 'primary' : ''}`}
+                                aria-pressed={selected.includes(tag)}
+                                onClick={() => toggle(tag)}
+                                title={c.name}
+                            >
                                 {c.code}
                             </button>
                         );
@@ -141,21 +168,34 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                         </select>
                     </label>
                     <label className='check'>
-                        <input type='checkbox' checked={settings.preferAsync} onChange={e => void FastlaneSettingsStore.set('preferAsync', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={settings.preferAsync}
+                            onChange={e => void FastlaneSettingsStore.set('preferAsync', e.target.checked)}
+                        />
                         Prefer asynchronous
                     </label>
                     <label className='check'>
-                        <input type='checkbox' checked={settings.preferOnline} onChange={e => void FastlaneSettingsStore.set('preferOnline', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={settings.preferOnline}
+                            onChange={e => void FastlaneSettingsStore.set('preferOnline', e.target.checked)}
+                        />
                         Prefer online
                     </label>
                     <label className='check'>
-                        <input type='checkbox' checked={settings.avoidFriday} onChange={e => void FastlaneSettingsStore.set('avoidFriday', e.target.checked)} />
+                        <input
+                            type='checkbox'
+                            checked={settings.avoidFriday}
+                            onChange={e => void FastlaneSettingsStore.set('avoidFriday', e.target.checked)}
+                        />
                         Avoid Friday classes
                     </label>
                 </div>
                 {!audit && (
                     <div className='notice small'>
-                        Import your degree audit to have outstanding requirements selected automatically and completed courses excluded.
+                        Import your degree audit to have outstanding requirements selected automatically and completed
+                        courses excluded.
                     </div>
                 )}
             </div>
@@ -169,8 +209,9 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                 <div className='card'>
                     <h3>No saved sections match yet</h3>
                     <p className='muted small'>
-                        Fastlane only recommends sections it has actually seen. Open UT’s course schedule and browse {selected.map(describeRequirement).join(', ')} once
-                        (for example, search by core component) — the listing is saved locally and recommendations work offline afterwards.
+                        Fastlane only recommends sections it has actually seen. Open UT’s course schedule and browse{' '}
+                        {selected.map(describeRequirement).join(', ')} once (for example, search by core component) —
+                        the listing is saved locally and recommendations work offline afterwards.
                     </p>
                 </div>
             )}
@@ -184,14 +225,25 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                             <span>{rec.section.title}</span>
                             <ModalityChip modality={rec.section.modality} />
                             <GradeChip stat={rec.grade} />
-                            <span className={`chip ${rec.availability.tone === 'open' ? 'ok' : rec.availability.tone === 'closed' ? 'bad' : ''}`}>{rec.availability.text}</span>
+                            <span
+                                className={`chip ${rec.availability.tone === 'open' ? 'ok' : rec.availability.tone === 'closed' ? 'bad' : ''}`}
+                            >
+                                {rec.availability.text}
+                            </span>
                         </div>
                         <div className='small muted'>
-                            {instructorsText(rec.section)} · {rec.section.meetings.length ? rec.section.meetings.map(formatMeeting).join('; ') : 'No scheduled meetings'} ·{' '}
-                            {semesterKey(rec.section.semester)}
+                            {instructorsText(rec.section)} ·{' '}
+                            {rec.section.meetings.length
+                                ? rec.section.meetings.map(formatMeeting).join('; ')
+                                : 'No scheduled meetings'}{' '}
+                            · {semesterKey(rec.section.semester)}
                         </div>
                         <div className='small'>{rec.reasons.join(' · ')}</div>
-                        {rec.warnings.length > 0 && <div className='small' style={{ color: 'var(--warn)' }}>{rec.warnings.join(' · ')}</div>}
+                        {rec.warnings.length > 0 && (
+                            <div className='small' style={{ color: 'var(--warn)' }}>
+                                {rec.warnings.join(' · ')}
+                            </div>
+                        )}
                     </div>
                     <div className='stack' style={{ gap: 6, alignItems: 'flex-end' }}>
                         <CopyButton text={formatUnique(rec.section.uniqueId)} label='Copy unique' />

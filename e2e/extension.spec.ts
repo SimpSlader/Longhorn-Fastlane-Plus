@@ -23,19 +23,62 @@ test.describe('Chrome extension permissions & security', () => {
     test('manifest requests only the minimal permissions and UT hosts', async ({ sw }) => {
         const manifest = await sw.evaluate(() => chrome.runtime.getManifest());
         expect(manifest.manifest_version).toBe(3);
-        expect(manifest.name).toBe('Longhorn Fastlane Plus');
-        expect([...(manifest.permissions ?? [])].sort()).toEqual(['alarms', 'notifications', 'scripting', 'storage', 'unlimitedStorage']);
+        expect(manifest.name).toBe('Fastlane Course Planner');
+        expect([...(manifest.permissions ?? [])].sort()).toEqual([
+            'alarms',
+            'notifications',
+            'scripting',
+            'storage',
+            'unlimitedStorage',
+        ]);
         for (const host of manifest.host_permissions ?? []) {
             expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com/);
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');
-        expect(manifest.content_security_policy?.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
+        expect(manifest.content_security_policy?.extension_pages).toBe(
+            "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+        );
+    });
+});
+
+test.describe('fresh profile', () => {
+    test('only this extension is installed and its pages load without errors', async ({ context, extensionId, sw }) => {
+        expect(context.serviceWorkers()).toHaveLength(1);
+        expect(await sw.evaluate(() => chrome.runtime.getManifest().name)).toBe('Fastlane Course Planner');
+        const errors: string[] = [];
+        const failedThirdParty: string[] = [];
+        const page = await context.newPage();
+        page.on('pageerror', e => errors.push(e.message));
+        page.on('console', m => {
+            if (m.type() === 'error') errors.push(m.text());
+        });
+        page.on('response', r => {
+            if (r.status() >= 400 && new URL(r.url()).hostname === 'api.github.com') failedThirdParty.push(r.url());
+        });
+        for (const p of [
+            'fastlane.html',
+            'demo.html',
+            'calendar.html',
+            'src/pages/popup/index.html',
+            'map.html',
+            'options.html',
+        ]) {
+            await page.goto(`chrome-extension://${extensionId}/${p}`);
+            await page.waitForTimeout(700);
+        }
+        // The Settings page's GitHub contributor request can be rate-limited (403) or offline in CI. Those are
+        // network conditions, not extension errors; any other console error fails the test.
+        const excused = (e: string) => failedThirdParty.length > 0 && /Failed to load resource/.test(e);
+        expect(errors.filter(e => !excused(e) && !/api\.github\.com|ERR_INTERNET_DISCONNECTED/i.test(e))).toEqual([]);
     });
 });
 
 test.describe('course listing integration (demo fixtures, real code)', () => {
-    test('inline grade percentages, threshold changes, async and conflict indicators', async ({ context, extensionId }) => {
+    test('inline grade percentages, threshold changes, async and conflict indicators', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
 
@@ -77,10 +120,16 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         // async section never conflicts by modality alone
         await expect(music.locator('[data-fastlane="conflict"]')).toHaveCount(0);
 
-        await page.locator('section').nth(1).screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
+        await page
+            .locator('section')
+            .nth(1)
+            .screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
     });
 
-    test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({ context, extensionId }) => {
+    test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
         const theatre = rowFor(page, '27425');
@@ -110,12 +159,33 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         await expect(page.locator('.slot-primary', { hasText: '33505' })).toBeVisible();
         const swapped = await page.evaluate(async () => {
             const all = await chrome.storage.local.get(null);
-            const demo = (all.schedules as Array<{ name: string; courses: Array<{ uniqueId: number }> }>).find(s => s.name === 'Fastlane demo (Ideal)')!;
+            const demo = (all.schedules as Array<{ name: string; courses: Array<{ uniqueId: number }> }>).find(
+                s => s.name === 'Fastlane demo (Ideal)'
+            )!;
             return demo.courses.map(c => c.uniqueId).sort();
         });
         expect(swapped).toEqual([33505, 53780, 65555]);
         await page.reload();
         await expect(page.locator('.slot-primary', { hasText: '33505' })).toContainText('Active · backup');
+    });
+});
+
+test.describe('grade distribution graph (Highcharts replacement)', () => {
+    test('opens the course popup with a dependency-free SVG chart', async ({ context, extensionId }) => {
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await rowFor(page, '23095').getByRole('button', { name: 'Open historical grade distribution graph' }).click();
+        const chart = page.locator('svg[role="img"][aria-label="Grade distribution chart"]');
+        await expect(chart).toBeVisible();
+        await expect(page.locator('table caption', { hasText: 'Grade distribution' })).toBeAttached(); // accessible data table
+        await expect(page.getByText('Grade Distribution for')).toBeVisible();
+        expect(await page.evaluate(() => 'Highcharts' in window)).toBe(false);
+        await page.waitForTimeout(1200); // let the dialog's open transition and column animation finish
+        // the dialog must reserve the chart's height and show it without scrolling (regression: auto-height SVG collapsed)
+        const box = (await chart.boundingBox())!;
+        expect(box.height).toBeGreaterThan(200);
+        expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+        await page.screenshot({ path: `${SHOTS}/9-grade-distribution-popup.png` });
     });
 });
 
@@ -148,8 +218,9 @@ test.describe('registration assistant', () => {
         // manual "Fill next code" works even with autofill off
         await panel.getByRole('button', { name: 'Fill next code' }).click();
         await expect(page.locator('#s_unique_add')).toHaveValue('65555');
-        await expect(page.locator('#s_unique_drop')).toHaveValue('');
-        await expect(page.locator('#result')).toHaveText('');
+        await expect(page.locator('#s_swap_unique_add')).toHaveValue('');
+        await expect(page.locator('#ds_request_STADD')).toBeChecked();
+        await expect(page.locator('#message')).toHaveText('');
 
         // enable autofill: marking Full moves to the next fallback and fills it
         await page.evaluate(async () => {
@@ -158,7 +229,7 @@ test.describe('registration assistant', () => {
         });
         await panel.getByRole('button', { name: 'Full' }).click();
         await expect(page.locator('#s_unique_add')).toHaveValue('65705');
-        await expect(page.locator('#result')).toHaveText(''); // no submission happened
+        await expect(page.locator('#message')).toHaveText(''); // no submission happened
 
         // a value the student typed is never overwritten
         await page.locator('#s_unique_add').fill('11111');
@@ -168,10 +239,65 @@ test.describe('registration assistant', () => {
 
         // history logs autofill events
         const actions = await page.evaluate(async () => {
-            const q = (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as { history: Array<{ action: string }> };
+            const q = (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as {
+                history: Array<{ action: string }>;
+            };
             return q.history.map(h => h.action);
         });
         expect(actions).toContain('autofilled');
+    });
+});
+
+test.describe('optional outcome suggestions (UT-shaped add/drop form)', () => {
+    test('suggests from #message only after the student submits, and waits for confirmation', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        // enable the option the way a student does (Registration prep → checkbox), before visiting the page
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#register`);
+        const toggle = page.getByRole('checkbox', { name: /Suggest outcomes from UT/ });
+        await toggle.check();
+        await page.reload();
+        await expect(page.getByRole('checkbox', { name: /Suggest outcomes from UT/ })).toBeChecked();
+        await page.goto(`chrome-extension://${extensionId}/demo.html`);
+        const panel = page.locator('#fastlane-registration-assistant');
+        await expect(panel.locator('.code')).toHaveText('65555');
+        await panel.getByRole('button', { name: 'Copy 65555' }).click();
+        await page.locator('#s_unique_add').fill('65555');
+        await page.locator('#simFull').click(); // UT shows "filled to closing limit"
+        await expect(panel.getByText('appears to say')).toBeVisible();
+        await expect(panel.locator('.code')).toHaveText('65555'); // nothing recorded yet
+        await panel.getByRole('button', { name: 'Mark Full' }).click();
+        await expect(panel.locator('.code')).toHaveText('65705');
+    });
+});
+
+test.describe('network activity matches the privacy policy', () => {
+    test('extension pages contact no third-party hosts', async ({ context, extensionId }) => {
+        const hosts = new Set<string>();
+        context.on('request', r => {
+            const u = new URL(r.url());
+            if (!['chrome-extension:', 'data:', 'blob:'].includes(u.protocol)) hosts.add(u.hostname);
+        });
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await rowFor(page, '23095').getByRole('button', { name: 'Open historical grade distribution graph' }).click();
+        for (const tab of ['plan', 'recommend', 'audit', 'register', 'map', 'wallpaper', 'settings']) {
+            await page.goto(`chrome-extension://${extensionId}/fastlane.html#${tab}`);
+            await page.waitForTimeout(400);
+        }
+        for (const p of ['calendar.html', 'map.html', 'src/pages/popup/index.html']) {
+            await page.goto(`chrome-extension://${extensionId}/${p}`);
+            await page.waitForTimeout(800);
+        }
+        // Disclosed in the privacy policy: UTRP's Settings page lists contributors from GitHub's public API, and
+        // the calendar's Quick Add loads UT's public semester index page (no student data is sent).
+        await page.goto(`chrome-extension://${extensionId}/options.html`);
+        await page.waitForTimeout(1500);
+        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu']);
+        const unexpected = [...hosts].filter(h => !disclosed.has(h));
+        expect(unexpected, `unexpected hosts: ${unexpected.join(', ')}`).toEqual([]);
     });
 });
 
@@ -179,7 +305,9 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
     test('imports an IDA HTML file locally and shows review items', async ({ context, extensionId }) => {
         const page = await context.newPage();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-        await page.locator('input[type=file]').setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
         await expect(page.getByText('core requirements complete')).toBeVisible();
         await expect(page.getByRole('button', { name: /Needs review/ })).toBeVisible();
         await page.getByRole('button', { name: /^All \(/ }).click();
@@ -189,7 +317,10 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         await expect(page.getByText('core requirements complete')).toBeVisible(); // persisted
     });
 
-    test('recommends only cached, requirement-matching sections with honest availability', async ({ context, extensionId }) => {
+    test('recommends only cached, requirement-matching sections with honest availability', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
         await page.waitForTimeout(2500); // listing is cached in the background (debounced)
@@ -206,14 +337,22 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
     test('reminders create chrome.alarms and can be cleared', async ({ context, extensionId, sw }) => {
         const page = await context.newPage();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#register`);
+        await expect(page.getByRole('heading', { name: 'Registration reminders' })).toBeVisible(); // stores initialized
         const future = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().slice(0, 10);
         await page.evaluate(async date => {
             const key = 'FastlaneReminders:reminders';
             const cur = (await chrome.storage.local.get(key))[key] as Record<string, unknown>;
-            await chrome.storage.local.set({ [key]: { ...cur, enabled: true, window: { date, time: '08:00', timeZone: 'America/Chicago' } } });
+            await chrome.storage.local.set({
+                [key]: { ...cur, enabled: true, window: { date, time: '08:00', timeZone: 'America/Chicago' } },
+            });
         }, future);
         await expect
-            .poll(async () => (await sw.evaluate(async () => (await chrome.alarms.getAll()).map(a => a.name))).filter(n => n.startsWith('fastlane-reminder:')).length)
+            .poll(
+                async () =>
+                    (await sw.evaluate(async () => (await chrome.alarms.getAll()).map(a => a.name))).filter(n =>
+                        n.startsWith('fastlane-reminder:')
+                    ).length
+            )
             .toBeGreaterThanOrEqual(4);
         await page.screenshot({ path: `${SHOTS}/6-registration-prep-reminders.png`, fullPage: false });
     });
@@ -226,7 +365,9 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         await expect(page.getByText(/estimates, not verified routes/)).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/7-campus-map.png`, fullPage: false });
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#wallpaper`);
-        const dataUrlLength = await page.locator('canvas').evaluate(c => (c as HTMLCanvasElement).toDataURL('image/png').length);
+        const dataUrlLength = await page
+            .locator('canvas')
+            .evaluate(c => (c as HTMLCanvasElement).toDataURL('image/png').length);
         expect(dataUrlLength).toBeGreaterThan(20_000);
         await page.screenshot({ path: `${SHOTS}/8-wallpaper.png`, fullPage: false });
     });

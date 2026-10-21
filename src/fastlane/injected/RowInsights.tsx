@@ -45,7 +45,10 @@ function GradeChip({ course }: { course: Course }) {
         };
     }, [course]);
 
-    const stat: GradeStat | null = useMemo(() => (raw ? gradeStatFrom(course, raw, threshold) : null), [raw, course, threshold]);
+    const stat: GradeStat | null = useMemo(
+        () => (raw ? gradeStatFrom(course, raw, threshold) : null),
+        [raw, course, threshold]
+    );
 
     if (raw === undefined) {
         return <span className='fl-chip text-[11px] text-gray-400 px-1'>…</span>;
@@ -55,6 +58,7 @@ function GradeChip({ course }: { course: Course }) {
             <span
                 className='inline-flex items-center rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 whitespace-nowrap'
                 title='No verified historical grade data for this course in the bundled dataset. Nothing is estimated.'
+                role='img'
                 aria-label='No historical grade data'
             >
                 No grade data
@@ -71,6 +75,7 @@ function GradeChip({ course }: { course: Course }) {
                     : 'border border-dashed border-gray-400 text-gray-700'
             )}
             title={describeGradeStat(stat)}
+            role='img'
             aria-label={describeGradeStat(stat).replace(/\n/g, '. ')}
             data-fastlane='grade'
         >
@@ -86,7 +91,11 @@ function ModalityChip({ modality }: { modality: ModalityResult }) {
     const title = modality.reasons.join('\n');
     if (modality.modality === 'async-online') {
         return (
-            <span className='rounded bg-[#1d4ed8] px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap' title={title} data-fastlane='async'>
+            <span
+                className='rounded bg-[#1d4ed8] px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap'
+                title={title}
+                data-fastlane='async'
+            >
                 ASYNC ONLINE
             </span>
         );
@@ -104,7 +113,10 @@ function ModalityChip({ modality }: { modality: ModalityResult }) {
     }
     if (modality.modality === 'unknown' && /internet|online/i.test(title)) {
         return (
-            <span className='rounded border border-gray-400 px-1.5 py-0.5 text-[10px] text-gray-600 whitespace-nowrap' title={title}>
+            <span
+                className='rounded border border-gray-400 px-1.5 py-0.5 text-[10px] text-gray-600 whitespace-nowrap'
+                title={title}
+            >
                 ONLINE · TIMES UNCLEAR
             </span>
         );
@@ -145,8 +157,15 @@ function ConflictChip({ conflict }: { conflict: ConflictResult }) {
     return null;
 }
 
-function BackupButton({ course, activeSchedule, rowAnalysis }: Pick<Props, 'course' | 'activeSchedule' | 'rowAnalysis'>) {
-    const plans = FastlanePlanStore.useStore(s => s.plans ?? {}) as unknown as Record<string, import('../core/plans').PlanMeta>;
+function BackupButton({
+    course,
+    activeSchedule,
+    rowAnalysis,
+}: Pick<Props, 'course' | 'activeSchedule' | 'rowAnalysis'>) {
+    const plans = FastlanePlanStore.useStore(s => s.plans ?? {}) as unknown as Record<
+        string,
+        import('../core/plans').PlanMeta
+    >;
     const [open, setOpen] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     if (!activeSchedule || activeSchedule.containsCourse(course)) return null;
@@ -155,7 +174,10 @@ function BackupButton({ course, activeSchedule, rowAnalysis }: Pick<Props, 'cour
     if (existing && existing.index > 0) {
         const primary = existing.slot.candidates.find(c => c.uniqueId === existing.slot.activeUniqueId);
         return (
-            <span className='rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-700 whitespace-nowrap' data-fastlane='backup-badge'>
+            <span
+                className='rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-700 whitespace-nowrap'
+                data-fastlane='backup-badge'
+            >
                 Backup #{existing.index} for {primary?.courseCode}
             </span>
         );

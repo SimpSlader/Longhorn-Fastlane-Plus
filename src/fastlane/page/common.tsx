@@ -32,10 +32,16 @@ export function ModalityChip({ modality }: { modality: Modality }) {
 
 export function GradeChip({ stat }: { stat: GradeStat | null | undefined }) {
     if (stat === undefined) return <span className='chip'>…</span>;
-    if (!stat) return <span className='chip' title='No verified historical grade data'>No grade data</span>;
+    if (!stat)
+        return (
+            <span className='chip' title='No verified historical grade data'>
+                No grade data
+            </span>
+        );
     return (
         <span className={`chip ${stat.scope === 'instructor' ? 'accent' : ''}`} title={describeGradeStat(stat)}>
-            {formatPercent(stat.result.percent)} {thresholdLabel(stat.result.threshold)} · {stat.scope === 'instructor' ? 'Prof' : 'All profs'} · n=
+            {formatPercent(stat.result.percent)} {thresholdLabel(stat.result.threshold)} ·{' '}
+            {stat.scope === 'instructor' ? 'Prof' : 'All profs'} · n=
             {stat.result.graded}
         </span>
     );

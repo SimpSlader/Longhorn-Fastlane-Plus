@@ -21,7 +21,9 @@ import {
     FastlaneSettingsStore,
 } from '../storage/stores';
 
-export const EXPORT_FORMAT = 'longhorn-fastlane-export';
+export const EXPORT_FORMAT = 'fastlane-course-planner-export';
+/** exports created before the rename */
+export const LEGACY_EXPORT_FORMATS = ['longhorn-fastlane-export'];
 
 export interface FastlaneExport {
     format: typeof EXPORT_FORMAT;
@@ -46,18 +48,25 @@ export class ImportError extends Error {
 /** Validates an imported file. Unknown/extra fields are dropped; settings are merged onto defaults. */
 export function validateExport(json: unknown): FastlaneExport {
     const d = json as Partial<FastlaneExport>;
-    if (!d || typeof d !== 'object' || d.format !== EXPORT_FORMAT) throw new ImportError('This is not a Longhorn Fastlane Plus export file.');
+    if (
+        !d ||
+        typeof d !== 'object' ||
+        (d.format !== EXPORT_FORMAT && !LEGACY_EXPORT_FORMATS.includes(String(d.format)))
+    )
+        throw new ImportError('This is not a Fastlane Course Planner export file.');
     if (d.version !== 1) throw new ImportError(`Unsupported export version ${String(d.version)}.`);
     if (!Array.isArray(d.schedules)) throw new ImportError('Export is missing schedules.');
     for (const s of d.schedules as Array<{ name?: unknown; courses?: unknown }>) {
-        if (!s || typeof s.name !== 'string' || !Array.isArray(s.courses)) throw new ImportError('A schedule in the file is malformed.');
+        if (!s || typeof s.name !== 'string' || !Array.isArray(s.courses))
+            throw new ImportError('A schedule in the file is malformed.');
     }
     if (d.plans && typeof d.plans !== 'object') throw new ImportError('Plans are malformed.');
     for (const p of Object.values(d.plans ?? {})) {
         if (!p || !Array.isArray((p as PlanMeta).slots)) throw new ImportError('A plan in the file is malformed.');
     }
     if (d.queue && !isQueueState(d.queue)) throw new ImportError('The registration queue in the file is malformed.');
-    if (d.reminders && !isReminderConfig(d.reminders)) throw new ImportError('Reminder settings in the file are malformed.');
+    if (d.reminders && !isReminderConfig(d.reminders))
+        throw new ImportError('Reminder settings in the file are malformed.');
     return {
         format: EXPORT_FORMAT,
         version: 1,
@@ -108,13 +117,21 @@ export async function deleteFastlaneData(): Promise<void> {
     await FastlaneReminderStore.set('reminders', defaultReminderConfig() as never);
     await FastlaneSettingsStore.set(DEFAULT_SETTINGS as never);
     // remove any other Fastlane-owned keys (e.g. from older versions)
-    const keep = new Set(['FastlanePlans:plans', 'FastlaneAudit:audit', 'FastlaneQueue:queue', 'FastlaneQueue:lastFilled', 'FastlaneReminders:reminders']);
+    const keep = new Set([
+        'FastlanePlans:plans',
+        'FastlaneAudit:audit',
+        'FastlaneQueue:queue',
+        'FastlaneQueue:lastFilled',
+        'FastlaneReminders:reminders',
+    ]);
     const local = await chrome.storage.local.get(null);
     const stale = Object.keys(local).filter(k => FASTLANE_LOCAL_PREFIXES.some(p => k.startsWith(p)) && !keep.has(k));
     if (stale.length) await chrome.storage.local.remove(stale);
     await idbClearAll();
     const alarms = await chrome.alarms.getAll();
-    await Promise.all(alarms.filter(a => a.name.startsWith('fastlane-reminder:')).map(a => chrome.alarms.clear(a.name)));
+    await Promise.all(
+        alarms.filter(a => a.name.startsWith('fastlane-reminder:')).map(a => chrome.alarms.clear(a.name))
+    );
 }
 
 /** Deletes everything this extension stored, including UT Registration Plus schedules. */

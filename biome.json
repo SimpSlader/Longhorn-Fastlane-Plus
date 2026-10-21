@@ -6,7 +6,13 @@
         "useIgnoreFile": true
     },
     "files": {
-        "includes": ["**", "!!**/dist", "!.storybook", "!src/lib/chrome-extension-toolkit"]
+        "includes": [
+            "**",
+            "!!**/dist",
+            "!.storybook",
+            "!src/lib/chrome-extension-toolkit",
+            "!src/fastlane/__tests__/fixtures"
+        ]
     },
     "formatter": {
         "useEditorconfig": true,

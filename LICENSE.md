@@ -1,7 +1,7 @@
 MIT License
 
 Copyright (c) 2023 Sriram Hariharan (UT Registration Plus)
-Copyright (c) 2026 Longhorn Fastlane Plus contributors (modifications)
+Copyright (c) 2026 Fastlane Course Planner contributors (modifications)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

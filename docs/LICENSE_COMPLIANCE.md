@@ -1,6 +1,10 @@
 # Open-source license compliance report
 
-Generated for Longhorn Fastlane Plus 1.0.0 (October 21, 2026). Regenerate the shipped notices with `pnpm notices`.
+Generated for Fastlane Course Planner 1.0.0 (October 21, 2026). Regenerate the shipped notices with `pnpm notices`.
+
+## Highcharts removed
+
+UT Registration Plus used Highcharts (free only for non-commercial use) for the grade-distribution graph. It was replaced by an in-house SVG chart (`GradeBarChart.tsx`, MIT as part of this project) and removed from `package.json`. All remaining bundled dependencies use permissive licenses (MIT, Apache-2.0, ISC, BSD, 0BSD, CC0, BlueOak); MPL-2.0 `lightningcss` is build-time only.
 
 ## Upstream projects
 
@@ -23,12 +27,13 @@ Generated for Longhorn Fastlane Plus 1.0.0 (October 21, 2026). Regenerate the sh
 | BSD-2/3-Clause | 6 | Notices included |
 | MPL-2.0 | 2 | `lightningcss` — build-time only, not shipped in the extension bundle |
 | 0BSD, CC0-1.0, BlueOak-1.0.0, Python-2.0 | 4 | Permissive |
-| **Highcharts license** | 1 | **Action required before any commercial use.** Highcharts (used by UTRP's grade graph) is free only for non-commercial use (personal, school, non-profit). Fastlane is free and non-commercial today. If it is ever monetized, buy a Highcharts license or replace the chart library. |
 
 Some packages are listed as production dependencies only because UT Registration Plus declares them that way (e.g. `typescript`, `@typescript/native-preview`); they are build tools and are not in the shipped bundle.
 
-## Trademarks and branding (review before store submission)
+## Trademarks and branding
 
-- **"Longhorn"** and the **longhorn silhouette** are registered trademarks of The University of Texas at Austin; **burnt orange (#BF5700)** is part of UT's licensed brand. Using "Longhorn" in a product name may require permission from UT's Office of Trademark Licensing. Fastlane uses an original icon (no longhorn silhouette, no UT seal). **Recommended before publishing:** contact UT Trademark Licensing, or rename (e.g. "Fastlane Plus — course planner for UT Austin students", using "UT Austin" only descriptively).
-- "UT Registration Plus" is the upstream project's name. Fastlane does not use it as its product name; it appears only in attribution. UTRP's logo was replaced in the extension UI.
-- The listing, privacy policy and UI state that Fastlane is independent and not approved by UT.
+- The product was renamed from "Longhorn Fastlane Plus" to **Fastlane Course Planner** so the name contains no UT Austin marks ("Longhorn(s)" and the longhorn silhouette are registered UT marks). See `docs/BRANDING.md` for the name check and alternatives.
+- Original icon; no longhorn silhouette, UT seal or wordmark. UTRP's logo was replaced in the extension UI.
+- "UT Registration Plus" and "UT Austin" appear only in attribution and descriptive text.
+- The listing, privacy policy and UI state that the product is independent and not approved by UT.
+- Remaining owner action: USPTO search for "Fastlane" in software classes; optional courtesy check with UT Trademark Licensing about the orange accent color.

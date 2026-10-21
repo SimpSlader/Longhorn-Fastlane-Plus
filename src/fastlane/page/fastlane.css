@@ -5,13 +5,13 @@
  * fast 120ms transitions, and a dark-gray (not black) dark mode.
  */
 @font-face {
-    font-family: 'Roboto Flex';
-    src: url('/fonts/roboto-flex.woff2') format('woff2');
+    font-family: "Roboto Flex";
+    src: url("/fonts/roboto-flex.woff2") format("woff2");
     font-display: swap;
 }
 @font-face {
-    font-family: 'Roboto Mono';
-    src: url('/fonts/roboto-mono.woff2') format('woff2');
+    font-family: "Roboto Mono";
+    src: url("/fonts/roboto-mono.woff2") format("woff2");
     font-display: swap;
 }
 
@@ -45,7 +45,7 @@
     color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
+    :root:not([data-theme="light"]) {
         --bg: #18181b;
         --surface: #1f1f23;
         --surface-2: #26262b;
@@ -70,7 +70,7 @@
         color-scheme: dark;
     }
 }
-:root[data-theme='dark'] {
+:root[data-theme="dark"] {
     --bg: #18181b;
     --surface: #1f1f23;
     --surface-2: #26262b;
@@ -103,7 +103,12 @@ body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font: 15px/1.45 'Roboto Flex', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font:
+        15px / 1.45 "Roboto Flex",
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        sans-serif;
 }
 a {
     color: var(--accent);
@@ -205,7 +210,7 @@ textarea {
     flex: none;
 }
 .radio.on::after {
-    content: '';
+    content: "";
     width: 10px;
     height: 10px;
     border-radius: 50%;
@@ -242,7 +247,7 @@ textarea {
 .nav button:hover {
     background: var(--surface-2);
 }
-.nav button[aria-current='page'] {
+.nav button[aria-current="page"] {
     background: var(--accent-soft);
     color: var(--accent);
     font-weight: 700;
@@ -423,7 +428,7 @@ textarea {
     font-size: 13px;
 }
 .mono {
-    font-family: 'Roboto Mono', ui-monospace, monospace;
+    font-family: "Roboto Mono", ui-monospace, monospace;
     font-weight: 700;
     letter-spacing: 0.5px;
 }
@@ -487,7 +492,7 @@ textarea {
     border: 1px solid transparent;
     background: transparent;
     color: var(--accent);
-    font-family: 'Roboto Mono', ui-monospace, monospace;
+    font-family: "Roboto Mono", ui-monospace, monospace;
     font-weight: 700;
     font-size: 15px;
     padding: 3px 8px;
@@ -505,10 +510,10 @@ textarea {
     background: rgba(255, 255, 255, 0.92);
     color: #1a1a1a;
 }
-input[type='text'],
-input[type='number'],
-input[type='date'],
-input[type='time'],
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
 select,
 textarea {
     background: var(--surface);
@@ -873,6 +878,10 @@ table.list td {
     height: auto;
 }
 .tabs {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
@@ -889,7 +898,7 @@ table.list td {
 .tabs button:hover {
     border-color: var(--accent);
 }
-.tabs button[aria-pressed='true'] {
+.tabs button[aria-pressed="true"] {
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;

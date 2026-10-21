@@ -21,7 +21,11 @@ export function isFastlaneRequest(msg: unknown): msg is FastlaneRequest {
 type WithoutTag<T> = T extends unknown ? Omit<T, 'fastlane'> : never;
 
 export async function sendFastlane<T = unknown>(request: WithoutTag<FastlaneRequest>): Promise<T> {
-    const response = (await chrome.runtime.sendMessage({ ...request, fastlane: true })) as { ok: boolean; data?: T; error?: string };
+    const response = (await chrome.runtime.sendMessage({ ...request, fastlane: true })) as {
+        ok: boolean;
+        data?: T;
+        error?: string;
+    };
     if (!response?.ok) throw new Error(response?.error ?? 'No response from background');
     return response.data as T;
 }
