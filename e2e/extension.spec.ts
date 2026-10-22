@@ -574,17 +574,17 @@ test.describe('AI access remembered after first successful request', () => {
             });
         });
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-        await page.locator('input[type=file]').setInputFiles(
-            resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html')
-        );
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
         await page.getByRole('button', { name: 'Review with AI' }).click();
         await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
         await page.getByRole('checkbox').last().check();
         await page.getByRole('button', { name: 'Check requirements with AI' }).click();
         await expect(page.getByText('Reviewed supplied requirements.')).toBeVisible();
         await expect(page.getByText('AI access saved on this device.')).toBeVisible();
-        const saved = await page.evaluate(async () =>
-            (await chrome.storage.local.get('FastlaneAiAccess:accessCode'))['FastlaneAiAccess:accessCode']
+        const saved = await page.evaluate(
+            async () => (await chrome.storage.local.get('FastlaneAiAccess:accessCode'))['FastlaneAiAccess:accessCode']
         );
         expect(saved).toBe('test-invite-code-local-only');
 
