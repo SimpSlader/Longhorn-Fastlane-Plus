@@ -157,7 +157,6 @@ export function flagCode(value: string): string | null {
     return null;
 }
 
-
 /** AI-reviewed broad department tags are potential matches, never proof of degree credit. */
 export function sectionMatchesRequirement(
     section: { courseCode: string; requirementTags: string[] },
@@ -165,6 +164,9 @@ export function sectionMatchesRequirement(
 ): boolean {
     if (section.requirementTags.includes(requirement)) return true;
     if (!/^DEPT [A-Z][A-Z ]{0,5}$/.test(requirement)) return false;
-    const subject = section.courseCode.replace(/\s*[0-9].*$/, '').trim().toUpperCase();
+    const subject = section.courseCode
+        .replace(/\s*[0-9].*$/, '')
+        .trim()
+        .toUpperCase();
     return subject === requirement.slice(5);
 }

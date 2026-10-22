@@ -12,8 +12,12 @@ function request(body, ip = '198.51.100.42') {
     const res = {
         statusCode: 200,
         headers: {},
-        setHeader(key, value) { this.headers[key] = value; },
-        end(value) { this.body = value ? JSON.parse(value) : {}; },
+        setHeader(key, value) {
+            this.headers[key] = value;
+        },
+        end(value) {
+            this.body = value ? JSON.parse(value) : {};
+        },
     };
     return { req: { method: 'POST', headers, body }, res };
 }
@@ -22,7 +26,19 @@ const body = {
     requirements: [{ text: 'Economics elective requirement', tags: ['COURSE ECO 304L'], status: 'not-started' }],
     completed: ['ECO 304K'],
     candidates: [
-        { id: 12345, code: 'ECO 304L', title: 'Macroeconomics', semester: 'Spring 2027', hours: 3, professor: 'Test', days: ['T'], mode: 'in-person', tags: ['COURSE ECO 304L'], gradePercent: 75, gradeSample: 150 },
+        {
+            id: 12345,
+            code: 'ECO 304L',
+            title: 'Macroeconomics',
+            semester: 'Spring 2027',
+            hours: 3,
+            professor: 'Test',
+            days: ['T'],
+            mode: 'in-person',
+            tags: ['COURSE ECO 304L'],
+            gradePercent: 75,
+            gradeSample: 150,
+        },
     ],
     preferences: { semester: 'Spring 2027', avoidFriday: true },
 };
@@ -49,17 +65,31 @@ describe('Fastlane Groq API privacy boundary', () => {
         const fakeFetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
-                choices: [{
-                    message: {
-                        content: JSON.stringify({
-                            summary: 'Consider course fit carefully.',
-                            recommendations: [
-                                { id: 12345, reason: 'Explicit requirement match', requirement: 'ECO 304L', confidence: 'high', warning: '' },
-                                { id: 99999, reason: 'Invented', requirement: 'Anything', confidence: 'high', warning: '' },
-                            ],
-                        }),
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                summary: 'Consider course fit carefully.',
+                                recommendations: [
+                                    {
+                                        id: 12345,
+                                        reason: 'Explicit requirement match',
+                                        requirement: 'ECO 304L',
+                                        confidence: 'high',
+                                        warning: '',
+                                    },
+                                    {
+                                        id: 99999,
+                                        reason: 'Invented',
+                                        requirement: 'Anything',
+                                        confidence: 'high',
+                                        warning: '',
+                                    },
+                                ],
+                            }),
+                        },
                     },
-                }],
+                ],
             }),
         });
         vi.stubGlobal('fetch', fakeFetch);
@@ -72,5 +102,18 @@ describe('Fastlane Groq API privacy boundary', () => {
         expect(JSON.stringify(sent)).not.toContain('Private Student');
         expect(JSON.stringify(sent)).not.toContain('sensitive-id');
         expect(sent.model).toBe('openai/gpt-oss-120b');
+    });
+});
+
+describe('Fastlane recommend API input handling', () => {
+    it('rejects malformed JSON with 400 instead of crashing', async () => {
+        process.env.GROQ_API_KEY = 'test-key';
+        process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';
+        const fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        const { req, res } = request('{not json', '198.51.100.99');
+        await handler(req, res);
+        expect(res.statusCode).toBe(400);
+        expect(fetchSpy).not.toHaveBeenCalled();
     });
 });

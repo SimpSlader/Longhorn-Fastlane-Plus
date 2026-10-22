@@ -25,19 +25,25 @@ export function applyAiAuditSuggestion(audit: ParsedAudit, s: Suggestion): Parse
     const nextStatus = s.suggestedStatus === 'unchanged' ? target.status : s.suggestedStatus;
     // Pending transfer credit is never treated as an awarded completed requirement.
     const pending = audit.transfer.pending.length > 0 && nextStatus === 'completed';
-    const safeStatus = pending || (target.remaining?.value ?? 0) > 0 && nextStatus === 'completed'
-        ? target.status : nextStatus;
-    const proposedTags = s.suggestedTags.filter(t => /^(CORE 0\d{2}|COURSE [A-Z][A-Z ]{0,5}\s+[0-9][A-Z0-9]{2,6}|DEPT [A-Z][A-Z ]{0,5})$/.test(t));
+    const safeStatus =
+        pending || ((target.remaining?.value ?? 0) > 0 && nextStatus === 'completed') ? target.status : nextStatus;
+    const proposedTags = s.suggestedTags.filter(t =>
+        /^(CORE 0\d{2}|COURSE [A-Z][A-Z ]{0,5}\s+[0-9][A-Z0-9]{2,6}|DEPT [A-Z][A-Z ]{0,5})$/.test(t)
+    );
     return {
         ...audit,
-        requirements: audit.requirements.map(r => r.id !== s.id ? r : {
-            ...r,
-            status: safeStatus,
-            tags: [...new Set([...r.tags, ...proposedTags])],
-            reviewed: true,
-            // A review is not an official UT evaluation; do not upgrade confidence to high.
-            issues: [...r.issues, 'AI suggestion reviewed by student; confirm credit applicability with UT.'],
-        }),
+        requirements: audit.requirements.map(r =>
+            r.id !== s.id
+                ? r
+                : {
+                      ...r,
+                      status: safeStatus,
+                      tags: [...new Set([...r.tags, ...proposedTags])],
+                      reviewed: true,
+                      // A review is not an official UT evaluation; do not upgrade confidence to high.
+                      issues: [...r.issues, 'AI suggestion reviewed by student; confirm credit applicability with UT.'],
+                  }
+        ),
     };
 }
 
@@ -56,6 +62,7 @@ export default function AiAuditReview({
     const [summary, setSummary] = useState('');
     const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: clear stale AI suggestions whenever a different audit is imported
     useEffect(() => {
         setSuggestions([]);
         setSummary('');
@@ -96,9 +103,9 @@ export default function AiAuditReview({
             const payload = (await result.json()) as Response;
             if (!result.ok) throw new Error(payload.error ?? 'AI audit review is unavailable.');
             setSummary(payload.summary ?? '');
-            setSuggestions((payload.suggestions ?? []).filter(s =>
-                audit.requirements.some(r => r.id === s.id && !r.reviewed)
-            ));
+            setSuggestions(
+                (payload.suggestions ?? []).filter(s => audit.requirements.some(r => r.id === s.id && !r.reviewed))
+            );
         } catch (e) {
             setError(e instanceof Error ? e.message : 'AI audit review failed.');
         } finally {
@@ -125,36 +132,58 @@ export default function AiAuditReview({
                     <span className='eyebrow'>OPTIONAL · AI ASSISTED</span>
                     <h2>Review my IDA with AI</h2>
                     <p className='small muted'>
-                        Flag unclear requirements and possible missed course matches. Your existing audit stays unchanged until you approve a suggestion.
+                        Flag unclear requirements and possible missed course matches. Your existing audit stays
+                        unchanged until you approve a suggestion.
                     </p>
                 </div>
-                <button type='button' className='btn sm' aria-expanded={open}
-                    onClick={() => setOpen(v => !v)}>{open ? 'Hide review' : 'Review with AI'}</button>
+                <button type='button' className='btn sm' aria-expanded={open} onClick={() => setOpen(v => !v)}>
+                    {open ? 'Hide review' : 'Review with AI'}
+                </button>
             </div>
             {open && (
                 <div className='ai-advisor-body'>
                     <p className='small muted'>
                         The local parser remains the source of your saved IDA. Only unfinished requirement descriptions,
-                        existing tags, course codes and review warnings are shared. No raw IDA file, name, EID or grades are sent.
+                        existing tags, course codes and review warnings are shared. No raw IDA file, name, EID or grades
+                        are sent.
                     </p>
                     <label className='field'>
                         Beta invite code (not your Groq API key)
-                        <input type='password' autoComplete='off' value={invite}
-                            onChange={e => setInvite(e.target.value)} placeholder='Fastlane beta code' />
+                        <input
+                            type='password'
+                            autoComplete='off'
+                            value={invite}
+                            onChange={e => setInvite(e.target.value)}
+                            placeholder='Fastlane beta code'
+                        />
                     </label>
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
-                            I agree to send selected degree requirement text, course codes and parsing details
-                            to Fastlane's Vercel server and Groq for this review.
+                            I agree to send selected degree requirement text, course codes and parsing details to
+                            Fastlane's Vercel server and Groq for this review.
                         </span>
                     </label>
-                    <button type='button' className='btn primary' disabled={!consent || busy}
-                        onClick={() => void analyze()}>{busy ? 'Reviewing…' : 'Check requirements with AI'}</button>
-                    {error && <div className='notice warn' role='alert'>{error}</div>}
+                    <button
+                        type='button'
+                        className='btn primary'
+                        disabled={!consent || busy}
+                        onClick={() => void analyze()}
+                    >
+                        {busy ? 'Reviewing…' : 'Check requirements with AI'}
+                    </button>
+                    {error && (
+                        <div className='notice warn' role='alert'>
+                            {error}
+                        </div>
+                    )}
                     {summary && <p className='small muted'>{summary}</p>}
-                    {summary && suggestions.length === 0 &&
-                        <p className='small muted'>No evidence-backed changes were suggested. You can still review your requirements manually below.</p>}
+                    {summary && suggestions.length === 0 && (
+                        <p className='small muted'>
+                            No evidence-backed changes were suggested. You can still review your requirements manually
+                            below.
+                        </p>
+                    )}
                     {suggestions.map(s => {
                         const original = audit.requirements.find(r => r.id === s.id);
                         if (!original) return null;
@@ -163,25 +192,41 @@ export default function AiAuditReview({
                                 <b>{original.text}</b>
                                 <p className='small'>{s.explanation}</p>
                                 {s.suggestedStatus !== 'unchanged' && (
-                                    <p className='small'><b>Suggested status:</b> {original.status} → {s.suggestedStatus}</p>
+                                    <p className='small'>
+                                        <b>Suggested status:</b> {original.status} → {s.suggestedStatus}
+                                    </p>
                                 )}
                                 {s.suggestedTags.length > 0 && (
-                                    <p className='small'><b>Possible matches:</b> {s.suggestedTags.map(describeRequirement).join(', ')}</p>
+                                    <p className='small'>
+                                        <b>Possible matches:</b> {s.suggestedTags.map(describeRequirement).join(', ')}
+                                    </p>
                                 )}
-                                <p className='small muted'><b>Evidence:</b> “{s.evidence}”</p>
-                                {s.uncertainty && <p className='small muted'><b>Check:</b> {s.uncertainty}</p>}
+                                <p className='small muted'>
+                                    <b>Evidence:</b> “{s.evidence}”
+                                </p>
+                                {s.uncertainty && (
+                                    <p className='small muted'>
+                                        <b>Check:</b> {s.uncertainty}
+                                    </p>
+                                )}
                                 <div className='row'>
-                                    <button type='button' className='btn sm primary'
-                                        onClick={() => void apply(s)}>Accept this change</button>
-                                    <button type='button' className='btn sm'
-                                        onClick={() => setSuggestions(all => all.filter(v => v.id !== s.id))}>Dismiss</button>
+                                    <button type='button' className='btn sm primary' onClick={() => void apply(s)}>
+                                        Accept this change
+                                    </button>
+                                    <button
+                                        type='button'
+                                        className='btn sm'
+                                        onClick={() => setSuggestions(all => all.filter(v => v.id !== s.id))}
+                                    >
+                                        Dismiss
+                                    </button>
                                 </div>
                             </div>
                         );
                     })}
                     <p className='small muted'>
-                        Accepted tags may improve course matching and suggested schedules.
-                        A possible departmental match does not prove credit applicability; confirm it in UT's official IDA.
+                        Accepted tags may improve course matching and suggested schedules. A possible departmental match
+                        does not prove credit applicability; confirm it in UT's official IDA.
                     </p>
                 </div>
             )}

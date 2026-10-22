@@ -5,11 +5,19 @@ import { applyAiAuditSuggestion } from '../page/AiAuditReview';
 const audit: ParsedAudit = {
     source: 'html',
     parsedAt: 1,
-    requirements: [{
-        id: 'a', section: 'Major', text: 'ECO electives, three hours remaining',
-        category: 'major', status: 'not-started', tags: [], courses: [],
-        confidence: 'low', issues: ['Needs review'],
-    }],
+    requirements: [
+        {
+            id: 'a',
+            section: 'Major',
+            text: 'ECO electives, three hours remaining',
+            category: 'major',
+            status: 'not-started',
+            tags: [],
+            courses: [],
+            confidence: 'low',
+            issues: ['Needs review'],
+        },
+    ],
     courses: [],
     transfer: { accepted: [], pending: [] },
     creditHours: { confidence: 'low' },
@@ -19,8 +27,12 @@ const audit: ParsedAudit = {
 describe('AI audit suggestions are reviewed, never applied automatically', () => {
     it('adds a cautious department match only after explicit application', () => {
         const suggestion = {
-            id: 'a', suggestedStatus: 'unchanged' as const, suggestedTags: ['DEPT ECO'],
-            explanation: 'Possible ECO elective', evidence: 'ECO electives', uncertainty: 'Check degree requirements',
+            id: 'a',
+            suggestedStatus: 'unchanged' as const,
+            suggestedTags: ['DEPT ECO'],
+            explanation: 'Possible ECO elective',
+            evidence: 'ECO electives',
+            uncertainty: 'Check degree requirements',
         };
         const next = applyAiAuditSuggestion(audit, suggestion);
         expect(audit.requirements[0]?.tags).toEqual([]);
@@ -35,16 +47,27 @@ describe('AI audit suggestions are reviewed, never applied automatically', () =>
             ...audit,
             transfer: {
                 accepted: [],
-                pending: [{
-                    code: 'ECO 304L', name: 'Macroeconomics', grade: '',
-                    unique: '', type: 'Pending', hours: 3, semester: 'Spring 2027',
-                    status: 'pending-transfer',
-                }],
+                pending: [
+                    {
+                        code: 'ECO 304L',
+                        name: 'Macroeconomics',
+                        grade: '',
+                        unique: '',
+                        type: 'Pending',
+                        hours: 3,
+                        semester: 'Spring 2027',
+                        status: 'pending-transfer',
+                    },
+                ],
             },
         };
         const next = applyAiAuditSuggestion(pendingAudit, {
-            id: 'a', suggestedStatus: 'completed', suggestedTags: [],
-            explanation: 'AI thought this was completed', evidence: 'ECO electives', uncertainty: '',
+            id: 'a',
+            suggestedStatus: 'completed',
+            suggestedTags: [],
+            explanation: 'AI thought this was completed',
+            evidence: 'ECO electives',
+            uncertainty: '',
         });
         expect(next.requirements[0]?.status).toBe('not-started');
     });

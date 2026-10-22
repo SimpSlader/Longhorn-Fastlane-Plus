@@ -2,7 +2,7 @@ import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
 import { normalizeCourseCode } from '../core/requirements';
-import { semesterKey, type SectionRecord } from '../core/sections';
+import { type SectionRecord, semesterKey } from '../core/sections';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
@@ -22,7 +22,11 @@ interface AiResponse {
     error?: string;
 }
 
-const department = (code: string) => code.replace(/\s+\d.*$/, '').trim().toUpperCase();
+const department = (code: string) =>
+    code
+        .replace(/\s+\d.*$/, '')
+        .trim()
+        .toUpperCase();
 
 /** Spread a limited request across actual departments, rather than sending only the first UGS rows. */
 function diverseCandidates(sections: SectionRecord[], wantedSemester: string, taken: Set<string>) {
@@ -72,13 +76,21 @@ export default function AiRecommendations() {
                 setLoadingCatalog(false);
             }
         });
-        return () => { active = false; };
+        return () => {
+            active = false;
+        };
     }, []);
 
-    const taken = useMemo(() => new Set([
-        ...(audit?.courses.filter(c => c.status === 'completed' || c.status === 'in-progress').map(c => normalizeCourseCode(c.code)) ?? []),
-        ...(schedule?.courses.map(c => normalizeCourseCode(`${c.department} ${c.number}`)) ?? []),
-    ]), [audit, schedule]);
+    const taken = useMemo(
+        () =>
+            new Set([
+                ...(audit?.courses
+                    .filter(c => c.status === 'completed' || c.status === 'in-progress')
+                    .map(c => normalizeCourseCode(c.code)) ?? []),
+                ...(schedule?.courses.map(c => normalizeCourseCode(`${c.department} ${c.number}`)) ?? []),
+            ]),
+        [audit, schedule]
+    );
 
     const candidates = useMemo(
         () => diverseCandidates(catalog, settings.targetSemester ?? '', taken),
@@ -92,9 +104,14 @@ export default function AiRecommendations() {
 
     const run = async () => {
         if (!consent || busy) return;
-        if (!audit) { setError('Import your IDA on Degree progress before asking AI to plan your degree.'); return; }
+        if (!audit) {
+            setError('Import your IDA on Degree progress before asking AI to plan your degree.');
+            return;
+        }
         if (!candidates.length) {
-            setError('No verified sections are cached for your filters. Browse the official UT course schedule, then try again.');
+            setError(
+                'No verified sections are cached for your filters. Browse the official UT course schedule, then try again.'
+            );
             return;
         }
         setBusy(true);
@@ -145,14 +162,19 @@ export default function AiRecommendations() {
         }
     };
     const draft = safeAiScheduleDraft(
-        recommendations.map(r => r.id), candidates, 16, settings.avoidFriday
+        recommendations.map(r => r.id),
+        candidates,
+        16,
+        settings.avoidFriday
     );
     const makeDraft = async () => {
         if (draft.length < 2) return;
         try {
             const name = `AI draft · ${actualTerm || 'Upcoming semester'}`;
             await createPlanningSchedule(name, draft);
-            setDraftResult(`Created ${name} with ${draft.length} classes and ${draft.reduce((n, c) => n + c.creditHours, 0)} credits. Select it in My schedule to review.`);
+            setDraftResult(
+                `Created ${name} with ${draft.length} classes and ${draft.reduce((n, c) => n + c.creditHours, 0)} credits. Select it in My schedule to review.`
+            );
             setError('');
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Could not create schedule.');
@@ -175,10 +197,18 @@ export default function AiRecommendations() {
                 <div>
                     <div className='eyebrow'>OPTIONAL · AI ASSISTED</div>
                     <h2>Find better classes with AI</h2>
-                    <p className='small muted'>Use your remaining IDA requirements to compare real UT sections, including subjects beyond UGS.</p>
+                    <p className='small muted'>
+                        Use your remaining IDA requirements to compare real UT sections, including subjects beyond UGS.
+                    </p>
                 </div>
-                <button type='button' className='btn primary' onClick={() => setExpanded(v => !v)}
-                    aria-expanded={expanded}>{expanded ? 'Hide AI' : 'Try AI recommendations'}</button>
+                <button
+                    type='button'
+                    className='btn primary'
+                    onClick={() => setExpanded(v => !v)}
+                    aria-expanded={expanded}
+                >
+                    {expanded ? 'Hide AI' : 'Try AI recommendations'}
+                </button>
             </div>
             {expanded && (
                 <div className='ai-advisor-body'>
@@ -191,25 +221,48 @@ export default function AiRecommendations() {
                     {coveredSubjects.length < 3 && (
                         <div className='notice small'>
                             Your saved catalog covers too few subjects. AI cannot discover missing UT sections.
-                            <a href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
-                                target='_blank' rel='noopener noreferrer'> Browse other UT departments</a> to populate it.
+                            <a
+                                href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                            >
+                                {' '}
+                                Browse other UT departments
+                            </a>{' '}
+                            to populate it.
                         </div>
                     )}
                     <label className='field'>
                         Beta invite code (not an API key)
-                        <input type='password' autoComplete='off' value={inviteCode}
+                        <input
+                            type='password'
+                            autoComplete='off'
+                            value={inviteCode}
                             onChange={e => setInviteCode(e.target.value)}
-                            placeholder='Code shared by Fastlane owner' />
+                            placeholder='Code shared by Fastlane owner'
+                        />
                     </label>
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
-                        <span className='small'>I agree to send my unfinished requirement descriptions, completed course codes,
-                            preferences and selected public course details to Fastlane's Vercel server and Groq.
-                            No name, EID or full IDA file is sent.</span>
+                        <span className='small'>
+                            I agree to send my unfinished requirement descriptions, completed course codes, preferences
+                            and selected public course details to Fastlane's Vercel server and Groq. No name, EID or
+                            full IDA file is sent.
+                        </span>
                     </label>
-                    <button type='button' className='btn primary' disabled={!consent || !audit || !candidates.length || busy}
-                        onClick={() => void run()}>{busy ? 'Analyzing classes…' : 'Get recommendations'}</button>
-                    {error && <p className='notice warn' role='alert'>{error}</p>}
+                    <button
+                        type='button'
+                        className='btn primary'
+                        disabled={!consent || !audit || !candidates.length || busy}
+                        onClick={() => void run()}
+                    >
+                        {busy ? 'Analyzing classes…' : 'Get recommendations'}
+                    </button>
+                    {error && (
+                        <p className='notice warn' role='alert'>
+                            {error}
+                        </p>
+                    )}
                     {summary && <p className='small'>{summary}</p>}
                     {recommendations.map(rec => {
                         const c = candidateIndex.get(rec.id);
@@ -218,18 +271,30 @@ export default function AiRecommendations() {
                         return (
                             <div key={rec.id} className='ai-result'>
                                 <div className='row between'>
-                                    <b>{c.courseCode} · {c.title}</b>
-                                    <span className='chip'>{rec.confidence === 'high' ? 'Likely match' : 'Review degree fit'}</span>
+                                    <b>
+                                        {c.courseCode} · {c.title}
+                                    </b>
+                                    <span className='chip'>
+                                        {rec.confidence === 'high' ? 'Likely match' : 'Review degree fit'}
+                                    </span>
                                 </div>
                                 <p className='small'>{rec.reason}</p>
                                 <p className='small muted'>
                                     {c.instructors.join(', ') || 'Instructor unlisted'} · {semesterKey(c.semester)}
-                                    {g ? ` · ${g.result.percent.toFixed(0)}% historical A− or better (n=${g.result.graded})` : ' · No historical grade data'}
+                                    {g
+                                        ? ` · ${g.result.percent.toFixed(0)}% historical A− or better (n=${g.result.graded})`
+                                        : ' · No historical grade data'}
                                 </p>
-                                <p className='small muted'>Requirement: {rec.requirement || 'Verify against IDA'}.
-                                    {rec.warning && ` ${rec.warning}`}</p>
-                                <button type='button' className='btn sm' disabled={!schedule || !c.course}
-                                    onClick={() => void add(c)}>
+                                <p className='small muted'>
+                                    Requirement: {rec.requirement || 'Verify against IDA'}.
+                                    {rec.warning && ` ${rec.warning}`}
+                                </p>
+                                <button
+                                    type='button'
+                                    className='btn sm'
+                                    disabled={!schedule || !c.course}
+                                    onClick={() => void add(c)}
+                                >
                                     {savedId === c.uniqueId ? 'Added to schedule' : 'Add to my schedule'}
                                 </button>
                             </div>
@@ -239,17 +304,28 @@ export default function AiRecommendations() {
                         <div className='card'>
                             <h3>Create a draft schedule</h3>
                             <p className='small muted'>
-                                {draft.length} nonconflicting, verified sections · {draft.reduce((n, c) => n + c.creditHours, 0)} credits.
-                                This creates a separate schedule without changing your current one. Check prerequisites, degree credit and seat availability.
+                                {draft.length} nonconflicting, verified sections ·{' '}
+                                {draft.reduce((n, c) => n + c.creditHours, 0)} credits. This creates a separate schedule
+                                without changing your current one. Check prerequisites, degree credit and seat
+                                availability.
                             </p>
                             <button type='button' className='btn primary' onClick={() => void makeDraft()}>
                                 Create draft schedule
                             </button>
                         </div>
                     )}
-                    {draftResult && <p role='status' className='notice'>{draftResult}</p>}
-                    {!busy && summary && recommendations.length === 0 && <p className='small muted'>No verified candidate IDs were returned. Try broader UT sections.</p>}
-                    <p className='small muted'>AI advice is not an official degree evaluation. Verify prerequisites, requirements and availability with UT.</p>
+                    {draftResult && (
+                        <p role='status' className='notice'>
+                            {draftResult}
+                        </p>
+                    )}
+                    {!busy && summary && recommendations.length === 0 && (
+                        <p className='small muted'>No verified candidate IDs were returned. Try broader UT sections.</p>
+                    )}
+                    <p className='small muted'>
+                        AI advice is not an official degree evaluation. Verify prerequisites, requirements and
+                        availability with UT.
+                    </p>
                 </div>
             )}
         </section>

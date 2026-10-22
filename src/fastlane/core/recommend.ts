@@ -167,9 +167,14 @@ export function recommend(input: RecommendInput): Recommendation[] {
         ];
 
         const broadOnly = satisfies.every(tag => tag.startsWith('DEPT '));
-        const reasons = [`${broadOnly ? 'Possible fit for' : 'Satisfies'} ${satisfies.map(describeRequirement).join(', ')}`];
+        const reasons = [
+            `${broadOnly ? 'Possible fit for' : 'Satisfies'} ${satisfies.map(describeRequirement).join(', ')}`,
+        ];
         const warnings: string[] = [];
-        if (satisfies.some(tag => tag.startsWith('DEPT '))) warnings.push('Departmental match is not official degree credit; verify course level and degree applicability.');
+        if (satisfies.some(tag => tag.startsWith('DEPT ')))
+            warnings.push(
+                'Departmental match is not official degree credit; verify course level and degree applicability.'
+            );
         if (inSemester && input.semester) reasons.push(`Offered ${input.semester}`);
         if (!inSemester) warnings.push(`Listed for ${semesterKey(section.semester)}, not ${input.semester}`);
         if (conflict.status === 'clear') reasons.push('No known conflicts with your active schedule');

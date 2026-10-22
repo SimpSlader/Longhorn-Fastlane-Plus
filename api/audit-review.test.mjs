@@ -14,8 +14,12 @@ function call(body, ip = '198.51.100.19') {
     const res = {
         statusCode: 200,
         headers: {},
-        setHeader(name, value) { this.headers[name] = value; },
-        end(value) { this.body = value ? JSON.parse(value) : {}; },
+        setHeader(name, value) {
+            this.headers[name] = value;
+        },
+        end(value) {
+            this.body = value ? JSON.parse(value) : {};
+        },
     };
     return {
         req: {
@@ -29,7 +33,15 @@ function call(body, ip = '198.51.100.19') {
 const payload = {
     accessCode: 'private-invite-code',
     requirements: [
-        { id: 'r1', section: 'Major', text: 'Six hours in ECO; 3 remaining', tags: [], status: 'in-progress', remaining: 3, applied: 3 },
+        {
+            id: 'r1',
+            section: 'Major',
+            text: 'Six hours in ECO; 3 remaining',
+            tags: [],
+            status: 'in-progress',
+            remaining: 3,
+            applied: 3,
+        },
         { id: 'r2', section: 'Core', text: 'CORE (050) needed', tags: [], status: 'not-started', remaining: 3 },
     ],
     completedCodes: ['ECO 304K'],
@@ -55,21 +67,40 @@ describe('AI IDA review security', () => {
         const mock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
-                choices: [{
-                    message: {
-                        content: JSON.stringify({
-                            summary: 'Check the major requirement',
-                            suggestions: [
-                                { id: 'r1', suggestedStatus: 'completed', suggestedTags: ['DEPT ECO', 'COURSE UGS 302'], evidence: 'Six hours in ECO', explanation: 'Department match', uncertainty: 'May be upper division only' },
-                                { id: 'r9999', suggestedStatus: 'completed', suggestedTags: [], evidence: 'Invented', explanation: 'Invented', uncertainty: '' },
-                            ],
-                        }),
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                summary: 'Check the major requirement',
+                                suggestions: [
+                                    {
+                                        id: 'r1',
+                                        suggestedStatus: 'completed',
+                                        suggestedTags: ['DEPT ECO', 'COURSE UGS 302'],
+                                        evidence: 'Six hours in ECO',
+                                        explanation: 'Department match',
+                                        uncertainty: 'May be upper division only',
+                                    },
+                                    {
+                                        id: 'r9999',
+                                        suggestedStatus: 'completed',
+                                        suggestedTags: [],
+                                        evidence: 'Invented',
+                                        explanation: 'Invented',
+                                        uncertainty: '',
+                                    },
+                                ],
+                            }),
+                        },
                     },
-                }],
+                ],
             }),
         });
         vi.stubGlobal('fetch', mock);
-        const { req, res } = call({ ...payload, eid: 'private-eid-123', studentName: 'Private Person' }, '198.51.100.20');
+        const { req, res } = call(
+            { ...payload, eid: 'private-eid-123', studentName: 'Private Person' },
+            '198.51.100.20'
+        );
         await handler(req, res);
         expect(res.statusCode).toBe(200);
         expect(res.body.suggestions).toHaveLength(1);

@@ -1,6 +1,6 @@
 import { detectConflicts } from './meetings';
 import { normalizeCourseCode } from './requirements';
-import { toSectionTimes, type SectionRecord } from './sections';
+import { type SectionRecord, toSectionTimes } from './sections';
 
 /** Only verified non-overlapping meeting times are allowed in an AI draft schedule. */
 export function safeAiScheduleDraft(
@@ -19,8 +19,12 @@ export function safeAiScheduleDraft(
         if (avoidFriday && s.meetings.some(m => m.days.includes('F'))) continue;
         const code = normalizeCourseCode(s.courseCode);
         if (seen.has(code) || hours + s.creditHours > maxHours || s.creditHours <= 0) continue;
-        if (selected.length && selected[0] && s.semester &&
-            (selected[0].semester?.year !== s.semester.year || selected[0].semester?.season !== s.semester.season))
+        if (
+            selected.length &&
+            selected[0] &&
+            s.semester &&
+            (selected[0].semester?.year !== s.semester.year || selected[0].semester?.season !== s.semester.season)
+        )
             continue;
         const check = detectConflicts(toSectionTimes(s), selected.map(toSectionTimes));
         if (check.status !== 'clear') continue;
