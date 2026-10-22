@@ -3,10 +3,12 @@
  * bold course-colored blocks ("MUS 302L – Middleton", time, room), and an ASYNC / OTHER row.
  * Only ACTIVE sections are drawn; backups never appear here until activated.
  */
-import type { DayCode } from '../core/meetings';
+import { lazy, Suspense, useState } from 'react';
+import type { DayCode, Meeting } from '../core/meetings';
 import { formatMinutes, scheduleConflicts } from '../core/meetings';
 import type { SectionRecord } from '../core/sections';
 import { toSectionTimes } from '../core/sections';
+import { COURSE_PALETTE } from '../core/wallpaper';
 import { sectionColor } from './common';
 
 const DAYS: Array<[DayCode, string]> = [
@@ -17,6 +19,51 @@ const DAYS: Array<[DayCode, string]> = [
     ['F', 'Fri'],
 ];
 const HOUR_PX = 64;
+// UTRP's popup (and its styles) load only when a class is opened
+const CoursePopup = lazy(() => import('./CoursePopup'));
+
+/** One color per class: a saved color shared with an earlier, different class falls back to the palette. */
+function distinctColors(sections: SectionRecord[]): Map<number, string> {
+    const out = new Map<number, string>();
+    const used = new Set<string>();
+    let next = 0;
+    for (const [i, s] of sections.entries()) {
+        let color = sectionColor(s, i);
+        while (used.has(color.toLowerCase()) && next < COURSE_PALETTE.length * 2) {
+            color = COURSE_PALETTE[next % COURSE_PALETTE.length]!;
+            next++;
+        }
+        used.add(color.toLowerCase());
+        out.set(s.uniqueId, color);
+    }
+    return out;
+}
+
+/** Side-by-side lanes for blocks that overlap on the same day, so none hides another. */
+function lanes(blocks: Array<{ m: Meeting }>): Array<{ lane: number; of: number }> {
+    const order = blocks.map((b, i) => i).sort((a, b) => blocks[a]!.m.start - blocks[b]!.m.start);
+    const out: Array<{ lane: number; of: number }> = blocks.map(() => ({ lane: 0, of: 1 }));
+    let cluster: number[] = [];
+    let ends: number[] = [];
+    let clusterEnd = -1;
+    const close = () => {
+        for (const i of cluster) out[i]!.of = ends.length;
+        cluster = [];
+        ends = [];
+    };
+    for (const i of order) {
+        const { start, end } = blocks[i]!.m;
+        if (start >= clusterEnd) close();
+        let lane = ends.findIndex(e => e <= start);
+        if (lane < 0) lane = ends.push(end) - 1;
+        else ends[lane] = end;
+        out[i]!.lane = lane;
+        cluster.push(i);
+        clusterEnd = Math.max(clusterEnd, end);
+    }
+    close();
+    return out;
+}
 
 export function blockTitle(s: SectionRecord): string {
     const last = s.instructors[0]?.split(',')[0]?.trim();
@@ -44,10 +91,12 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
     const hours: number[] = [];
     for (let t = first; t <= last; t += 60) hours.push(t);
     const untimed = sections.filter(s => !s.meetings.length);
+    const colors = distinctColors(sections);
+    const [opened, setOpened] = useState<SectionRecord | null>(null);
 
     return (
         <div className='card' style={{ padding: '14px 16px 8px' }}>
-            <div className='week' role='img' aria-label='Weekly calendar of active classes'>
+            <section className='week' aria-label='Weekly calendar of active classes'>
                 <div>
                     <div className='dayhead'>&nbsp;</div>
                     <div style={{ position: 'relative', height }}>
@@ -78,46 +127,62 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                                     }}
                                 />
                             ))}
-                            {sections.flatMap((s, i) =>
-                                s.meetings
-                                    .filter(m => m.days.includes(day))
-                                    .map(m => (
-                                        <div
+                            {(() => {
+                                const blocks = sections.flatMap(s =>
+                                    s.meetings.filter(m => m.days.includes(day)).map(m => ({ s, m }))
+                                );
+                                const lane = lanes(blocks);
+                                return blocks.map(({ s, m }, i) => {
+                                    const { lane: at, of } = lane[i]!;
+                                    return (
+                                        <button
+                                            type='button'
                                             key={`${s.uniqueId}-${m.days.join('')}-${m.start}`}
                                             className={`week-block ${conflicted.has(s.uniqueId) ? 'conflict' : ''}`}
                                             style={{
                                                 top: (m.start - first) * px + 1,
                                                 height: Math.max(22, (m.end - m.start) * px - 2),
-                                                background: sectionColor(s, i),
+                                                left: `calc(${(at / of) * 100}% + 3px)`,
+                                                width: `calc(${100 / of}% - 6px)`,
+                                                background: colors.get(s.uniqueId),
                                             }}
-                                            title={`${blockTitle(s)} (${s.uniqueId}) ${formatMinutes(m.start)} – ${formatMinutes(m.end)} ${m.location ?? ''}`}
+                                            title={`${blockTitle(s)} (${s.uniqueId}) ${formatMinutes(m.start)} – ${formatMinutes(m.end)} ${m.location ?? ''}${conflicted.has(s.uniqueId) ? ' · time conflict' : ''}`}
+                                            onClick={() => setOpened(s)}
                                         >
                                             <b>{blockTitle(s)}</b>
                                             <div>
                                                 {formatMinutes(m.start)} – {formatMinutes(m.end)}
                                             </div>
                                             {m.location && m.location !== 'WB' && <div>{m.location}</div>}
-                                        </div>
-                                    ))
-                            )}
+                                        </button>
+                                    );
+                                });
+                            })()}
                         </div>
                     </div>
                 ))}
-            </div>
+            </section>
             <div className='async-row'>
                 <span className='label'>Async / Other</span>
                 {untimed.length === 0 && <span className='small muted'>None</span>}
                 {untimed.map(s => (
-                    <span
+                    <button
+                        type='button'
                         key={s.uniqueId}
                         className='course-pill'
-                        style={{ background: sectionColor(s, sections.indexOf(s)) }}
+                        style={{ background: colors.get(s.uniqueId) }}
                         title={s.modality === 'async-online' ? 'Asynchronous online' : 'Meeting times not listed'}
+                        onClick={() => setOpened(s)}
                     >
                         {blockTitle(s)}
-                    </span>
+                    </button>
                 ))}
             </div>
+            {opened && (
+                <Suspense fallback={null}>
+                    <CoursePopup section={opened} onClosed={() => setOpened(null)} />
+                </Suspense>
+            )}
         </div>
     );
 }

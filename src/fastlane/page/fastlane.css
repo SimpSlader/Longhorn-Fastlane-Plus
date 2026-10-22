@@ -670,8 +670,10 @@ table.list td {
 }
 .week-block {
     position: absolute;
-    left: 3px;
-    right: 3px;
+    border: 0;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
     border-radius: var(--r-block);
     padding: 6px 9px;
     font-size: 13px;
@@ -1870,4 +1872,10 @@ ul.plain {
 }
 .compare-course .class-card {
     margin-bottom: 8px;
+}
+
+button.course-pill {
+    border: 0;
+    font: inherit;
+    cursor: pointer;
 }

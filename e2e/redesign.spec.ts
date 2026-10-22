@@ -64,7 +64,7 @@ test('My schedule shows the week at once and switches between saved schedules, e
     await expect(page.locator('#setupStatus')).toContainText('Created');
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#home`);
     await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'My schedule' }).click();
-    await expect(page.getByRole('img', { name: 'Weekly calendar of active classes' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Weekly calendar of active classes' })).toBeVisible();
     const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
     const switcher = page.getByRole('group', { name: 'Saved schedule scenarios' });
     await expect(switcher.getByRole('button')).toHaveCount(before.length);
@@ -76,12 +76,42 @@ test('My schedule shows the week at once and switches between saved schedules, e
     await expect(switcher.getByRole('button', { name: /Empty draft/ })).toBeVisible();
     await switcher.getByRole('button', { name: /Empty draft/ }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Empty draft');
-    await expect(page.getByRole('img', { name: 'Weekly calendar of active classes' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Weekly calendar of active classes' })).toBeVisible();
     await expect(page.getByText(/No classes in this draft yet/)).toBeVisible();
     const demoName = before.find((s: { courses: unknown[] }) => s.courses.length > 0).name as string;
     await switcher.getByRole('button', { name: new RegExp(demoName.replace(/[()]/g, '\\$&')) }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(demoName);
     await expect(page.locator('.week .block, .week [class*="block"]').first()).toBeVisible();
+
+    // every class has its own color, and clicking a block opens UTRP's course popup with grades
+    const blocks = page.locator('.week .week-block');
+    const colorByClass = new Map<string, string>();
+    for (const b of await blocks.all()) {
+        const name = ((await b.locator('b').textContent()) ?? '').trim();
+        colorByClass.set(name, await b.evaluate(el => getComputedStyle(el).backgroundColor));
+    }
+    expect(new Set(colorByClass.values()).size).toBe(colorByClass.size);
+    const pageBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await blocks.first().click();
+    const popup = page.getByRole('dialog');
+    await expect(popup.getByRole('button', { name: 'RateMyProf' })).toBeVisible();
+    await expect(popup.getByText('Grade Distribution for')).toBeVisible();
+    // wait for the fade-in to finish so the screenshot shows the settled popup
+    await expect
+        .poll(() =>
+            popup.getByRole('button', { name: 'RateMyProf' }).evaluate(el => {
+                let o = 1;
+                for (let n: Element | null = el; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+                return o;
+            })
+        )
+        .toBe(1);
+    await page.screenshot({ path: 'test-results/redesign/course-popup.png' });
+    await page.keyboard.press('Escape');
+    await expect(popup.getByRole('button', { name: 'RateMyProf' })).toBeHidden();
+    // UTRP's styles stay inside the popup's shadow root
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(pageBg);
+    await page.screenshot({ path: 'test-results/redesign/schedule-colors.png' });
 
     // existing schedules are untouched by browsing and switching
     const after = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
@@ -195,6 +225,14 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
     await cards.first().getByRole('button', { name: 'Add to my schedule' }).click();
     await expect(cards.first().getByRole('button', { name: 'Added to schedule' })).toBeVisible();
+    const withAdded = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
+    const grown = withAdded.find(
+        (s: { id: string; courses: unknown[] }) =>
+            s.courses.length > (before.find((b: { id: string }) => b.id === s.id)?.courses.length ?? 0)
+    ) as { courses: Array<{ colors?: { primaryColor: string } }> };
+    const colorsNow = grown.courses.map(c => c.colors?.primaryColor);
+    expect(colorsNow.at(-1)).toBeTruthy();
+    expect(colorsNow.slice(0, -1)).not.toContain(colorsNow.at(-1));
     const draft = page.getByRole('button', { name: 'Create draft schedule' });
     if (await draft.isVisible()) {
         await draft.click();
