@@ -1,6 +1,7 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
+import { subjectForCode } from '../data/subjects';
 import { normalizeCourseCode } from '../core/requirements';
 import { type SectionRecord, semesterKey } from '../core/sections';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
@@ -29,7 +30,7 @@ const department = (code: string) =>
         .toUpperCase();
 
 /** Spread a limited request across actual departments, rather than sending only the first UGS rows. */
-function diverseCandidates(sections: SectionRecord[], wantedSemester: string, taken: Set<string>) {
+function diverseCandidates(sections: SectionRecord[], wantedSemester: string, taken: Set<string>, selectedSubject: string) {
     const groups = new Map<string, SectionRecord[]>();
     const newest = [...sections].sort((a, b) => b.capturedAt - a.capturedAt);
     for (const section of newest) {
@@ -37,6 +38,7 @@ function diverseCandidates(sections: SectionRecord[], wantedSemester: string, ta
         if (wantedSemester && semesterKey(section.semester) !== wantedSemester) continue;
         if (taken.has(normalizeCourseCode(section.courseCode))) continue;
         const subject = department(section.courseCode);
+        if (selectedSubject && subject !== selectedSubject) continue;
         const group = groups.get(subject) ?? [];
         if (group.length < 8) group.push(section);
         groups.set(subject, group);
@@ -52,7 +54,7 @@ function diverseCandidates(sections: SectionRecord[], wantedSemester: string, ta
     return selected;
 }
 
-export default function AiRecommendations() {
+export default function AiRecommendations({ subject = '' }: { subject?: string }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit);
     const settings = FastlaneSettingsStore.useStore(s => s);
     const schedule = useActiveSchedule();
@@ -93,8 +95,8 @@ export default function AiRecommendations() {
     );
 
     const candidates = useMemo(
-        () => diverseCandidates(catalog, settings.targetSemester ?? '', taken),
-        [catalog, settings.targetSemester, taken]
+        () => diverseCandidates(catalog, settings.targetSemester ?? '', taken, subject),
+        [catalog, settings.targetSemester, taken, subject]
     );
     const grades = useGradeStats(candidates, 'A-');
     const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
@@ -110,7 +112,7 @@ export default function AiRecommendations() {
         }
         if (!candidates.length) {
             setError(
-                'No verified sections are cached for your filters. Browse the official UT course schedule, then try again.'
+                'No verified sections are cached for the selected subject and semester. AI cannot suggest uncached classes. Populate the UT semester course dataset, then try again.'
             );
             return;
         }
@@ -213,12 +215,21 @@ export default function AiRecommendations() {
             {expanded && (
                 <div className='ai-advisor-body'>
                     <p className='small muted'>
-                        Local catalog: {catalog.length} sections, {coveredSubjects.length} subjects.
+                        AI input: {candidates.length} verified sections from {coveredSubjects.length} subjects.
+                        {subject ? ` Subject filter: ${subjectForCode(subject)?.name ?? subject} (${subject}).` : ''}
+                        Local cache total: {catalog.length} sections.
                         {coveredSubjects.length > 0 && ` Includes ${coveredSubjects.slice(0, 10).join(', ')}.`}
                     </p>
                     {loadingCatalog ? <p className='small muted'>Checking saved UT listings…</p> : null}
+                    {!loadingCatalog && subject && candidates.length === 0 && (
+                        <p role='status' className='notice warn'>
+                            No {subjectForCode(subject)?.name ?? subject} sections are available in Fastlane's saved data.
+                            AI cannot recommend UGS or another subject when {subject} is selected.
+                            Import the semester's complete course offerings to enable this subject.
+                        </p>
+                    )}
                     {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
-                    {coveredSubjects.length < 3 && (
+                    {!subject && coveredSubjects.length < 3 && (
                         <div className='notice small'>
                             Your saved catalog covers too few subjects. AI cannot discover missing UT sections.
                             <a
