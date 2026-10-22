@@ -66,9 +66,6 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
                         <button type='button' className='btn primary' onClick={() => go('audit')}>
                             Import my IDA
                         </button>
-                        <button type='button' className='btn' onClick={() => go('finder')}>
-                            Browse classes instead
-                        </button>
                     </div>
                     <p className='small muted'>
                         IDA information is stored locally. You'll review anything the importer isn't certain about.
@@ -81,23 +78,25 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
                             <span className='eyebrow'>FROM YOUR IMPORTED IDA</span>
                             <h2>{audit.program || 'Degree progress'}</h2>
                         </div>
-                        <button type='button' className='btn sm' onClick={() => go('audit')}>
-                            Review audit →
-                        </button>
                     </div>
                     <div className='progress-summary'>
                         <div className='progress-big'>
                             {audit.officialProgress?.percent !== undefined ? `${audit.officialProgress.percent}%` : '—'}
                         </div>
                         <div className='progress-info'>
-                            <b>{audit.officialProgress ? 'Degree completion shown on your IDA' : 'Official IDA degree completion'}</b>
+                            <b>
+                                {audit.officialProgress
+                                    ? 'Degree completion shown on your IDA'
+                                    : 'Official IDA degree completion'}
+                            </b>
                             <p className='small muted'>
                                 {audit.officialProgress
                                     ? 'This figure was read from an explicitly labeled degree-completion field in the imported audit.'
                                     : 'Not detected in the imported audit. Open your IDA to see the official figure.'}
                             </p>
                             <span className='small muted'>
-                                {completed} of {requirements.length} separately tracked audit checks marked complete · {remaining} unfinished
+                                {completed} of {requirements.length} separately tracked audit checks marked complete ·{' '}
+                                {remaining} unfinished
                             </span>
                         </div>
                     </div>
@@ -111,23 +110,41 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
                         <span>{audit.transfer.pending.length} pending transfer/exam credits</span>
                     </div>
                     <p className='small muted'>
-                        Requirements are parsed from your IDA, not an official graduation percentage. Confirm your
-                        degree progress with UT.
+                        {audit.officialProgress
+                            ? 'The percentage is the completion figure printed on your IDA. Requirement counts are separate checks parsed from it. Confirm progress with UT.'
+                            : 'Requirement counts are separate checks parsed from your IDA, not a completion percentage. Confirm progress with UT.'}
                     </p>
                 </section>
             )}
             <div className='simple-cards'>
                 <button type='button' className='simple-action card' onClick={() => go(audit ? 'finder' : 'audit')}>
                     <span className='action-icon'>01</span>
-                    <h3>{audit ? 'Find recommended classes' : 'Import your degree audit'}</h3>
-                    <p>Ask the planner for classes that count toward your degree and match your preferred days and times.</p>
-                    <span className='action-arrow'>Open AI planner →</span>
+                    <h3>Find classes</h3>
+                    <p>
+                        Ask the planner for classes that count toward your degree and match your preferred days and
+                        times.
+                    </p>
+                    <span className='action-arrow'>{audit ? 'Open AI planner →' : 'Import your IDA first →'}</span>
                 </button>
                 <button type='button' className='simple-action card' onClick={() => go('plan')}>
                     <span className='action-icon'>02</span>
                     <h3>My schedule</h3>
-                    <p>{active?.courses.length ? `${active.courses.length} classes in ${active.name}.` : 'View your weekly calendar and saved mock schedules.'}</p>
+                    <p>
+                        {active?.courses.length
+                            ? `${active.courses.length} classes in ${active.name}.`
+                            : 'View your weekly calendar and saved mock schedules.'}
+                    </p>
                     <span className='action-arrow'>View calendar →</span>
+                </button>
+                <button type='button' className='simple-action card' onClick={() => go('audit')}>
+                    <span className='action-icon'>03</span>
+                    <h3>Degree progress</h3>
+                    <p>
+                        {audit
+                            ? `${remaining} requirements remaining${audit.officialProgress ? ` · ${audit.officialProgress.percent}% complete on your IDA` : ''}.`
+                            : 'Import your IDA to see what is left for your degree.'}
+                    </p>
+                    <span className='action-arrow'>{audit ? 'Review requirements →' : 'Start with your audit →'}</span>
                 </button>
             </div>
         </div>

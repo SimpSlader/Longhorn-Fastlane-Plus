@@ -46,7 +46,7 @@ test('IDA import is opt-in, local, and excludes page identity', async ({ context
     expect(saved.program).toBeUndefined();
     expect(outbound).toEqual([]);
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-    await expect(page.getByRole('heading', { name: 'Degree audit' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Degree progress' })).toBeVisible();
 });
 test('minimal planner navigation keeps saved schedules accessible', async ({ context, extensionId, sw }) => {
     const page = await demo(context, extensionId);
@@ -82,6 +82,7 @@ test('IDA-based home and simple course filters work without hidden advanced scre
     await expect(page.getByRole('button', { name: 'Import my IDA' })).toBeVisible();
 
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByText('Browse courses and adjust advanced filters').click();
     await page.getByRole('button', { name: 'Browse all classes' }).click();
     await page.getByRole('combobox', { name: 'Semester' }).selectOption('Spring 2027');
     await expect(page.locator('.planner-results article').first()).toBeVisible();
@@ -96,7 +97,7 @@ test('IDA-based home and simple course filters work without hidden advanced scre
     await expect(page.getByText('More filters')).toBeVisible();
 
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-    await expect(page.getByRole('heading', { name: 'Degree audit' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Degree progress' })).toBeVisible();
     await expect(page.getByText(/Drop your audit here/)).toBeVisible();
     expect(errors).toEqual([]);
 });

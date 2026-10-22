@@ -20,7 +20,7 @@ import {
 } from '../storage/stores';
 import AiRecommendations from './AiRecommendations';
 import AuditTab from './AuditTab';
-import { InventoryPanel, InventoryProvider } from './CourseInventory';
+import { InventoryPanel, InventoryProvider, useInventory } from './CourseInventory';
 import { useHashRoute, useOnline } from './hooks';
 import { FinderTab, HomeTab } from './PlanningTools';
 import PlanTab from './PlanTab';
@@ -36,32 +36,63 @@ const TABS = [
 ] as const;
 
 function FindClasses({ initialRequirement }: { initialRequirement?: string | null }) {
-    const audit = FastlaneAuditStore.useStore(s => s.audit);
-    const [subject, setSubject] = useState('');
     return (
         <InventoryProvider>
-            <div className='stack'>
-                <div className='simple-heading'>
-                    <div>
-                        <span className='eyebrow'>YOUR COURSE PLANNER</span>
-                        <h1>Find classes</h1>
-                        <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
-                    </div>
-                </div>
-                <AiRecommendations subject={subject} />
-                <details className='card planner-advanced'>
-                    <summary>Browse courses and adjust advanced filters</summary>
-                    <div className='stack'>
-                        <InventoryPanel />
-                        {audit ? (
-                            <RecommendTab initialRequirement={initialRequirement} embedded subject={subject} onSubjectChange={setSubject} />
-                        ) : (
-                            <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
-                        )}
-                    </div>
-                </details>
-            </div>
+            <FindClassesBody initialRequirement={initialRequirement} />
         </InventoryProvider>
+    );
+}
+
+function FindClassesBody({ initialRequirement }: { initialRequirement?: string | null }) {
+    const audit = FastlaneAuditStore.useStore(s => s.audit);
+    const inventory = useInventory();
+    const [subject, setSubject] = useState('');
+    // degree view needs either an IDA or a requirement link (e.g. "Find classes for Core 050")
+    const canDegree = Boolean(audit || initialRequirement);
+    const [view, setView] = useState<'degree' | 'all'>(canDegree ? 'degree' : 'all');
+    const needsCourseList = inventory.loaded && inventory.metas.length === 0;
+    return (
+        <div className='stack'>
+            <div className='simple-heading'>
+                <div>
+                    <span className='eyebrow'>YOUR COURSE PLANNER</span>
+                    <h1>Find classes</h1>
+                    <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
+                </div>
+            </div>
+            {/* the planner needs UT's course list; keep the import in view until one exists */}
+            {needsCourseList && <InventoryPanel />}
+            <AiRecommendations subject={subject} />
+            <details className='card planner-advanced' open={Boolean(initialRequirement) || undefined}>
+                <summary>Browse courses and adjust advanced filters</summary>
+                <div className='stack'>
+                    {!needsCourseList && <InventoryPanel />}
+                    <fieldset className='mode-toggle' aria-label='Advanced class view'>
+                        <button
+                            type='button'
+                            aria-pressed={view === 'degree'}
+                            disabled={!canDegree}
+                            onClick={() => setView('degree')}
+                        >
+                            For my degree
+                        </button>
+                        <button type='button' aria-pressed={view === 'all'} onClick={() => setView('all')}>
+                            Browse all classes
+                        </button>
+                    </fieldset>
+                    {view === 'degree' && canDegree ? (
+                        <RecommendTab
+                            initialRequirement={initialRequirement}
+                            embedded
+                            subject={subject}
+                            onSubjectChange={setSubject}
+                        />
+                    ) : (
+                        <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
+                    )}
+                </div>
+            </details>
+        </div>
     );
 }
 
@@ -217,9 +248,7 @@ function Workspace() {
             </aside>
             <main className='main'>
                 {current === 'home' && <HomeTab go={go} />}
-                {current === 'finder' && (
-                    <FindClasses initialRequirement={params.get('req')} />
-                )}
+                {current === 'finder' && <FindClasses initialRequirement={params.get('req')} />}
                 {current === 'plan' && <PlanTab onNavigate={go} />}
                 {current === 'audit' && <AuditTab onNavigate={go} />}
                 {current === 'register' && <RegisterTab />}

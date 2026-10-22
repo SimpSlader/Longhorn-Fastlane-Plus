@@ -191,3 +191,47 @@ describe('Fastlane recommend API planning facts', () => {
         expect(content).not.toContain('"evidence":"live"');
     });
 });
+
+describe('Fastlane recommend API conversation preferences', () => {
+    it('accepts a natural-language request, history and structured preferences without treating ACC as credit', async () => {
+        process.env.GROQ_API_KEY = 'test-key';
+        process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';
+        const fakeFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: JSON.stringify({ summary: 'ok', recommendations: [] }) } }],
+            }),
+        });
+        vi.stubGlobal('fetch', fakeFetch);
+        const { req, res } = request(
+            {
+                ...body,
+                planningRequest: 'Also only one async class please.',
+                chatHistory: [{ request: "No MWF, easy professors. I'm taking Macro through ACC.", summary: 'Noted.' }],
+                preferences: {
+                    ...body.preferences,
+                    avoidDays: ['M', 'W', 'F', 'XX'],
+                    asyncCount: { min: 1, max: 9 },
+                    easyGrades: true,
+                    plannedElsewhere: [{ code: 'ECO 304L', where: 'ACC' }],
+                    excludedCourses: ['GOV 310L'],
+                },
+            },
+            '198.51.100.130'
+        );
+        await handler(req, res);
+        expect(res.statusCode).toBe(200);
+        const content = JSON.parse(fakeFetch.mock.calls[0][1].body)
+            .messages.map(m => m.content)
+            .join('\n');
+        expect(content).toContain('Also only one async class please.');
+        expect(content).toContain("I'm taking Macro through ACC.");
+        expect(content).toContain('"avoidDays":["M","W","F"]');
+        expect(content).toContain('"asyncCount":{"min":1,"max":6}');
+        expect(content).toContain('"plannedElsewhere":[{"code":"ECO 304L","where":"ACC"}]');
+        expect(content).toMatch(/NEVER mark transfer credit as awarded/);
+        expect(JSON.stringify(JSON.parse(content.slice(content.indexOf('{')))?.completed ?? [])).not.toContain(
+            'ECO 304L'
+        );
+    });
+});

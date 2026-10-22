@@ -50,6 +50,8 @@ test('every subject in the official course list is browsable without visiting UT
         { rows: records, info: meta }
     );
     await page.reload();
+    // with a course list imported, the panel moves into the advanced section below the AI chat
+    await page.getByText('Browse courses and adjust advanced filters').click();
     await expect(page.getByText(`${meta.sections.toLocaleString()} sections in`)).toBeVisible();
     await expect(page.getByText(/course list as of Oct 1, 2026/)).toBeVisible();
 
@@ -91,6 +93,7 @@ test('imports the Registrar PDF chosen by the student (opt-in: FASTLANE_OFFERING
     await page.locator('.inventory-panel input[type=file]').setInputFiles(process.env.FASTLANE_OFFERINGS_PDF as string);
     await expect(page.getByText(/^Imported Spring 2027: [\d,]+ sections/)).toBeVisible({ timeout: 300_000 });
     console.info(`import took ${Math.round((Date.now() - started) / 1000)} s`);
+    await page.getByText('Browse courses and adjust advanced filters').click();
     await page.getByRole('button', { name: 'Browse all classes' }).click();
     await page.getByRole('combobox', { name: 'Semester' }).selectOption('Spring 2027');
     await page.getByRole('combobox', { name: 'Subject' }).selectOption('HIS');

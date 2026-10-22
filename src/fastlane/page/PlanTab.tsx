@@ -5,6 +5,7 @@
  */
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
+import CalendarDotsIcon from '~icons/ph/calendar-dots';
 import ExportIcon from '~icons/ph/export';
 import PlusCircleIcon from '~icons/ph/plus-circle';
 import { formatMeeting } from '../core/meetings';
@@ -347,6 +348,9 @@ export default function PlanTab({
                         </select>
                     )}
                     <span className='sep' />
+                    <a className='tool' href={chrome.runtime.getURL('calendar.html')} target='_blank' rel='noopener'>
+                        <CalendarDotsIcon /> Open full calendar
+                    </a>
                     <a
                         className='tool'
                         href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
@@ -373,11 +377,15 @@ export default function PlanTab({
                 <div className='row between'>
                     <div>
                         <h2>Saved mock schedules</h2>
-                        <p className='small muted'>Select a schedule to see its calendar here. Your other drafts remain saved.</p>
+                        <p className='small muted'>
+                            Select a schedule to see its calendar here. Your other drafts remain saved.
+                        </p>
                     </div>
-                    <button type='button' className='btn sm' onClick={() => onNavigate('finder')}>Find classes</button>
+                    <button type='button' className='btn sm' onClick={() => onNavigate('finder')}>
+                        Find classes
+                    </button>
                 </div>
-                <div className='saved-schedules' role='group' aria-label='Saved schedule scenarios'>
+                <fieldset className='saved-schedules' aria-label='Saved schedule scenarios'>
                     {schedules.map(s => (
                         <button
                             type='button'
@@ -389,7 +397,7 @@ export default function PlanTab({
                             <span>{s.courses.length} classes</span>
                         </button>
                     ))}
-                </div>
+                </fieldset>
             </section>
             <WeekGrid sections={active} />
             {conflicts.length === 0 && untimed.some(s => !s.scheduleComplete && s.modality !== 'async-online') && (
@@ -412,8 +420,8 @@ export default function PlanTab({
             )}
             {active.length === 0 ? (
                 <div className='notice small'>
-                    No classes in this draft yet. Use Find classes to add sections, or select another saved
-                    schedule above. The weekly calendar stays visible even when a draft is empty.
+                    No classes in this draft yet. Use Find classes to add sections, or select another saved schedule
+                    above. The weekly calendar stays visible even when a draft is empty.
                 </div>
             ) : (
                 <>

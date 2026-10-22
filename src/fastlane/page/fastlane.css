@@ -1489,7 +1489,6 @@ fieldset.day-chips {
     }
 }
 
-
 /* Chat-first planner and streamlined degree/schedule navigation */
 .side-theme {
     display: flex;
@@ -1532,6 +1531,20 @@ fieldset.day-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+.saved-schedules button {
+    color: var(--text);
+}
+.understood {
+    margin: 0;
+    padding: 10px 14px 10px 30px;
+    border-radius: var(--r-btn);
+    background: var(--accent-soft);
+    color: var(--text);
 }
 .saved-schedules button {
     display: flex;

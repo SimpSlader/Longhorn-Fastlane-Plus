@@ -402,13 +402,16 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await page
             .locator('input[type=file]')
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
-        await expect(page.getByText('requirements complete', { exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Needs review/ })).toBeVisible();
-        await page.getByRole('button', { name: /^All \(/ }).click();
+        // UT's own completion number (68%), not the expected-pace marker or a count of checks
+        const official = page.locator('.metric').filter({ hasText: 'Official IDA degree completion' });
+        await expect(official).toContainText('68%');
+        await expect(page.getByText('Parsed requirement checks (unweighted)')).toBeVisible();
+        // groups are collapsed; remaining requirements are listed first inside each group
+        await page.locator('summary').filter({ hasText: 'Core curriculum' }).click();
         await expect(page.getByText('CORE (090)').first()).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/4-degree-audit-review.png`, fullPage: false });
         await page.reload();
-        await expect(page.getByText('requirements complete', { exact: true })).toBeVisible(); // persisted
+        await expect(official).toContainText('68%'); // persisted
     });
 
     test('recommends only cached, requirement-matching sections with honest availability', async ({
@@ -418,6 +421,11 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         const page = await context.newPage();
         await openDemo(page, extensionId);
         await page.waitForTimeout(2500); // listing is cached in the background (debounced)
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         const recs = page.locator('.rec');
         await expect(recs.first()).toBeVisible();
@@ -472,6 +480,9 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await expect(nav.getByText('History & undo')).toHaveCount(0);
 
         await nav.getByRole('button', { name: 'Find classes' }).click();
+        // the AI chat is the default; advanced browsing is one click away
+        await expect(page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' })).toBeVisible();
+        await page.getByText('Browse courses and adjust advanced filters').click();
         await page.getByRole('button', { name: 'Browse all classes' }).click();
         await expect(page.getByRole('combobox', { name: 'Subject' })).toBeVisible();
         await expect(page.getByRole('group', { name: 'Allowed class days' })).toBeVisible();
@@ -492,6 +503,11 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await page.reload();
         await expect(rowFor(page, '23095').locator('[data-fastlane="grade"]')).toContainText('%');
         await expect(rowFor(page, '20001').locator('[data-fastlane="conflict"]')).toBeVisible();
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         // (Playwright's offline emulation does not change navigator.onLine on extension pages, so the
         // offline badge is covered by manual testing; here we verify the features work without network.)
@@ -577,6 +593,7 @@ test.describe('AI access remembered after first successful request', () => {
         await page
             .locator('input[type=file]')
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page.getByText('Optional AI audit review').click();
         await page.getByRole('button', { name: 'Review with AI' }).click();
         await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
         await page.getByRole('checkbox').last().check();
@@ -589,11 +606,9 @@ test.describe('AI access remembered after first successful request', () => {
         expect(saved).toBe('test-invite-code-local-only');
 
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
-        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
         await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
         await page.reload();
-        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
         await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
         await page.getByRole('button', { name: 'Forget code' }).click();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toBeVisible();
