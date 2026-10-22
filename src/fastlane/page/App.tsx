@@ -19,6 +19,7 @@ import {
 } from '../storage/stores';
 import AiRecommendations from './AiRecommendations';
 import AuditTab from './AuditTab';
+import { InventoryPanel, InventoryProvider } from './CourseInventory';
 import { useHashRoute, useOnline } from './hooks';
 import { FinderTab, HomeTab } from './PlanningTools';
 import PlanTab from './PlanTab';
@@ -44,29 +45,37 @@ function FindClasses({
     const [mode, setMode] = useState<'recommended' | 'all'>(audit || forceRecommended ? 'recommended' : 'all');
     const [subject, setSubject] = useState('');
     return (
-        <div className='stack'>
-            <div className='simple-heading'>
-                <div>
-                    <span className='eyebrow'>YOUR COURSE SEARCH</span>
-                    <h1>Find classes</h1>
-                    <p>Find sections that fit your degree, week and grade preferences.</p>
+        <InventoryProvider>
+            <div className='stack'>
+                <div className='simple-heading'>
+                    <div>
+                        <span className='eyebrow'>YOUR COURSE SEARCH</span>
+                        <h1>Find classes</h1>
+                        <p>Find sections that fit your degree, week and grade preferences.</p>
+                    </div>
                 </div>
+                <InventoryPanel />
+                <AiRecommendations subject={subject} />
+                <fieldset className='mode-toggle' aria-label='Class finder view'>
+                    <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
+                        For my degree
+                    </button>
+                    <button type='button' aria-pressed={mode === 'all'} onClick={() => setMode('all')}>
+                        Browse all classes
+                    </button>
+                </fieldset>
+                {mode === 'recommended' ? (
+                    <RecommendTab
+                        initialRequirement={initialRequirement}
+                        embedded
+                        subject={subject}
+                        onSubjectChange={setSubject}
+                    />
+                ) : (
+                    <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
+                )}
             </div>
-            <AiRecommendations subject={subject} />
-            <fieldset className='mode-toggle' aria-label='Class finder view'>
-                <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
-                    For my degree
-                </button>
-                <button type='button' aria-pressed={mode === 'all'} onClick={() => setMode('all')}>
-                    Browse all classes
-                </button>
-            </fieldset>
-            {mode === 'recommended' ? (
-                <RecommendTab initialRequirement={initialRequirement} embedded subject={subject} onSubjectChange={setSubject} />
-            ) : (
-                <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
-            )}
-        </div>
+        </InventoryProvider>
     );
 }
 

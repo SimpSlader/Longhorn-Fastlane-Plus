@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_FILTERS, matchesFilters } from '../core/planning';
 import { availableSubjects, subjectForCode, UT_SUBJECTS } from '../data/subjects';
-import { matchesFilters, DEFAULT_FILTERS } from '../core/planning';
 import { sectionFixture } from './factories';
 
 describe('official UT A–Z subject selection', () => {

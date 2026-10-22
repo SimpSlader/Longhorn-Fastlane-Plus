@@ -10,12 +10,13 @@ import { addItem } from '../core/queue';
 import type { Recommendation } from '../core/recommend';
 import { CORE_COMPONENTS, coreTag, describeRequirement } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
-import { formatObservedTime, formatUnique, semesterKey } from '../core/sections';
-import { availableSubjects, utSubjectScheduleUrl } from '../data/subjects';
+import { formatObservedTime, formatUnique, semesterKey, subjectOf } from '../core/sections';
+import { utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap } from '../services/planningService';
 import { addBackupFor } from '../services/planService';
-import { buildRecommendations, loadCachedSections } from '../services/recommendationService';
+import { buildRecommendations } from '../services/recommendationService';
 import { FastlaneAuditStore, FastlanePlanStore, FastlaneQueueStore, FastlaneSettingsStore } from '../storage/stores';
+import { InventoryPanel, inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
 import { CopyButton, GradeChip, instructorsText, ModalityChip, PageHead, UniqueCode } from './common';
 import { useOnline } from './hooks';
 
@@ -40,7 +41,8 @@ export default function RecommendTab({
     const [selected, setSelected] = useState<string[]>(() => (initialRequirement ? [initialRequirement] : outstanding));
     const [gradeThreshold, setGradeThreshold] = useState<'A' | 'A-'>('A');
     const [results, setResults] = useState<Recommendation[] | null>(null);
-    const [cache, setCache] = useState<SectionRecord[]>([]);
+    const inventory = useInventory();
+    const cache = inventory.sections;
     const [message, setMessage] = useState<string | null>(null);
     const [internalSubject, setInternalSubject] = useState('');
     const selectedSubject = subject ?? internalSubject;
@@ -52,10 +54,6 @@ export default function RecommendTab({
     useEffect(() => {
         if (initialRequirement) setSelected([initialRequirement]);
     }, [initialRequirement]);
-
-    useEffect(() => {
-        void loadCachedSections(null).then(setCache);
-    }, []);
 
     const semesters = useMemo(
         () => [...new Set(cache.map(s => semesterKey(s.semester)))].filter(s => s !== 'unknown'),
@@ -80,6 +78,8 @@ export default function RecommendTab({
             queue,
             plan,
             limit: 100,
+            // subject first, so the ranking limit cannot crowd out the chosen subject
+            catalog: selectedSubject ? cache.filter(s => subjectOf(s.courseCode) === selectedSubject) : cache,
         }).then(r => {
             if (alive) setResults(r);
         });
@@ -96,16 +96,15 @@ export default function RecommendTab({
         audit,
         schedule?.updatedAt,
         schedule?.id,
-        cache.length,
+        cache,
+        selectedSubject,
     ]);
 
-    const departments = availableSubjects(
-        cache.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim())
-    );
+    const departments = inventorySubjects(inventory);
     const filteredResults =
         results?.filter(rec => {
             const s = rec.section;
-            if (selectedSubject && s.courseCode.replace(/\s+\d.*$/, '').trim() !== selectedSubject) return false;
+            if (selectedSubject && subjectOf(s.courseCode) !== selectedSubject) return false;
             if (
                 search &&
                 !`${s.courseCode} ${s.title} ${s.instructors.join(' ')}`.toLowerCase().includes(search.toLowerCase())
@@ -161,7 +160,7 @@ export default function RecommendTab({
             {!embedded && (
                 <PageHead
                     title='Recommended classes'
-                    subtitle='Real cached UT sections matched to unfinished requirements from your IDA.'
+                    subtitle='Real UT sections matched to unfinished requirements from your IDA.'
                 />
             )}
             <section className='card planner-glass compact-filters'>
@@ -173,7 +172,7 @@ export default function RecommendTab({
                         </p>
                     </div>
                     <span className='small muted'>
-                        {cache.length} cached sections · {online ? 'Online' : 'Offline'}
+                        {cache.length.toLocaleString()} UT sections · {online ? 'Online' : 'Offline'}
                         {newest ? ` · updated ${formatObservedTime(newest)}` : ''}
                     </span>
                 </div>
@@ -357,16 +356,23 @@ export default function RecommendTab({
             {results === null && <div className='muted'>Ranking options…</div>}
             {results !== null && filteredResults.length === 0 && selected.length > 0 && (
                 <div className='card'>
-                    <h3>{selectedSubject ? `No verified ${departments.find(d => d.code === selectedSubject)?.name ?? selectedSubject} sections in this local catalog` : 'No classes match these preferences'}</h3>
+                    <h3>
+                        {selectedSubject
+                            ? `No ${departments.find(d => d.code === selectedSubject)?.name ?? selectedSubject} sections match ${selected.map(describeRequirement).join(', ')}`
+                            : 'No classes match these preferences'}
+                    </h3>
                     <p className='muted small'>
-                        This planner currently holds only UT sections already imported or viewed. Choosing a subject does not load its course offerings. Browse that subject in the official UT schedule or import the complete semester dataset. Search for{' '}
-                        {selected.map(describeRequirement).join(', ')} once (for example, search by core component) —
-                        the listing is saved locally and recommendations work offline afterwards.
+                        {inventory.metas.length
+                            ? "Recommendations use UT's full course list for the semester plus sections you viewed on UT. Try another requirement, subject or semester."
+                            : "Import UT's course list at the top of this page to search every subject. Fastlane never invents sections."}
                         {selectedSubject && (
                             <>
                                 {' '}
-                                <a href={utSubjectScheduleUrl(settings.targetSemester ?? '', selectedSubject)}
-                                    target='_blank' rel='noopener noreferrer'>
+                                <a
+                                    href={utSubjectScheduleUrl(settings.targetSemester ?? '', selectedSubject)}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                >
                                     Open this subject's official UT listings
                                 </a>
                             </>
@@ -389,12 +395,8 @@ export default function RecommendTab({
                             <span>{rec.section.title}</span>
                             <ModalityChip modality={rec.section.modality} />
                             <GradeChip stat={rec.grade} />
-                            <span
-                                className={`chip ${rec.availability.tone === 'open' ? 'ok' : rec.availability.tone === 'closed' ? 'bad' : ''}`}
-                            >
-                                {rec.availability.text}
-                            </span>
                         </div>
+                        <SectionEvidence s={rec.section} />
                         <div className='small muted'>
                             {instructorsText(rec.section)} ·{' '}
                             {rec.section.meetings.length

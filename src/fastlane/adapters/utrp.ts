@@ -14,7 +14,7 @@ import type { Modality, ModalityResult } from '../core/modality';
 import { classifyModality } from '../core/modality';
 import { tagsForSection } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
-import { sectionLabel, toSectionTimes } from '../core/sections';
+import { OFFERINGS_COURSE_MARK, sectionLabel, toSectionTimes } from '../core/sections';
 import type { GradeDatasetInfo } from '../data/activeGradeDataset';
 import { getActiveGradeDataset } from '../data/activeGradeDataset';
 
@@ -84,8 +84,11 @@ export function sectionFromCourse(
     const meetings = fromRow?.meetings ?? meetingsFromCourse(course);
     const modality = fromRow?.modality.modality ?? modalityFromCourse(course, meetings);
     const code = courseCode(course);
+    // a course built from the Registrar's offerings document keeps that provenance after being scheduled
+    const listedOnly = (course as unknown as Record<string, unknown>)[OFFERINGS_COURSE_MARK] === 'ut-offerings';
     return {
         uniqueId: course.uniqueId,
+        ...(listedOnly ? { source: 'ut-offerings' as const } : {}),
         courseCode: code,
         title: course.courseName,
         semester: course.semester,
