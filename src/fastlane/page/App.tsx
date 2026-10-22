@@ -42,6 +42,7 @@ function FindClasses({
 }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit);
     const [mode, setMode] = useState<'recommended' | 'all'>(audit || forceRecommended ? 'recommended' : 'all');
+    const [subject, setSubject] = useState('');
     return (
         <div className='stack'>
             <div className='simple-heading'>
@@ -51,7 +52,7 @@ function FindClasses({
                     <p>Find sections that fit your degree, week and grade preferences.</p>
                 </div>
             </div>
-            <AiRecommendations />
+            <AiRecommendations subject={subject} />
             <fieldset className='mode-toggle' aria-label='Class finder view'>
                 <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
                     For my degree
@@ -61,9 +62,9 @@ function FindClasses({
                 </button>
             </fieldset>
             {mode === 'recommended' ? (
-                <RecommendTab initialRequirement={initialRequirement} embedded />
+                <RecommendTab initialRequirement={initialRequirement} embedded subject={subject} onSubjectChange={setSubject} />
             ) : (
-                <FinderTab embedded />
+                <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
             )}
         </div>
     );
