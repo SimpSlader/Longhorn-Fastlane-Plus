@@ -118,6 +118,36 @@ describe('Fastlane recommend API input handling', () => {
     });
 });
 
+describe('Fastlane chat-request sanitization', () => {
+    it('forwards only bounded student preferences and recent chat history', async () => {
+        process.env.GROQ_API_KEY = 'test-key';
+        process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';
+        const fakeFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: JSON.stringify({ summary: 'ok', recommendations: [] }) } }],
+            }),
+        });
+        vi.stubGlobal('fetch', fakeFetch);
+        const { req, res } = request({
+            ...body,
+            planningRequest: 'No classes on Monday, Wednesday or Friday. Macro planned through ACC.',
+            chatHistory: [{ request: 'Prefer async', summary: 'Prior plan' }],
+            preferences: { ...body.preferences, timeOfDay: 'afternoon', avoidDays: ['M', 'W', 'F', 'INVALID'] },
+            studentName: 'Do not send identifying metadata',
+        }, '198.51.100.125');
+        await handler(req, res);
+        expect(res.statusCode).toBe(200);
+        const sent = JSON.parse(fakeFetch.mock.calls[0][1].body);
+        const content = sent.messages.find(m => m.role === 'user').content;
+        expect(content).toContain('Macro planned through ACC');
+        expect(content).toContain('"avoidDays":["M","W","F"]');
+        expect(content).toContain('"timeOfDay":"afternoon"');
+        expect(content).not.toContain('INVALID');
+        expect(content).not.toContain('Do not send identifying metadata');
+    });
+});
+
 describe('Fastlane recommend API planning facts', () => {
     it('passes sanitized prerequisite, applicability and evidence facts to the model', async () => {
         process.env.GROQ_API_KEY = 'test-key';
