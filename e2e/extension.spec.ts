@@ -557,7 +557,6 @@ test.describe('UT course-schedule search form resilience', () => {
     });
 });
 
-
 test.describe('AI access remembered after first successful request', () => {
     test('saves beta code locally once, shares it between audit and scheduling, and supports forgetting', async ({
         context,
@@ -570,11 +569,11 @@ test.describe('AI access remembered after first successful request', () => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                headers: { 'Access-Control-Allow-Origin': 'chrome-extension://' + extensionId },
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
                 body: JSON.stringify({ summary: 'Reviewed supplied requirements.', suggestions: [] }),
             });
         });
-        await page.goto('chrome-extension://' + extensionId + '/fastlane.html#audit');
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
         await page.locator('input[type=file]').setInputFiles(
             resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html')
         );
@@ -589,7 +588,7 @@ test.describe('AI access remembered after first successful request', () => {
         );
         expect(saved).toBe('test-invite-code-local-only');
 
-        await page.goto('chrome-extension://' + extensionId + '/fastlane.html#finder');
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
         await page.getByRole('button', { name: 'Try AI recommendations' }).click();
         await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
