@@ -62,7 +62,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
-    const [summary, setSummary] = useState('');
     const [recommendations, setRecommendations] = useState<AiSelection[]>([]);
     const [savedId, setSavedId] = useState<number | null>(null);
     const [draftResult, setDraftResult] = useState('');
@@ -194,7 +193,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             if (!response.ok) throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            setSummary(payload.summary ?? '');
             setRecommendations((payload.recommendations ?? []).filter(r => candidateIndex.has(r.id)));
             setHistory(previous => [...previous, { request: request.trim(), summary: payload.summary ?? '' }].slice(-5));
             setLastRequest(request.trim());
