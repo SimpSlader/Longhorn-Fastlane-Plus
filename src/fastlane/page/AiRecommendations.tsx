@@ -1,7 +1,7 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { scheduleTimes } from '../adapters/utrp';
-import type { DayCode } from '../core/meetings';
+import { requestedDaysOff } from '../core/chatPreferences';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { finalizeAiCandidates, shortlistAiCandidates } from '../core/aiCandidates';
@@ -27,25 +27,6 @@ function aiFacts(c: AiCandidate | undefined) {
         conflict: c.conflict,
         evidence: isConfirmedSection(c.section) ? 'confirmed-on-ut' : 'registrar-listing',
     };
-}
-
-/** Only exclusion wording counts: mentioning Tuesday alone does not mean avoid Tuesday. */
-export function requestedDaysOff(request: string): DayCode[] {
-    const fragment = request.toLowerCase().match(
-        /(?:no\s+classes?(?:\s+on)?|avoid|no\s+class\s+on|not\s+on|free\s+on)\s*([^.;!?]{1,110})/
-    )?.[1] ?? '';
-    const days: Array<[DayCode, RegExp]> = [
-        ['M', /\bmonday\b|\bmondays\b|\bmon\b/],
-        ['T', /\btuesday\b|\btuesdays\b|\btue\b/],
-        ['W', /\bwednesday\b|\bwednesdays\b|\bwed\b/],
-        ['TH', /\bthursday\b|\bthursdays\b|\bthu\b|\bthurs\b/],
-        ['F', /\bfriday\b|\bfridays\b|\bfri\b/],
-        ['S', /\bsaturday\b|\bsaturdays\b|\bsat\b/],
-        ['SU', /\bsunday\b|\bsundays\b|\bsun\b/],
-    ];
-    const excluded = days.filter(([, pattern]) => pattern.test(fragment)).map(([day]) => day);
-    if (/\bmwf\b|\bm\s*\/\s*w\s*\/\s*f\b/.test(fragment)) return [...new Set([...excluded, ...(['M', 'W', 'F'] as DayCode[])])];
-    return excluded;
 }
 
 const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
