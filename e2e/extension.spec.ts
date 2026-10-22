@@ -515,3 +515,45 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         expect(Object.keys(local)).toContain('schedules'); // UTRP schedules kept unless "delete everything"
     });
 });
+
+
+test.describe('UT course-schedule search form resilience', () => {
+    const ut = 'https://utdirect.utexas.edu/apps/registrar/course_schedule/';
+
+    test('leaves a changed UT form untouched when the expected wrapper is missing', async ({ context }) => {
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route(ut, route =>
+            route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><html><body><form><label for="mtg_days_st">Days</label><select id="mtg_days_st" name="mtg_days_st"><option value="001000" selected>Wednesday</option></select></form></body></html>',
+            })
+        );
+        await page.goto(ut);
+        await expect(page.locator('#mtg_days_st')).toHaveValue('001000');
+        await expect(page.locator('#fastlane-mtg-days-picker')).toHaveCount(0);
+        expect(errors).toEqual([]);
+    });
+
+    test('keeps the student’s selected days and updates only on interaction', async ({ context }) => {
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route(ut, route =>
+            route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><html><body><form><div class="form_element"><label for="mtg_days_st">AND days</label><select id="mtg_days_st" name="mtg_days_st"><option value="001000" selected>Wednesday</option></select></div></form></body></html>',
+            })
+        );
+        await page.goto(ut);
+        await expect(page.locator('#fastlane-mtg-days-picker input[type="checkbox"]')).toHaveCount(6);
+        await expect(page.locator('#fastlane-mtg-days-input')).toHaveValue('001000');
+        await expect(page.getByRole('checkbox', { name: 'Wednesday' })).toBeChecked();
+        await page.getByRole('checkbox', { name: 'Friday' }).check();
+        await expect(page.locator('#fastlane-mtg-days-input')).toHaveValue('001010');
+        expect(errors).toEqual([]);
+    });
+});
