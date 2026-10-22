@@ -193,7 +193,7 @@ export function QuickAddButton({ course, activeSchedule }: Pick<Props, 'course' 
     return (
         <button
             type='button'
-            className='inline-flex h-[24px] w-[24px] items-center justify-center rounded-full border-none text-white'
+            className='inline-flex h-[24px] w-[24px] min-w-[24px] shrink-0 items-center justify-center rounded-full border-none p-0 text-white'
             style={{
                 background: color,
                 boxShadow: '0 2px 6px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.35)',
