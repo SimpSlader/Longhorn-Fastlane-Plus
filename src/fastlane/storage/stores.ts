@@ -55,6 +55,12 @@ export const DEFAULT_SETTINGS: FastlaneSettings = {
 
 export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('FastlaneSettings', DEFAULT_SETTINGS);
 
+/** Optional beta invite code remembered only in this Chrome profile after a successful AI call.
+ * Never store the Groq API key here, or in the extension build.
+ * The invite code is deliberately excluded from exported settings and data backups.
+ */
+export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { accessCode: '' });
+
 interface PlanStoreShape {
     /** keyed by UT Registration Plus schedule id */
     plans: Record<string, PlanMeta>;
@@ -93,6 +99,7 @@ export const FASTLANE_LOCAL_PREFIXES = [
     'FastlaneQueue:',
     'FastlaneAudit:',
     'FastlaneReminders:',
+    'FastlaneAiAccess:',
     'FastlanePlanning:',
     'FastlaneHistory:',
 ];

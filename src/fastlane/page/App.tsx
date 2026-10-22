@@ -11,6 +11,7 @@ import ListChecksIcon from '~icons/ph/list-checks';
 import PlusIcon from '~icons/ph/plus';
 import SparkleIcon from '~icons/ph/sparkle';
 import {
+    FastlaneAiAccessStore,
     FastlaneAuditStore,
     FastlanePlanStore,
     FastlaneQueueStore,
@@ -96,6 +97,7 @@ function Workspace() {
         FastlanePlanStore,
         FastlaneQueueStore,
         FastlaneAuditStore,
+        FastlaneAiAccessStore,
         FastlaneReminderStore,
     ]);
     const [tab, params, go] = useHashRoute();

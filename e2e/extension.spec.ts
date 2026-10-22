@@ -556,3 +556,46 @@ test.describe('UT course-schedule search form resilience', () => {
         expect(errors).toEqual([]);
     });
 });
+
+test.describe('AI access remembered after first successful request', () => {
+    test('saves beta code locally once, shares it between audit and scheduling, and supports forgetting', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        await page.route('https://longhorn-fastlane-plus.vercel.app/api/audit-review', async route => {
+            const data = route.request().postDataJSON() as { accessCode?: string };
+            expect(data.accessCode).toBe('test-invite-code-local-only');
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({ summary: 'Reviewed supplied requirements.', suggestions: [] }),
+            });
+        });
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page.getByRole('button', { name: 'Review with AI' }).click();
+        await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+        await page.getByRole('checkbox').last().check();
+        await page.getByRole('button', { name: 'Check requirements with AI' }).click();
+        await expect(page.getByText('Reviewed supplied requirements.')).toBeVisible();
+        await expect(page.getByText('AI access saved on this device.')).toBeVisible();
+        const saved = await page.evaluate(
+            async () => (await chrome.storage.local.get('FastlaneAiAccess:accessCode'))['FastlaneAiAccess:accessCode']
+        );
+        expect(saved).toBe('test-invite-code-local-only');
+
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
+        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
+        await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
+        await page.reload();
+        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
+        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
+        await page.getByRole('button', { name: 'Forget code' }).click();
+        await expect(page.getByPlaceholder('Enter once to enable AI')).toBeVisible();
+    });
+});

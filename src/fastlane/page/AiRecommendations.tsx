@@ -11,7 +11,7 @@ import { normalizeCourseCode } from '../core/requirements';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
 import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
-import { FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
+import { FastlaneAiAccessStore, FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
 import { inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
 import { useGradeStats } from './hooks';
 
@@ -52,6 +52,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [expanded, setExpanded] = useState(false);
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
+    const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [summary, setSummary] = useState('');
@@ -107,6 +108,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
 
     const run = async () => {
         if (!consent || busy) return;
+        const code = savedCode || inviteCode.trim();
+        if (!code) {
+            setError('Enter the beta invite code once. Fastlane will remember it on this device.');
+            return;
+        }
         if (!audit) {
             setError('Import your IDA on Degree progress before asking AI to plan your degree.');
             return;
@@ -127,7 +133,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    accessCode: inviteCode,
+                    accessCode: code,
                     requirements: audit.requirements
                         .filter(r => r.status !== 'completed')
                         .slice(0, 35)
@@ -156,7 +162,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 }),
             });
             const payload = (await response.json()) as AiResponse;
+            if (response.status === 401 && savedCode) {
+                await FastlaneAiAccessStore.set('accessCode', '');
+                setInviteCode('');
+            }
             if (!response.ok) throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
+            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             setSummary(payload.summary ?? '');
             setRecommendations((payload.recommendations ?? []).filter(r => candidateIndex.has(r.id)));
         } catch (failure) {
@@ -247,16 +258,32 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             compare classes from every subject.
                         </div>
                     )}
-                    <label className='field'>
-                        Beta invite code (not an API key)
-                        <input
-                            type='password'
-                            autoComplete='off'
-                            value={inviteCode}
-                            onChange={e => setInviteCode(e.target.value)}
-                            placeholder='Code shared by Fastlane owner'
-                        />
-                    </label>
+                    {savedCode ? (
+                        <p className='small muted'>
+                            AI access saved on this device. No code needed for future schedules.{' '}
+                            <button
+                                type='button'
+                                className='btn sm'
+                                onClick={() => {
+                                    setInviteCode('');
+                                    void FastlaneAiAccessStore.set('accessCode', '');
+                                }}
+                            >
+                                Forget code
+                            </button>
+                        </p>
+                    ) : (
+                        <label className='field'>
+                            One-time beta invite code (not your Groq API key)
+                            <input
+                                type='password'
+                                autoComplete='off'
+                                value={inviteCode}
+                                onChange={e => setInviteCode(e.target.value)}
+                                placeholder='Enter once to enable AI'
+                            />
+                        </label>
+                    )}
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>

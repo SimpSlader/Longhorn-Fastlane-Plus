@@ -22,6 +22,7 @@ Fastlane Course Planner ("Fastlane") is an independent, student-developed Chrome
 | Reminder date/time/time zone | `chrome.storage.local` + `chrome.alarms` | Local notifications |
 | Course sections shown on UT course-schedule pages you open (public catalog data such as unique number, course, times, room, instructor, seat status and when you saw it) | IndexedDB (extension) | Offline recommendations |
 | UT's official course list for a semester that you import (the Registrar's public "PDF of courses offered": unique number, course, title, times, room, instructor, printed prerequisites, plus the file name, its SHA-256 and the date printed on it) | IndexedDB (extension) | Browse every subject, recommendations, AI candidate selection and schedule building. The PDF is read in your browser and never uploaded; Fastlane does not download it for you. |
+| Successfully validated AI beta invite code (optional) | `chrome.storage.local` on this device, excluded from exports and Chrome Sync | Remember access across AI audit reviews and scheduling without prompting again. It is not the Groq API key; you can forget it in either AI panel. |
 | Preferences (grade threshold, toggles) | `chrome.storage.sync` | Settings follow you if Chrome Sync is on. No academic data is stored here. |
 | Downloaded public datasets (optional) | IndexedDB (extension) | Newer historical grade data |
 
