@@ -161,7 +161,7 @@ function RatingChip({ course }: { course: Course }) {
 }
 
 /** One-click add to the active schedule (UTRP picks the class color); turns into the class color once added. */
-function QuickAddButton({ course, activeSchedule }: Pick<Props, 'course' | 'activeSchedule'>) {
+export function QuickAddButton({ course, activeSchedule }: Pick<Props, 'course' | 'activeSchedule'>) {
     const [busy, setBusy] = useState(false);
     const [note, setNote] = useState<string | null>(null);
     if (!activeSchedule) return null;
@@ -367,7 +367,6 @@ export default function RowInsights({ course, modality, conflict, activeSchedule
             {settings.highlightAsync && <ModalityChip modality={modality} />}
             {settings.showConflictDetails && conflict && <ConflictChip conflict={conflict} />}
             <BackupButton course={course} activeSchedule={activeSchedule} rowAnalysis={rowAnalysis} />
-            <QuickAddButton course={course} activeSchedule={activeSchedule} />
         </span>
     );
 }

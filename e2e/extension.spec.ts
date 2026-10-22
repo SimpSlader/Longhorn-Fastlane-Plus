@@ -213,6 +213,10 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
 
         // green + quick-adds the class to the active schedule, takes the class color, and removes on a second click
         const quick = live.locator('[data-fastlane="quick-add"]');
+        // it sits immediately to the right of the orange grade-chart button
+        expect(await quick.evaluate(el => el.previousElementSibling?.getAttribute('aria-label') ?? '')).toBe(
+            'Open historical grade distribution graph'
+        );
         await expect(quick).toHaveAttribute('aria-pressed', 'false');
         expect(await quick.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(22, 163, 74)');
         await quick.click();
@@ -221,7 +225,7 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         await page.waitForTimeout(400);
         const added = await quick.evaluate(el => getComputedStyle(el).backgroundColor);
         expect(added).not.toBe('rgb(22, 163, 74)');
-        await live.locator('[data-fastlane="row"]').screenshot({ path: `${SHOTS}/1b-quick-add-added.png` });
+        await quick.locator('xpath=..').screenshot({ path: `${SHOTS}/1b-quick-add-added.png` });
         await quick.click();
         await expect(quick).toHaveAttribute('aria-pressed', 'false');
     });

@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { analyzeRow, scheduleTimes, sectionFromCourse } from 'src/fastlane/adapters/utrp';
 import { detectConflicts } from 'src/fastlane/core/meetings';
 import { toSectionTimes } from 'src/fastlane/core/sections';
-import RowInsights from 'src/fastlane/injected/RowInsights';
+import RowInsights, { QuickAddButton } from 'src/fastlane/injected/RowInsights';
 import { FastlaneSettingsStore } from 'src/fastlane/storage/stores';
 import ChartBarFillIcon from '~icons/ph/chart-bar-fill';
 
@@ -153,6 +153,7 @@ export default function TableRow({ row, isSelected, activeSchedule, onClick }: P
                 >
                     <ChartBarFillIcon className='text-ut-white h-4 w-4' />
                 </button>
+                {course && <QuickAddButton course={course} activeSchedule={activeSchedule} />}
                 {conflicts.length > 0 && (
                     <ConflictsWithWarning
                         className='opacity-0 absolute left-13 top--3 text-white group-hover:opacity-100'

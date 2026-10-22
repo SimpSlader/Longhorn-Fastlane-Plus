@@ -1,4 +1,5 @@
 import type { Course } from '@shared/types/Course';
+import { parseHtml } from '@shared/util/parseHtml';
 import Text from '@views/components/common/Text/Text';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import { SiteSupport } from '@views/lib/getSiteSupport';
@@ -21,7 +22,7 @@ const fetchDescription = async (course: Course): Promise<string[]> => {
     if (!course.description?.length) {
         const response = await fetch(course.url);
         const text = await response.text();
-        const doc = new DOMParser().parseFromString(text, 'text/html');
+        const doc = parseHtml(text);
 
         const scraper = new CourseCatalogScraper(SiteSupport.COURSE_CATALOG_DETAILS);
         course.description = scraper.getDescription(doc);

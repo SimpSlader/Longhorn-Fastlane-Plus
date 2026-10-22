@@ -1,3 +1,4 @@
+import { parseHtml } from '@shared/util/parseHtml';
 import getCourseTableRows from './getCourseTableRows';
 
 const NEXT_PAGE_BUTTON_SELECTOR = '#next_nav_link';
@@ -62,8 +63,7 @@ export async function loadNextCourseCatalogPage(): Promise<[AutoLoadStatusType, 
     try {
         const response = await fetch(nextPageURL);
         const html = await response.text();
-        const parser = new DOMParser();
-        const newDocument = parser.parseFromString(html, 'text/html');
+        const newDocument = parseHtml(html);
 
         // extract the table rows from the document of the next page
         const tableRows = getCourseTableRows(newDocument);
