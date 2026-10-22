@@ -15,7 +15,10 @@ import type { ConflictResult } from '../core/meetings';
 import { conflictingSections, formatMeeting } from '../core/meetings';
 import type { ModalityResult } from '../core/modality';
 import { DuplicateSectionError, findSection } from '../core/plans';
+import type { RmpRating } from '../core/rmp';
+import { rmpProfessorUrl, splitProfessorName } from '../core/rmp';
 import { addBackupFor, loadPlan } from '../services/planService';
+import { sendFastlane } from '../services/runtime';
 import { FastlanePlanStore, FastlaneSettingsStore } from '../storage/stores';
 
 interface Props {
@@ -95,6 +98,62 @@ function GradeChip({ course }: { course: Course }) {
             <span className='opacity-70'>· {instructor ? 'Prof' : 'All profs'}</span>
             {stat.smallSample && <span className='opacity-70'>· n={stat.result.graded}</span>}
         </span>
+    );
+}
+
+/** Rate My Professors rating for the section's first listed professor (only exact, unique matches). */
+function RatingChip({ course }: { course: Course }) {
+    const prof = course.instructors[0];
+    const name = prof ? splitProfessorName(prof.firstName, prof.lastName, prof.fullName ?? '') : null;
+    const [rating, setRating] = useState<RmpRating | null | undefined>(undefined);
+    useEffect(() => {
+        if (!name?.last) return;
+        let alive = true;
+        sendFastlane<RmpRating | null>({ type: 'professorRating', first: name.first, last: name.last })
+            .then(r => alive && setRating(r))
+            .catch(() => alive && setRating(null));
+        return () => {
+            alive = false;
+        };
+    }, [name?.first, name?.last]);
+    if (!name?.last || rating === undefined) return null;
+    if (!rating || rating.numRatings === 0)
+        return (
+            <span
+                className='inline-flex items-center rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 whitespace-nowrap'
+                title='No Rate My Professors match for this professor at UT Austin.'
+                data-fastlane='rmp'
+            >
+                RMP –
+            </span>
+        );
+    const good = rating.avgRating >= 4 ? '#15803d' : rating.avgRating >= 3 ? '#a16207' : '#b91c1c';
+    const again =
+        rating.wouldTakeAgainPercent >= 0 ? ` · ${Math.round(rating.wouldTakeAgainPercent)}% would take again` : '';
+    return (
+        <a
+            href={rmpProfessorUrl(rating.legacyId)}
+            target='_blank'
+            rel='noreferrer'
+            onClick={e => e.stopPropagation()}
+            className='inline-flex items-baseline gap-1 whitespace-nowrap text-[11px] leading-tight no-underline'
+            style={{
+                background: 'rgba(255,255,255,.8)',
+                backdropFilter: 'blur(14px) saturate(140%)',
+                border: '1px solid rgba(51,63,72,.15)',
+                borderRadius: 9,
+                padding: '5px 8px',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), 0 2px 7px rgba(30,40,50,.06)',
+                color: '#333f48',
+            }}
+            title={`Rate My Professors: ${rating.name} (${rating.department})\n${rating.avgRating.toFixed(1)}/5 quality · ${rating.avgDifficulty.toFixed(1)}/5 difficulty · ${rating.numRatings} ratings${again}`}
+            data-fastlane='rmp'
+        >
+            <strong className='text-[12px]' style={{ color: good }}>
+                ★ {rating.avgRating.toFixed(1)}
+            </strong>
+            <span className='opacity-70'>RMP · {rating.numRatings}</span>
+        </a>
     );
 }
 
@@ -247,6 +306,7 @@ export default function RowInsights({ course, modality, conflict, activeSchedule
     return (
         <span className='inline-flex flex-wrap items-center gap-1 py-0.5' data-fastlane='row'>
             {settings.showInlineGrades && <GradeChip course={course} />}
+            {settings.showProfessorRatings && <RatingChip course={course} />}
             {settings.highlightAsync && <ModalityChip modality={modality} />}
             {settings.showConflictDetails && conflict && <ConflictChip conflict={conflict} />}
             <BackupButton course={course} activeSchedule={activeSchedule} rowAnalysis={rowAnalysis} />

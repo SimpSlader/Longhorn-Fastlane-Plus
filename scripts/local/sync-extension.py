@@ -60,11 +60,13 @@ def main():
     for field in ['permissions', 'content_security_policy']:
         require(new.get(field) == old.get(field), 'Security configuration changed; review before syncing: ' + field)
     # Explicitly reviewed migrations: the user's requested click-to-import IDA button, and the opt-in
-    # Fastlane AI backend (PR #8; called only after the student consents and enters the invite code).
+    # Fastlane AI backend (PR #8; called only after the student consents and enters the invite code), and
+    # Rate My Professors ratings on course listings (approved by the user 2026-10-22; professor names only).
     old_hosts, new_hosts = set(old.get('host_permissions', [])), set(new.get('host_permissions', []))
     require(old_hosts <= new_hosts and new_hosts - old_hosts <= {
         'https://utdirect.utexas.edu/apps/degree/audits/results/*',
         'https://longhorn-fastlane-plus.vercel.app/*',
+        'https://www.ratemyprofessors.com/*',
     }, 'Unreviewed host permission change; refusing installation')
     files = []
     for path in source.rglob('*'):

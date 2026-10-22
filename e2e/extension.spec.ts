@@ -32,7 +32,9 @@ test.describe('Chrome extension permissions & security', () => {
             'unlimitedStorage',
         ]);
         for (const host of manifest.host_permissions ?? []) {
-            expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app/);
+            expect(host).toMatch(
+                /utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app|www\.ratemyprofessors\.com\/\*$/
+            );
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');
@@ -158,6 +160,16 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         const music = rowFor(page, '23095');
         await expect(music.locator('[data-fastlane="grade"]')).toContainText(/\d+\.\d%\s*A-\+\s*·\s*Prof/);
         const before = await music.locator('[data-fastlane="grade"]').innerText();
+        // professor rating sits right after the A distribution and links to the professor's RMP page
+        const rmp = music.locator('[data-fastlane="rmp"]');
+        await expect(rmp).toContainText('★ 4.4');
+        await expect(rmp).toContainText('RMP · 31');
+        await expect(rmp).toHaveAttribute('href', 'https://www.ratemyprofessors.com/professor/4242');
+        expect(
+            await music
+                .locator('[data-fastlane="row"] > *')
+                .evaluateAll(els => els.map(e => e.getAttribute('data-fastlane')).slice(0, 2))
+        ).toEqual(['grade', 'rmp']);
 
         // changing the threshold globally recalculates from counts
         await page.locator('#ut-registration-plus-table-head select').selectOption('B');
@@ -386,10 +398,11 @@ test.describe('network activity matches the privacy policy', () => {
             await page.waitForTimeout(800);
         }
         // Disclosed in the privacy policy: UTRP's Settings page lists contributors from GitHub's public API, and
-        // the calendar's Quick Add loads UT's public semester index page (no student data is sent).
+        // the calendar's Quick Add loads UT's public semester index page, and course listings look up professors'
+        // public Rate My Professors ratings by name (no student data is sent; stubbed in tests).
         await page.goto(`chrome-extension://${extensionId}/options.html`);
         await page.waitForTimeout(1500);
-        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu']);
+        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu', 'www.ratemyprofessors.com']);
         const unexpected = [...hosts].filter(h => !disclosed.has(h));
         expect(unexpected, `unexpected hosts: ${unexpected.join(', ')}`).toEqual([]);
     });

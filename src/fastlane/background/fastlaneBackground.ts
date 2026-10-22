@@ -4,6 +4,7 @@
  *  - hand verified downloaded datasets to content scripts
  *  - schedule registration reminders with chrome.alarms and show chrome.notifications
  *  - optionally check for static dataset updates at most once per day
+ *  - look up public Rate My Professors ratings by professor name (no student data)
  * No network request here ever goes to a developer-controlled server with student data.
  */
 
@@ -19,6 +20,7 @@ import { registerHistory } from '../services/history';
 import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
 import { FastlaneReminderStore, FastlaneSettingsStore } from '../storage/stores';
 import { checkForNewLocalBuild, isDevNotification, registerDevAutoReload } from './devAutoReload';
+import { professorRating } from './rmp';
 
 export const UT_REGISTRATION_URL = 'https://utdirect.utexas.edu/registration/chooseSemester.WBX';
 const DATA_ALARM = 'fastlane-data-check';
@@ -101,6 +103,9 @@ export function registerFastlaneBackground() {
         switch (msg.type) {
             case 'cacheSections':
                 respond(cacheSections(msg.sections));
+                return true;
+            case 'professorRating':
+                respond(professorRating(msg.first, msg.last));
                 return true;
             case 'getSections':
                 respond(readSections(msg.semester));

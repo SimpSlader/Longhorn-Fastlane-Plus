@@ -21,6 +21,8 @@ import { defaultReminderConfig } from '../core/reminders';
 export interface FastlaneSettings {
     gradeThreshold: GradeThreshold;
     showInlineGrades: boolean;
+    /** Rate My Professors rating next to the grade chip (sends professor names to RMP) */
+    showProfessorRatings: boolean;
     highlightAsync: boolean;
     showConflictDetails: boolean;
     showAssistant: boolean;
@@ -42,6 +44,7 @@ export interface FastlaneSettings {
 export const DEFAULT_SETTINGS: FastlaneSettings = {
     gradeThreshold: DEFAULT_GRADE_THRESHOLD,
     showInlineGrades: true,
+    showProfessorRatings: true,
     highlightAsync: true,
     showConflictDetails: true,
     showAssistant: true,
