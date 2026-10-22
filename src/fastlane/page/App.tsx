@@ -50,7 +50,12 @@ function FindClassesBody({ initialRequirement }: { initialRequirement?: string |
     // degree view needs either an IDA or a requirement link (e.g. "Find classes for Core 050")
     const canDegree = Boolean(audit || initialRequirement);
     const [view, setView] = useState<'degree' | 'all'>(canDegree ? 'degree' : 'all');
-    const needsCourseList = inventory.loaded && inventory.metas.length === 0;
+    // where the import panel sits is decided once per visit, so it stays put (with its result) after an import
+    const [needsCourseList, setNeedsCourseList] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (inventory.loaded && needsCourseList === null) setNeedsCourseList(inventory.metas.length === 0);
+    }, [inventory.loaded, inventory.metas.length, needsCourseList]);
+    const [advancedOpen, setAdvancedOpen] = useState(Boolean(initialRequirement));
     return (
         <div className='stack'>
             <div className='simple-heading'>
@@ -63,34 +68,41 @@ function FindClassesBody({ initialRequirement }: { initialRequirement?: string |
             {/* the planner needs UT's course list; keep the import in view until one exists */}
             {needsCourseList && <InventoryPanel />}
             <AiRecommendations subject={subject} />
-            <details className='card planner-advanced' open={Boolean(initialRequirement) || undefined}>
+            <details
+                className='card planner-advanced'
+                open={advancedOpen}
+                onToggle={e => setAdvancedOpen(e.currentTarget.open)}
+            >
                 <summary>Browse courses and adjust advanced filters</summary>
-                <div className='stack'>
-                    {!needsCourseList && <InventoryPanel />}
-                    <fieldset className='mode-toggle' aria-label='Advanced class view'>
-                        <button
-                            type='button'
-                            aria-pressed={view === 'degree'}
-                            disabled={!canDegree}
-                            onClick={() => setView('degree')}
-                        >
-                            For my degree
-                        </button>
-                        <button type='button' aria-pressed={view === 'all'} onClick={() => setView('all')}>
-                            Browse all classes
-                        </button>
-                    </fieldset>
-                    {view === 'degree' && canDegree ? (
-                        <RecommendTab
-                            initialRequirement={initialRequirement}
-                            embedded
-                            subject={subject}
-                            onSubjectChange={setSubject}
-                        />
-                    ) : (
-                        <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
-                    )}
-                </div>
+                {/* rendered only when opened: the browser and rankings are heavy with a full course list */}
+                {advancedOpen && (
+                    <div className='stack'>
+                        {needsCourseList === false && <InventoryPanel />}
+                        <fieldset className='mode-toggle' aria-label='Advanced class view'>
+                            <button
+                                type='button'
+                                aria-pressed={view === 'degree'}
+                                disabled={!canDegree}
+                                onClick={() => setView('degree')}
+                            >
+                                For my degree
+                            </button>
+                            <button type='button' aria-pressed={view === 'all'} onClick={() => setView('all')}>
+                                Browse all classes
+                            </button>
+                        </fieldset>
+                        {view === 'degree' && canDegree ? (
+                            <RecommendTab
+                                initialRequirement={initialRequirement}
+                                embedded
+                                subject={subject}
+                                onSubjectChange={setSubject}
+                            />
+                        ) : (
+                            <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
+                        )}
+                    </div>
+                )}
             </details>
         </div>
     );
@@ -131,14 +143,21 @@ function Workspace() {
               } as Record<string, string>
           )[tab] ?? 'home');
     const theme = FastlaneSettingsStore.useStore(s => s.themePreference);
+    const themeChosen = FastlaneSettingsStore.useStore(s => s.themeChosen);
     const online = useOnline();
     const schedules = useAllSchedules();
     const active = useActiveSchedule();
 
     useEffect(() => {
+        // Light is the default; a profile still on the old automatic "System" default moves to Light once.
+        // Any theme the student picks from now on (including System) is kept.
+        if (!themeChosen && theme === 'system') {
+            void FastlaneSettingsStore.set('themePreference', 'light');
+            return;
+        }
         if (theme === 'system') document.documentElement.removeAttribute('data-theme');
-        else document.documentElement.setAttribute('data-theme', theme);
-    }, [theme]);
+        else document.documentElement.setAttribute('data-theme', theme ?? 'light');
+    }, [theme, themeChosen]);
 
     useEffect(() => {
         document.title = `${TABS.find(t => t[0] === current)?.[1] ?? 'Fastlane'} · Fastlane Course Planner`;
@@ -218,10 +237,10 @@ function Workspace() {
                         aria-label='Appearance theme'
                         value={theme}
                         onChange={e =>
-                            void FastlaneSettingsStore.set(
-                                'themePreference',
-                                e.target.value as 'system' | 'light' | 'dark'
-                            )
+                            void FastlaneSettingsStore.set({
+                                themePreference: e.target.value as 'system' | 'light' | 'dark',
+                                themeChosen: true,
+                            } as never)
                         }
                     >
                         <option value='system'>System</option>

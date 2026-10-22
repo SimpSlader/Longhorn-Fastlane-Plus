@@ -405,9 +405,8 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         // UT's own completion number (68%), not the expected-pace marker or a count of checks
         const official = page.locator('.metric').filter({ hasText: 'Official IDA degree completion' });
         await expect(official).toContainText('68%');
-        await expect(page.getByText('Parsed requirement checks (unweighted)')).toBeVisible();
-        // groups are collapsed; remaining requirements are listed first inside each group
-        await page.locator('summary').filter({ hasText: 'Core curriculum' }).click();
+        // cards are collapsed; expanding shows remaining, in-progress and completed requirements separately
+        await page.locator('summary').filter({ hasText: 'Core Curriculum' }).click();
         await expect(page.getByText('CORE (090)').first()).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/4-degree-audit-review.png`, fullPage: false });
         await page.reload();
@@ -593,7 +592,7 @@ test.describe('AI access remembered after first successful request', () => {
         await page
             .locator('input[type=file]')
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
-        await page.getByText('Optional AI audit review').click();
+        await page.getByText('Check unclear items with AI (optional)').click();
         await page.getByRole('button', { name: 'Review with AI' }).click();
         await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
         await page.getByRole('checkbox').last().check();

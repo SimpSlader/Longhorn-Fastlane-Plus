@@ -1614,3 +1614,161 @@ fieldset.day-chips {
     border-radius: var(--r-btn);
     color: var(--text);
 }
+
+/* ---------- Degree progress: light glass cards ---------- */
+.degree-page {
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(16, 24, 40, 0.08);
+    --glass-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+    gap: 18px;
+}
+:root[data-theme="dark"] .degree-page {
+    --glass-bg: rgba(39, 39, 44, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .degree-page {
+        --glass-bg: rgba(39, 39, 44, 0.72);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+}
+.glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    box-shadow: var(--glass-shadow);
+    padding: 20px 22px;
+    /* light blur only; no animation */
+    backdrop-filter: blur(8px);
+}
+.glass-card.overall {
+    background: linear-gradient(135deg, var(--glass-bg), color-mix(in srgb, var(--accent-soft) 60%, transparent));
+}
+.glass-card .eyebrow {
+    letter-spacing: 0.04em;
+}
+.big-figure {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 6px 0 10px;
+}
+.big-figure.sm {
+    font-size: 30px;
+    margin: 8px 0 10px;
+}
+.big-figure span {
+    color: var(--muted);
+    font-weight: 600;
+}
+.big-figure small {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0;
+}
+.thin-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 70%, transparent);
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.thin-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+}
+.progress-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    align-items: start;
+}
+.progress-card > summary {
+    list-style: none;
+    cursor: pointer;
+}
+.progress-card > summary::-webkit-details-marker {
+    display: none;
+}
+.progress-card .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.progress-card h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+.progress-card .chevron {
+    color: var(--muted);
+    transition: transform 0.15s ease;
+}
+.progress-card[open] .chevron {
+    transform: rotate(180deg);
+}
+.progress-card[open] {
+    grid-column: 1 / -1;
+}
+.progress-card .card-details {
+    border-top: 1px solid var(--glass-border);
+    margin-top: 12px;
+    padding-top: 12px;
+}
+.req-list h4 {
+    margin: 10px 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.mini-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 13px;
+}
+.mini-stats b {
+    color: var(--text);
+    font-size: 18px;
+}
+.glass-card.quiet > summary {
+    cursor: pointer;
+    color: var(--muted);
+}
+.quiet-note {
+    margin: -6px 2px 0;
+}
+.dropzone.compact {
+    padding: 12px 16px;
+    text-align: left;
+}
+ul.plain {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 6px;
+}
+
+.req-row td {
+    padding: 8px 6px;
+    vertical-align: top;
+}
+.req-row.flagged {
+    background: var(--warn-soft);
+}
+.degree-page .dropzone.compact {
+    background: transparent;
+    color: var(--text);
+    border: 1px dashed var(--glass-border);
+    border-radius: 14px;
+}
+.degree-page .dropzone.compact:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}

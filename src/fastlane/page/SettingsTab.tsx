@@ -89,7 +89,12 @@ export default function SettingsTab() {
                         Appearance
                         <select
                             value={settings.themePreference}
-                            onChange={e => void FastlaneSettingsStore.set('themePreference', e.target.value as never)}
+                            onChange={e =>
+                                void FastlaneSettingsStore.set({
+                                    themePreference: e.target.value as never,
+                                    themeChosen: true,
+                                } as never)
+                            }
                         >
                             <option value='system'>Match system</option>
                             <option value='light'>Light</option>

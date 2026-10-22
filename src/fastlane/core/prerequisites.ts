@@ -35,18 +35,41 @@ interface SubjectList {
     before: string;
 }
 
+/** Subject names grouped by their first word, so matching only looks at names that can start at a word. */
+const firstWordIndexes = new WeakMap<Array<[string, string]>, Map<string, Array<[string, string]>>>();
+function byFirstWord(index: Array<[string, string]>): Map<string, Array<[string, string]>> {
+    let map = firstWordIndexes.get(index);
+    if (!map) {
+        map = new Map();
+        for (const entry of index) {
+            const first = entry[0].match(/^[a-z]+/)?.[0] ?? entry[0];
+            const list = map.get(first);
+            if (list) list.push(entry);
+            else map.set(first, [entry]);
+        }
+        firstWordIndexes.set(index, map);
+    }
+    return map;
+}
+
 function subjectLists(text: string, index: Array<[string, string]>): SubjectList[] {
     const lists: SubjectList[] = [];
     const lower = text.toLowerCase();
+    const starts = byFirstWord(index);
+    const words = /[a-z]+/g;
     let i = 0;
     let lastEnd = 0;
     while (i < text.length) {
-        const boundary = i === 0 || !/[a-z]/i.test(text[i - 1] ?? '');
-        const hit = boundary
-            ? index.find(([name]) => lower.startsWith(name, i) && !/[a-z]/i.test(text[i + name.length] ?? ''))
-            : undefined;
+        words.lastIndex = i;
+        const word = words.exec(lower);
+        if (!word) break;
+        i = word.index;
+        // index entries are sorted longest name first, and each first-word list keeps that order
+        const hit = starts
+            .get(word[0])
+            ?.find(([name]) => lower.startsWith(name, i) && !/[a-z]/i.test(text[i + name.length] ?? ''));
         if (!hit) {
-            i++;
+            i += word[0].length;
             continue;
         }
         const [name, code] = hit;
@@ -72,8 +95,23 @@ function subjectLists(text: string, index: Array<[string, string]>): SubjectList
     return lists;
 }
 
-/** Required groups of alternative courses referenced in prerequisite text. */
+const groupCache = new WeakMap<Array<[string, string]>, Map<string, string[][]>>();
+
+/** Required groups of alternative courses referenced in prerequisite text (cached per text). */
 export function prerequisiteGroups(text: string, index: Array<[string, string]>): string[][] {
+    let cache = groupCache.get(index);
+    if (!cache) {
+        cache = new Map();
+        groupCache.set(index, cache);
+    }
+    const hit = cache.get(text);
+    if (hit) return hit;
+    const groups = readGroups(text, index);
+    cache.set(text, groups);
+    return groups;
+}
+
+function readGroups(text: string, index: Array<[string, string]>): string[][] {
     const groups: string[][] = [];
     for (const list of subjectLists(text, index)) {
         const anded = list.joiners.includes('and') && !list.joiners.includes('or');

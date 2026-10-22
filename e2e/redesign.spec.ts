@@ -30,6 +30,11 @@ test('theme switcher offers Light, Dark and System, applies at once and is remem
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#home`);
     const theme = page.getByRole('combobox', { name: 'Appearance theme' });
     await expect(theme.locator('option')).toHaveText(['System', 'Light', 'Dark']);
+    // a fresh install opens in Light, and the page starts light (no dark flash before the app loads)
+    await expect(theme).toHaveValue('light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    const raw = await page.request.get(`chrome-extension://${extensionId}/fastlane.html`).catch(() => null);
+    if (raw) expect(await raw.text()).toContain('data-theme="light"');
     const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     await theme.selectOption('light');
     const light = await background();
@@ -195,4 +200,33 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
         const after = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
         expect(after.length).toBe(before.length + 1);
     }
+});
+
+test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+    await page
+        .locator('input[type=file]')
+        .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+    const overall = page.getByRole('region', { name: 'Official IDA degree completion' });
+    await expect(overall).toContainText('68%');
+    await expect(overall).toContainText('82 of 120 degree hours · 38 remaining');
+    const card = (title: string) => page.locator('details.progress-card').filter({ hasText: title });
+    await expect(card('Core Curriculum')).toContainText('27 / 42 credit hours completed');
+    await expect(card('Core Curriculum')).toContainText('15 credit hours remaining');
+    await expect(card('Major Requirements')).toContainText('6 / 9 requirements complete');
+    await expect(card('Major Requirements')).toContainText('hours need verification');
+    await expect(card('GPA, residency and total hours')).toContainText('3.78');
+    await expect(card('GPA, residency and total hours')).toContainText('60/60');
+    await expect(page.locator('details.progress-card').filter({ hasText: 'Minor Requirements' })).toHaveCount(0);
+    // collapsed by default; expanding lists the requirements by state
+    await expect(card('Core Curriculum')).not.toHaveAttribute('open', /.*/);
+    await card('Core Curriculum').locator('summary').click();
+    await expect(card('Core Curriculum').getByRole('heading', { name: /Remaining/ })).toBeVisible();
+    await expect(card('Core Curriculum').getByRole('heading', { name: /In progress/ })).toBeVisible();
+    await expect(card('Core Curriculum').getByRole('heading', { name: /Completed/ })).toBeVisible();
+    await expect(card('Core Curriculum')).toContainText('CORE (050)');
+    await page.screenshot({ path: 'test-results/redesign/degree-progress-light.png', fullPage: true });
+    await page.getByRole('combobox', { name: 'Appearance theme' }).selectOption('dark');
+    await page.screenshot({ path: 'test-results/redesign/degree-progress-dark.png', fullPage: true });
 });

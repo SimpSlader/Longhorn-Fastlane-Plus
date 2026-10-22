@@ -1,11 +1,14 @@
+import type { Serialized } from '@chrome-extension-toolkit';
+import { Course } from '@shared/types/Course';
 import { useActiveSchedule } from '@views/hooks/useSchedules';
-import { useMemo, useState } from 'react';
-import { scheduleTimes } from '../adapters/utrp';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { gradeStatFrom, lookupGrades, scheduleTimes } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
-import { finalizeAiCandidates, shortlistAiCandidates } from '../core/aiCandidates';
+import { chooseAiCandidates } from '../core/aiCandidates';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
 import { describePreferences, planningPreferences } from '../core/chatPreferences';
+import type { GradeStat } from '../core/grades';
 import { DAY_NAMES, formatMeeting } from '../core/meetings';
 import type { PrerequisiteCheck } from '../core/prerequisites';
 import { describePrerequisites, subjectNameIndex } from '../core/prerequisites';
@@ -15,7 +18,6 @@ import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
 import { FastlaneAiAccessStore, FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
 import { inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
-import { useGradeStats } from './hooks';
 
 /** Planning facts computed locally and sent with each candidate (public course data only). */
 function aiFacts(c: AiCandidate | undefined) {
@@ -28,6 +30,13 @@ function aiFacts(c: AiCandidate | undefined) {
         conflict: c.conflict,
         evidence: isConfirmedSection(c.section) ? 'confirmed-on-ut' : 'registrar-listing',
     };
+}
+
+/** Historical A− rate for one section, through UTRP's grade database (cached per course and professor). */
+async function gradeForSection(section: SectionRecord): Promise<GradeStat | null> {
+    if (!section.course) return null;
+    const course = new Course(section.course as Serialized<Course>);
+    return gradeStatFrom(course, await lookupGrades(course), 'A-');
 }
 
 const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
@@ -79,7 +88,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [answered, setAnswered] = useState<{
         sections: Map<number, SectionRecord>;
         facts: Map<number, AiCandidate>;
-    }>({ sections: new Map(), facts: new Map() });
+        grades: Map<number, GradeStat | null>;
+    }>({ sections: new Map(), facts: new Map(), grades: new Map() });
     const [savedId, setSavedId] = useState<number | null>(null);
     const [draftResult, setDraftResult] = useState('');
 
@@ -94,90 +104,33 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         [audit, schedule]
     );
 
-    const latest = [...new Set(catalog.map(c => semesterKey(c.semester)).filter(x => x !== 'unknown'))];
-    const listedTerm = [...inventory.metas].sort((a, b) => b.termCode.localeCompare(a.termCode))[0]?.term;
-    const actualTerm = settings.targetSemester ?? listedTerm ?? (latest.length === 1 ? (latest[0] ?? '') : '');
-    // hard constraints from the conversation are applied before candidates are chosen
-    const eligibleSections = useMemo(
-        () =>
-            catalog.filter(section => {
-                if (leftOut.has(normalizeCourseCode(section.courseCode))) return false;
-                if (prefs.asyncCount?.max === 0 && section.modality === 'async-online') return false;
-                if (avoidDays.some(day => section.meetings.some(m => m.days.includes(day)))) return false;
-                if (timeOfDay !== 'any' && section.modality !== 'async-online') {
-                    if (!section.meetings.length) return false; // unknown meeting times aren't safe matches
-                    if (timeOfDay === 'morning' && section.meetings.some(m => m.start >= 12 * 60)) return false;
-                    if (timeOfDay === 'afternoon' && section.meetings.some(m => m.start < 12 * 60 || m.end > 17 * 60))
-                        return false;
-                    if (timeOfDay === 'evening' && section.meetings.some(m => m.start < 17 * 60)) return false;
-                }
-                return true;
-            }),
-        [catalog, leftOut, prefs.asyncCount, avoidDays, timeOfDay]
+    const listedTerm = useMemo(
+        () => [...inventory.metas].sort((a, b) => b.termCode.localeCompare(a.termCode))[0]?.term,
+        [inventory.metas]
     );
-    const selectionInput = useMemo<AiCandidateInput>(
-        () => ({
-            sections: eligibleSections,
-            term: actualTerm,
-            taken,
-            outstanding: audit ? outstandingTags(audit) : [],
-            subject,
-            active: scheduleTimes(schedule),
-            avoidFriday: settings.avoidFriday,
-            preferAsync: prefs.preferAsync || settings.preferAsync,
-            subjectIndex: subjectNameIndex(inventorySubjects(inventory)),
-        }),
-        [
-            eligibleSections,
-            actualTerm,
-            taken,
-            audit,
-            subject,
-            schedule,
-            settings.avoidFriday,
-            settings.preferAsync,
-            prefs.preferAsync,
-            inventory,
-        ]
+    const actualTerm = useMemo(() => {
+        if (settings.targetSemester) return settings.targetSemester;
+        if (listedTerm) return listedTerm;
+        const terms = new Set<string>();
+        for (const c of catalog) {
+            const t = semesterKey(c.semester);
+            if (t !== 'unknown') terms.add(t);
+            if (terms.size > 1) return '';
+        }
+        return [...terms][0] ?? '';
+    }, [settings.targetSemester, listedTerm, catalog]);
+    const subjectIndex = useMemo(() => subjectNameIndex(inventorySubjects(inventory)), [inventory]);
+    // only a cheap check while rendering; the full comparison runs when the student asks
+    const subjectHasSections = useMemo(
+        () => !subject || catalog.some(c => subjectOf(c.courseCode) === subject.toUpperCase()),
+        [catalog, subject]
     );
-    const shortlist = useMemo(() => shortlistAiCandidates(selectionInput), [selectionInput]);
-    const grades = useGradeStats(
-        useMemo(() => shortlist.map(c => c.section), [shortlist]),
-        'A-'
-    );
-    const chosen = useMemo(() => {
-        const gradeFor = (s: SectionRecord) => grades.get(s.uniqueId);
-        if (!selectionInput.preferAsync) return finalizeAiCandidates(shortlist, selectionInput, gradeFor);
-        // asked for online classes: keep a share of asynchronous options among the 38 candidates
-        const online = finalizeAiCandidates(
-            shortlist.filter(c => c.section.modality === 'async-online'),
-            selectionInput,
-            gradeFor,
-            12
-        );
-        const ids = new Set(online.map(c => c.section.uniqueId));
-        const rest = finalizeAiCandidates(
-            shortlist.filter(c => !ids.has(c.section.uniqueId)),
-            selectionInput,
-            gradeFor,
-            38 - online.length
-        );
-        return [...online, ...rest];
-    }, [shortlist, selectionInput, grades]);
-    const candidates = useMemo(
-        () =>
-            chosen
-                .map(c => c.section)
-                .filter(section => {
-                    const grade = grades.get(section.uniqueId)?.result;
-                    return !(minGrade > 0 && (!grade || grade.percent < minGrade));
-                }),
-        [chosen, grades, minGrade]
-    );
-    const facts = useMemo(() => new Map(chosen.map(c => [c.section.uniqueId, c])), [chosen]);
-    const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
-    const coveredSubjects = [...new Set(candidates.map(c => subjectOf(c.courseCode)))];
+    const [progress, setProgress] = useState('');
+    const [compared, setCompared] = useState<{ sections: number; subjects: number } | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
+    useEffect(() => () => abortRef.current?.abort(), []);
 
+    /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
     const run = async () => {
         if (!consent || busy) return;
         if (!request.trim()) {
@@ -193,20 +146,63 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setError('Import your IDA on Degree progress before asking AI to plan your degree.');
             return;
         }
-        if (!candidates.length) {
-            setError(
-                "No UT sections are available for the selected subject and semester. Import UT's course list for the semester, then try again. AI never suggests classes that are not listed."
-            );
-            return;
-        }
+        const controller = new AbortController();
+        abortRef.current = controller;
         setBusy(true);
         setError('');
+        setProgress('Reading your request…');
         setRecommendations([]);
         setSavedId(null);
         setDraftResult('');
         try {
+            // hard constraints from the whole conversation are applied before candidates are chosen
+            const eligible = catalog.filter(section => {
+                if (leftOut.has(normalizeCourseCode(section.courseCode))) return false;
+                if (prefs.asyncCount?.max === 0 && section.modality === 'async-online') return false;
+                if (avoidDays.some(day => section.meetings.some(m => m.days.includes(day)))) return false;
+                if (timeOfDay !== 'any' && section.modality !== 'async-online') {
+                    if (!section.meetings.length) return false; // unknown meeting times aren't safe matches
+                    if (timeOfDay === 'morning' && section.meetings.some(m => m.start >= 12 * 60)) return false;
+                    if (timeOfDay === 'afternoon' && section.meetings.some(m => m.start < 12 * 60 || m.end > 17 * 60))
+                        return false;
+                    if (timeOfDay === 'evening' && section.meetings.some(m => m.start < 17 * 60)) return false;
+                }
+                return true;
+            });
+            const input: AiCandidateInput = {
+                sections: eligible,
+                term: actualTerm,
+                taken,
+                outstanding: outstandingTags(audit),
+                subject,
+                active: scheduleTimes(schedule),
+                avoidFriday: settings.avoidFriday,
+                preferAsync: prefs.preferAsync || settings.preferAsync,
+                subjectIndex,
+            };
+            const { chosen, grades } = await chooseAiCandidates(input, gradeForSection, {
+                signal: controller.signal,
+                onProgress: setProgress,
+            });
+            const usable = chosen.filter(c => {
+                const grade = grades.get(c.section.uniqueId)?.result;
+                return !(minGrade > 0 && (!grade || grade.percent < minGrade));
+            });
+            setCompared({
+                sections: eligible.length,
+                subjects: new Set(usable.map(c => subjectOf(c.section.courseCode))).size,
+            });
+            if (!usable.length) {
+                setError(
+                    "No listed UT sections match these preferences. Widen the days, time or grade preference, or import UT's course list for the semester. AI never suggests classes that are not listed."
+                );
+                return;
+            }
+            setProgress(`Asking Fastlane AI about ${usable.length} real UT sections…`);
+            const facts = new Map(usable.map(c => [c.section.uniqueId, c]));
             const response = await fetch(ENDPOINT, {
                 method: 'POST',
+                signal: controller.signal,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     accessCode: code,
@@ -215,7 +211,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         .slice(0, 35)
                         .map(r => ({ text: r.text.slice(0, 220), tags: r.tags, status: r.status })),
                     completed: [...taken].slice(0, 70),
-                    candidates: candidates.map(c => ({
+                    candidates: usable.map(({ section: c }) => ({
                         ...aiFacts(facts.get(c.uniqueId)),
                         id: c.uniqueId,
                         code: c.courseCode,
@@ -252,16 +248,20 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             if (!response.ok) throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            setAnswered({ sections: new Map(candidateIndex), facts: new Map(facts) });
-            setRecommendations((payload.recommendations ?? []).filter(r => candidateIndex.has(r.id)));
+            const sections = new Map(usable.map(c => [c.section.uniqueId, c.section]));
+            setAnswered({ sections, facts, grades });
+            setRecommendations((payload.recommendations ?? []).filter(r => sections.has(r.id)));
             setHistory(previous =>
                 [...previous, { id: Date.now(), request: request.trim(), summary: payload.summary ?? '' }].slice(-6)
             );
             setRequest('');
         } catch (failure) {
-            setError(failure instanceof Error ? failure.message : 'AI recommendations are unavailable.');
+            if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
+            else setError(failure instanceof Error ? failure.message : 'AI recommendations are unavailable.');
         } finally {
+            if (abortRef.current === controller) abortRef.current = null;
             setBusy(false);
+            setProgress('');
         }
     };
     const draft = safeAiScheduleDraft(
@@ -356,18 +356,17 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             )}
             <div className='ai-advisor-body'>
                 <p className='small muted'>
-                    AI input: {candidates.length} real UT sections from {coveredSubjects.length} subjects, chosen
-                    locally from {catalog.length.toLocaleString()} by unfinished IDA requirements, printed
-                    prerequisites, conflicts with your schedule, your preferences and historical grades.
+                    {compared
+                        ? `Last request compared ${compared.sections.toLocaleString()} listed UT sections that fit your preferences and sent the best matches from ${compared.subjects} subjects to AI.`
+                        : `When you ask, Fastlane compares ${catalog.length.toLocaleString()} listed UT sections against your unfinished IDA requirements, printed prerequisites, schedule conflicts, preferences and historical grades.`}
                     {subject ? ` Subject filter: ${subjectForCode(subject)?.name ?? subject} (${subject}).` : ''}
-                    {coveredSubjects.length > 0 && ` Includes ${coveredSubjects.slice(0, 10).join(', ')}.`}
                 </p>
                 {loadingCatalog ? <p className='small muted'>Loading UT classes…</p> : null}
-                {!loadingCatalog && subject && candidates.length === 0 && (
+                {!loadingCatalog && !subjectHasSections && (
                     <p role='status' className='notice warn'>
                         No {subjectForCode(subject)?.name ?? subject} sections are listed for{' '}
                         {actualTerm || 'this semester'}. AI never substitutes UGS or another subject when {subject} is
-                        selected.
+                        selected.{' '}
                         <a href={utSubjectScheduleUrl(actualTerm, subject)} target='_blank' rel='noopener noreferrer'>
                             Open this subject on UT's course schedule
                         </a>{' '}
@@ -375,16 +374,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     </p>
                 )}
                 {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
-                {!loadingCatalog && audit && candidates.length === 0 && (
-                    <p role='status' className='notice warn'>
-                        No matching real UT sections were found in the currently loaded catalog. Widen the time/grade
-                        preferences or expand advanced browsing to import additional subjects.
-                    </p>
-                )}
-                {!subject && !inventory.metas.length && coveredSubjects.length < 3 && (
+                {!loadingCatalog && !catalog.length && (
                     <div className='notice small'>
-                        Only a few subjects are available. Import UT's course list at the top of this page so AI can
-                        compare classes from every subject.
+                        No UT classes are loaded yet. Import UT's course list on this page so AI can compare classes
+                        from every subject.
                     </div>
                 )}
                 {savedCode ? (
@@ -421,14 +414,26 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         No name, EID or full IDA file is sent.
                     </span>
                 </label>
-                <button
-                    type='button'
-                    className='btn primary'
-                    disabled={!consent || !audit || !candidates.length || busy || !request.trim()}
-                    onClick={() => void run()}
-                >
-                    {busy ? 'Checking real UT sections…' : 'Ask Fastlane'}
-                </button>
+                <div className='row'>
+                    <button
+                        type='button'
+                        className='btn primary'
+                        disabled={!consent || !audit || !catalog.length || busy || !request.trim()}
+                        onClick={() => void run()}
+                    >
+                        {busy ? 'Working…' : 'Ask Fastlane'}
+                    </button>
+                    {busy && (
+                        <button type='button' className='btn' onClick={() => abortRef.current?.abort()}>
+                            Cancel
+                        </button>
+                    )}
+                </div>
+                {busy && progress && (
+                    <p role='status' className='small muted ai-progress'>
+                        {progress}
+                    </p>
+                )}
                 {error && (
                     <p className='notice warn' role='alert'>
                         {error}
@@ -437,7 +442,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 {recommendations.map(rec => {
                     const c = answered.sections.get(rec.id);
                     if (!c) return null;
-                    const g = grades.get(c.uniqueId);
+                    const g = answered.grades.get(c.uniqueId);
                     return (
                         <div key={rec.id} className='ai-result'>
                             <div className='row between'>
