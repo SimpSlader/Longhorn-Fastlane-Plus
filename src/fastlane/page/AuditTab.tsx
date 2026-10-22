@@ -4,6 +4,7 @@ import { confirmRequirement, correctRequirement, needsReview, outstandingTags } 
 import type { AuditRequirement, ParsedAudit, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
 import { FastlaneAuditStore } from '../storage/stores';
+import AiAuditReview from './AiAuditReview';
 import { PageHead } from './common';
 
 const STATUS_COLOR: Record<RequirementStatus, string> = {
@@ -118,7 +119,7 @@ export default function AuditTab({
         <div className='stack'>
             <PageHead
                 title='Degree audit'
-                subtitle='See which degree requirements you have finished and which courses you still need. Your audit stays on this computer.'
+                subtitle='See your remaining degree requirements. Your IDA is processed locally by default; optional AI review requires consent.'
                 actions={
                     audit && (
                         <button type='button' className='btn danger' onClick={() => void save(null)}>
@@ -165,6 +166,7 @@ export default function AuditTab({
                             {w}
                         </div>
                     ))}
+                    <AiAuditReview audit={audit} onChange={save} />
                     <div className='metrics simple-audit-metrics'>
                         <div className='metric'>
                             <b>
