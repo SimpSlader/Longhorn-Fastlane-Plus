@@ -19,7 +19,9 @@ const HOST_OK = /^(\*|https?):\/\/(\*\.)?([a-z0-9-]+\.)*(utexas\.edu|utexas\.col
 
 if (manifest.manifest_version !== 3) errors.push('manifest_version must be 3');
 for (const p of manifest.permissions ?? []) if (!ALLOWED_PERMISSIONS.has(p)) errors.push(`unexpected permission: ${p}`);
-for (const h of manifest.host_permissions ?? []) if (!HOST_OK.test(h)) errors.push(`unexpected host permission: ${h}`);
+const AI_HOST = 'https://longhorn-fastlane-plus.vercel.app/*';
+for (const h of manifest.host_permissions ?? [])
+    if (!HOST_OK.test(h) && h !== AI_HOST) errors.push(`unexpected host permission: ${h}`);
 for (const cs of manifest.content_scripts ?? [])
     for (const m of cs.matches ?? []) if (!HOST_OK.test(m)) errors.push(`content script on non-UT host: ${m}`);
 for (const war of manifest.web_accessible_resources ?? []) {

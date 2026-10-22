@@ -32,7 +32,7 @@ test.describe('Chrome extension permissions & security', () => {
             'unlimitedStorage',
         ]);
         for (const host of manifest.host_permissions ?? []) {
-            expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com/);
+            expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app/);
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');

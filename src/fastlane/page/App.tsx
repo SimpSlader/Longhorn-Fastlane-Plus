@@ -17,6 +17,7 @@ import {
     FastlaneReminderStore,
     FastlaneSettingsStore,
 } from '../storage/stores';
+import AiRecommendations from './AiRecommendations';
 import AuditTab from './AuditTab';
 import { useHashRoute, useOnline } from './hooks';
 import { FinderTab, HomeTab } from './PlanningTools';
@@ -50,6 +51,7 @@ function FindClasses({
                     <p>Find sections that fit your degree, week and grade preferences.</p>
                 </div>
             </div>
+            <AiRecommendations />
             <fieldset className='mode-toggle' aria-label='Class finder view'>
                 <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
                     For my degree

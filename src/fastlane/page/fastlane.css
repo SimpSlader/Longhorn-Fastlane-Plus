@@ -1437,3 +1437,54 @@ fieldset.day-chips {
     padding: 0;
     min-width: 0;
 }
+
+/* Optional AI advisor: intentionally compact; no extra app navigation. */
+.ai-advisor {
+    padding: 18px 20px;
+}
+.ai-advisor h2 {
+    font-size: 18px;
+    margin: 5px 0;
+}
+.ai-advisor .eyebrow {
+    font-size: 10px;
+}
+.ai-advisor p {
+    margin: 7px 0;
+}
+.ai-advisor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 17px;
+    padding-top: 17px;
+    border-top: 1px solid var(--border);
+}
+.ai-advisor-body > .field {
+    max-width: 300px;
+}
+.ai-advisor-body > .check {
+    align-items: flex-start;
+    max-width: 850px;
+}
+.ai-advisor-body > .btn.primary {
+    width: fit-content;
+}
+.ai-result {
+    padding: 15px 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+.ai-result .row {
+    gap: 9px;
+}
+.ai-result .chip {
+    white-space: normal;
+}
+@media (max-width: 630px) {
+    .ai-advisor > .row.between {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

@@ -125,6 +125,7 @@ export function describeRequirement(tag: string): string {
     }
     if (tag.startsWith('COURSE ')) return tag.slice(7);
     if (tag.startsWith('FLAG ')) return `${tag.slice(5)} flag`;
+    if (tag.startsWith('DEPT ')) return `${tag.slice(5)} courses (possible requirement fit; verify with UT)`;
     return tag;
 }
 
@@ -154,4 +155,18 @@ const FLAG_ALIASES: Array<[RegExp, string]> = [
 export function flagCode(value: string): string | null {
     for (const [pattern, code] of FLAG_ALIASES) if (pattern.test(value)) return code;
     return null;
+}
+
+/** AI-reviewed broad department tags are potential matches, never proof of degree credit. */
+export function sectionMatchesRequirement(
+    section: { courseCode: string; requirementTags: string[] },
+    requirement: string
+): boolean {
+    if (section.requirementTags.includes(requirement)) return true;
+    if (!/^DEPT [A-Z][A-Z ]{0,5}$/.test(requirement)) return false;
+    const subject = section.courseCode
+        .replace(/\s*[0-9].*$/, '')
+        .trim()
+        .toUpperCase();
+    return subject === requirement.slice(5);
 }

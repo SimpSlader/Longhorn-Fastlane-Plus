@@ -59,10 +59,12 @@ def main():
     require(new.get('key') == old.get('key'), 'Manifest identity key changed; refusing installation')
     for field in ['permissions', 'content_security_policy']:
         require(new.get(field) == old.get(field), 'Security configuration changed; review before syncing: ' + field)
-    # Explicitly reviewed migration: the user's requested click-to-import IDA button only.
+    # Explicitly reviewed migrations: the user's requested click-to-import IDA button, and the opt-in
+    # Fastlane AI backend (PR #8; called only after the student consents and enters the invite code).
     old_hosts, new_hosts = set(old.get('host_permissions', [])), set(new.get('host_permissions', []))
     require(old_hosts <= new_hosts and new_hosts - old_hosts <= {
-        'https://utdirect.utexas.edu/apps/degree/audits/results/*'
+        'https://utdirect.utexas.edu/apps/degree/audits/results/*',
+        'https://longhorn-fastlane-plus.vercel.app/*',
     }, 'Unreviewed host permission change; refusing installation')
     files = []
     for path in source.rglob('*'):

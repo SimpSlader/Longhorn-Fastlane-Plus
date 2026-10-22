@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import type { GradeStat } from '../core/grades';
 import { buildGradeStat, computeThreshold } from '../core/grades';
 import { recommend } from '../core/recommend';
-import { coreTagFromListing, normalizeCourseCode, tagsForSection } from '../core/requirements';
+import {
+    coreTagFromListing,
+    normalizeCourseCode,
+    sectionMatchesRequirement,
+    tagsForSection,
+} from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
 import { availabilityDisplay, toSectionTimes } from '../core/sections';
 import { sectionFixture } from './factories';
@@ -36,6 +41,22 @@ describe('requirement tags', () => {
         expect(tagsForSection({ courseCode: 'mus  302l', core: ARTS })).toEqual(['COURSE MUS 302L', 'CORE 050']);
         expect(normalizeCourseCode('UGS302')).toBe('UGS 302');
     });
+});
+
+it('matches a reviewed department as a possible fit but never calls it a specific course', () => {
+    const eco = sectionFixture(98765, 'ECO 324');
+    const ugs = sectionFixture(98766, 'UGS 302');
+    expect(sectionMatchesRequirement(eco, 'DEPT ECO')).toBe(true);
+    expect(sectionMatchesRequirement(ugs, 'DEPT ECO')).toBe(false);
+    const results = recommend({
+        requirements: ['DEPT ECO'],
+        catalog: [eco, ugs],
+        semester: 'Spring 2027',
+        activeSchedule: [],
+    });
+    expect(results.map(r => r.section.courseCode)).toEqual(['ECO 324']);
+    expect(results[0]?.reasons[0]).toMatch(/Possible fit/);
+    expect(results[0]?.warnings.join(' ')).toMatch(/not official degree credit/);
 });
 
 describe('recommend (emergency backups)', () => {

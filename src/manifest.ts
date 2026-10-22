@@ -26,6 +26,9 @@ const HOST_PERMISSIONS: string[] = [
     '*://my.utexas.edu/student/*',
 ];
 
+// Network access is used only by Fastlane's opt-in AI panel; content scripts still run on UT pages only.
+const AI_API_HOST_PERMISSION = 'https://longhorn-fastlane-plus.vercel.app/*';
+
 const manifest = defineManifest(async env => {
     const isDev = env.mode === 'development';
     const mode = isBeta ? 'beta' : isDev ? 'development' : 'production';
@@ -48,7 +51,9 @@ const manifest = defineManifest(async env => {
             'notifications',
             ...(isDev ? (['declarativeNetRequest', 'declarativeNetRequestWithHostAccess'] as const) : []),
         ],
-        host_permissions: isDev ? [...HOST_PERMISSIONS, '<all_urls>'] : HOST_PERMISSIONS,
+        host_permissions: isDev
+            ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, '<all_urls>']
+            : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION],
         action: {
             default_popup: 'src/pages/popup/index.html',
             default_icon: `icons/icon_${mode}_32.png`,
