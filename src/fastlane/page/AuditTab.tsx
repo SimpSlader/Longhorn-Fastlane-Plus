@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { importAuditFile } from '../audit/importFile';
 import { confirmRequirement, correctRequirement, needsReview, outstandingTags } from '../audit/parseAudit';
-import type { AuditRequirement, ParsedAudit, RequirementStatus } from '../audit/types';
+import type { AuditRequirement, ParsedAudit, RequirementCategory, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
 import { FastlaneAuditStore } from '../storage/stores';
 import AiAuditReview from './AiAuditReview';
@@ -12,6 +12,16 @@ const STATUS_COLOR: Record<RequirementStatus, string> = {
     'in-progress': 'var(--warn)',
     'not-started': 'var(--bad)',
 };
+const REQUIREMENT_GROUPS: Array<[RequirementCategory, string]> = [
+    ['core', 'Core curriculum'],
+    ['general', 'General education and flags'],
+    ['major', 'Major and degree requirements'],
+    ['minor', 'Minor requirements'],
+    ['hours', 'Credit hours and residency'],
+    ['gpa', 'GPA requirements'],
+    ['other', 'Other IDA requirements'],
+];
+
 const STATUS_LABEL: Record<RequirementStatus, string> = {
     completed: 'Completed',
     'in-progress': 'In progress',
@@ -89,7 +99,6 @@ export default function AuditTab({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [over, setOver] = useState(false);
-    const [filter, setFilter] = useState<'review' | 'remaining' | 'all'>('remaining');
 
     const save = (a: ParsedAudit | null) => FastlaneAuditStore.set('audit', a as never);
 
@@ -102,7 +111,6 @@ export default function AuditTab({
             if (!parsed.requirements.length && !parsed.courses.length)
                 throw new Error(parsed.warnings.join(' ') || 'Nothing could be read from that file.');
             await save(parsed);
-            setFilter(needsReview(parsed).length ? 'review' : 'remaining');
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -112,14 +120,12 @@ export default function AuditTab({
 
     const review = audit ? needsReview(audit) : [];
     const reqs = audit?.requirements ?? [];
-    const shown =
-        filter === 'review' ? review : filter === 'remaining' ? reqs.filter(r => r.status !== 'completed') : reqs;
 
     return (
         <div className='stack'>
             <PageHead
-                title='Degree audit'
-                subtitle='See your remaining degree requirements. Your IDA is processed locally by default; optional AI review requires consent.'
+                title='Degree progress'
+                subtitle='See what is still needed for your degree, grouped by category. Expand a category for details.'
                 actions={
                     audit && (
                         <button type='button' className='btn danger' onClick={() => void save(null)}>
@@ -166,88 +172,81 @@ export default function AuditTab({
                             {w}
                         </div>
                     ))}
-                    <AiAuditReview audit={audit} onChange={save} />
                     <div className='metrics simple-audit-metrics'>
                         <div className='metric'>
-                            <b>
-                                {reqs.filter(r => r.status === 'completed').length} / {reqs.length}
-                            </b>
-                            <span>requirements complete</span>
+                            <b>{audit.officialProgress ? `${audit.officialProgress.percent}%` : 'Not found'}</b>
+                            <span>Official IDA degree completion</span>
                         </div>
                         <div className='metric'>
-                            <b>{reqs.filter(r => r.status !== 'completed').length}</b>
-                            <span>remaining requirements</span>
+                            <b>{reqs.filter(r => r.status === 'completed').length} / {reqs.length}</b>
+                            <span>Parsed requirement checks (unweighted)</span>
                         </div>
                         <div className='metric'>
                             <b>{audit.creditHours.remaining ?? '—'}</b>
-                            <span>degree hours remaining</span>
+                            <span>Degree hours remaining, if listed</span>
                         </div>
                     </div>
+                    <p className='small muted'>
+                        UT's reported completion percentage and these requirement-check counts are different measures.
+                        Checks can overlap, have different hour weights, and include GPA or residency rules; do not treat
+                        completed checks divided by total checks as degree completion.
+                        {!audit.officialProgress && ' If the completion percentage was not in the imported file, view it on UT IDA.'}
+                    </p>
                     {review.length > 0 && (
                         <div className='notice warn small'>
-                            {review.length} imported requirements need confirmation. Check “Needs review” before relying
-                            on recommendations.
+                            {review.length} imported checks need review before relying on recommendations.
+                            Expand a category and confirm uncertain rows.
                         </div>
                     )}
                     {audit.transfer.pending.length > 0 && (
-                        <div className='notice warn'>
-                            Pending transfer credit is not treated as awarded:{' '}
-                            {audit.transfer.pending.map(c => `${c.code} (${c.hours} hrs)`).join(', ')}. Requirements
-                            that rely on it stay in progress until UT posts the credit.
+                        <div className='notice warn small'>
+                            Pending transfer/exam credit is not awarded yet:{' '}
+                            {audit.transfer.pending.map(c => `${c.code} (${c.hours} hrs)`).join(', ')}.
                         </div>
                     )}
-                    <div className='card stack'>
-                        <div className='row between'>
-                            <fieldset className='tabs' aria-label='Filter requirements'>
-                                <button
-                                    type='button'
-                                    aria-pressed={filter === 'review'}
-                                    onClick={() => setFilter('review')}
-                                >
-                                    Needs review ({review.length})
-                                </button>
-                                <button
-                                    type='button'
-                                    aria-pressed={filter === 'remaining'}
-                                    onClick={() => setFilter('remaining')}
-                                >
-                                    Remaining ({reqs.filter(r => r.status !== 'completed').length})
-                                </button>
-                                <button type='button' aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-                                    All ({reqs.length})
-                                </button>
-                            </fieldset>
-                            <button
-                                type='button'
-                                className='btn primary'
-                                disabled={!outstandingTags(audit).length}
-                                onClick={() => onNavigate('recommend', { req: outstandingTags(audit)[0] ?? '' })}
-                            >
-                                Recommend courses for remaining requirements
-                            </button>
-                        </div>
-                        {shown.length === 0 ? (
-                            <div className='muted small'>
-                                {filter === 'review' ? 'Everything has been reviewed.' : 'Nothing here.'}
-                            </div>
-                        ) : (
-                            <table className='list'>
-                                <thead>
-                                    <tr>
-                                        <th />
-                                        <th>Requirement</th>
-                                        <th>Status</th>
-                                        <th>Review</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {shown.map(r => (
-                                        <RequirementRow key={r.id} r={r} onChange={a => void save(a)} />
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
+                    <div className='row'>
+                        <button
+                            type='button'
+                            className='btn primary'
+                            onClick={() => onNavigate('finder')}
+                        >
+                            Find classes for remaining requirements
+                        </button>
                     </div>
+                    <div className='stack' aria-label='Degree requirement categories'>
+                        {REQUIREMENT_GROUPS.map(([category, label]) => {
+                            const group = reqs.filter(r => r.category === category);
+                            if (!group.length) return null;
+                            const unfinished = group.filter(r => r.status !== 'completed').length;
+                            const uncertain = group.filter(r => r.confidence !== 'high' && !r.reviewed).length;
+                            return (
+                                <details key={category} className='card audit-group'>
+                                    <summary>
+                                        <span><b>{label}</b> <span className='small muted'>· {unfinished} remaining of {group.length} checks</span></span>
+                                        {uncertain > 0 && <span className='chip'>{uncertain} to review</span>}
+                                    </summary>
+                                    <div className='audit-detail'>
+                                        <table className='list'>
+                                            <thead>
+                                                <tr><th /><th>Requirement</th><th>Status</th><th>Review</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                {group.map(r => (
+                                                    <RequirementRow key={r.id} r={r} onChange={a => void save(a)} />
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </details>
+                            );
+                        })}
+                    </div>
+                    <details className='card audit-group'>
+                        <summary><b>Optional AI audit review</b><span className='small muted'>Check ambiguous matches</span></summary>
+                        <div className='audit-detail'>
+                            <AiAuditReview audit={audit} onChange={save} />
+                        </div>
+                    </details>
                     {audit.restrictions.length > 0 && (
                         <div className='card'>
                             <h3>Prerequisites and restrictions mentioned in your audit</h3>
