@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ParsedAudit, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
+import { FastlaneAiAccessStore } from '../storage/stores';
 
 const URL = 'https://longhorn-fastlane-plus.vercel.app/api/audit-review';
 
@@ -57,6 +58,7 @@ export default function AiAuditReview({
     const [open, setOpen] = useState(false);
     const [consent, setConsent] = useState(false);
     const [invite, setInvite] = useState('');
+    const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [summary, setSummary] = useState('');
@@ -71,6 +73,11 @@ export default function AiAuditReview({
 
     const analyze = async () => {
         if (!consent || busy) return;
+        const code = savedCode || invite.trim();
+        if (!code) {
+            setError('Enter the beta invite code once. Fastlane will remember it on this device.');
+            return;
+        }
         setBusy(true);
         setError('');
         setSummary('');
@@ -82,7 +89,7 @@ export default function AiAuditReview({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    accessCode: invite,
+                    accessCode: code,
                     requirements: requests.map(r => ({
                         id: r.id,
                         text: r.text,
@@ -101,7 +108,12 @@ export default function AiAuditReview({
                 }),
             });
             const payload = (await result.json()) as Response;
+            if (result.status === 401 && savedCode) {
+                await FastlaneAiAccessStore.set('accessCode', '');
+                setInvite('');
+            }
             if (!result.ok) throw new Error(payload.error ?? 'AI audit review is unavailable.');
+            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             setSummary(payload.summary ?? '');
             setSuggestions(
                 (payload.suggestions ?? []).filter(s => audit.requirements.some(r => r.id === s.id && !r.reviewed))
@@ -147,16 +159,32 @@ export default function AiAuditReview({
                         existing tags, course codes and review warnings are shared. No raw IDA file, name, EID or grades
                         are sent.
                     </p>
-                    <label className='field'>
-                        Beta invite code (not your Groq API key)
-                        <input
-                            type='password'
-                            autoComplete='off'
-                            value={invite}
-                            onChange={e => setInvite(e.target.value)}
-                            placeholder='Fastlane beta code'
-                        />
-                    </label>
+                    {savedCode ? (
+                        <p className='small muted'>
+                            AI access saved on this device.{' '}
+                            <button
+                                type='button'
+                                className='btn sm'
+                                onClick={() => {
+                                    setInvite('');
+                                    void FastlaneAiAccessStore.set('accessCode', '');
+                                }}
+                            >
+                                Forget code
+                            </button>
+                        </p>
+                    ) : (
+                        <label className='field'>
+                            One-time beta invite code (not your Groq API key)
+                            <input
+                                type='password'
+                                autoComplete='off'
+                                value={invite}
+                                onChange={e => setInvite(e.target.value)}
+                                placeholder='Enter once to enable AI'
+                            />
+                        </label>
+                    )
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
