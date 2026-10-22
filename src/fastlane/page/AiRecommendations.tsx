@@ -1,8 +1,9 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
+import { safeAiScheduleDraft } from '../core/aiSchedule';
 import { normalizeCourseCode } from '../core/requirements';
 import { semesterKey, type SectionRecord } from '../core/sections';
-import { addOrSwap } from '../services/planningService';
+import { addOrSwap, createPlanningSchedule } from '../services/planningService';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
 import { useGradeStats } from './hooks';
@@ -61,6 +62,7 @@ export default function AiRecommendations() {
     const [summary, setSummary] = useState('');
     const [recommendations, setRecommendations] = useState<AiSelection[]>([]);
     const [savedId, setSavedId] = useState<number | null>(null);
+    const [draftResult, setDraftResult] = useState('');
 
     useEffect(() => {
         let active = true;
@@ -99,6 +101,7 @@ export default function AiRecommendations() {
         setError('');
         setRecommendations([]);
         setSavedId(null);
+        setDraftResult('');
         try {
             const response = await fetch(ENDPOINT, {
                 method: 'POST',
@@ -139,6 +142,20 @@ export default function AiRecommendations() {
             setError(failure instanceof Error ? failure.message : 'AI recommendations are unavailable.');
         } finally {
             setBusy(false);
+        }
+    };
+    const draft = safeAiScheduleDraft(
+        recommendations.map(r => r.id), candidates, 16, settings.avoidFriday
+    );
+    const makeDraft = async () => {
+        if (draft.length < 2) return;
+        try {
+            const name = `AI draft · ${actualTerm || 'Upcoming semester'}`;
+            await createPlanningSchedule(name, draft);
+            setDraftResult(`Created ${name} with ${draft.length} classes and ${draft.reduce((n, c) => n + c.creditHours, 0)} credits. Select it in My schedule to review.`);
+            setError('');
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not create schedule.');
         }
     };
     const add = async (c: SectionRecord) => {
@@ -218,6 +235,19 @@ export default function AiRecommendations() {
                             </div>
                         );
                     })}
+                    {draft.length >= 2 && (
+                        <div className='card'>
+                            <h3>Create a draft schedule</h3>
+                            <p className='small muted'>
+                                {draft.length} nonconflicting, verified sections · {draft.reduce((n, c) => n + c.creditHours, 0)} credits.
+                                This creates a separate schedule without changing your current one. Check prerequisites, degree credit and seat availability.
+                            </p>
+                            <button type='button' className='btn primary' onClick={() => void makeDraft()}>
+                                Create draft schedule
+                            </button>
+                        </div>
+                    )}
+                    {draftResult && <p role='status' className='notice'>{draftResult}</p>}
                     {!busy && summary && recommendations.length === 0 && <p className='small muted'>No verified candidate IDs were returned. Try broader UT sections.</p>}
                     <p className='small muted'>AI advice is not an official degree evaluation. Verify prerequisites, requirements and availability with UT.</p>
                 </div>
