@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { importAuditFile } from '../audit/importFile';
-import { confirmRequirement, correctRequirement, needsReview, outstandingTags } from '../audit/parseAudit';
+import { confirmRequirement, correctRequirement, needsReview } from '../audit/parseAudit';
 import type { AuditRequirement, ParsedAudit, RequirementCategory, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
 import { FastlaneAuditStore } from '../storage/stores';
