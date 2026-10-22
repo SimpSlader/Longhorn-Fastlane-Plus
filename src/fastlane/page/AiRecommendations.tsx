@@ -427,7 +427,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             {draftResult}
                         </p>
                     )}
-                    {!busy && summary && recommendations.length === 0 && (
+                    {!busy && history.length > 0 && recommendations.length === 0 && !request.trim() && (
                         <p className='small muted'>No verified candidate IDs were returned. Try broader UT sections.</p>
                     )}
                     <p className='small muted'>
