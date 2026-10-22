@@ -46,7 +46,6 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
     const requirements = audit?.requirements ?? [];
     const completed = requirements.filter(r => r.status === 'completed').length;
     const remaining = requirements.filter(r => r.status !== 'completed').length;
-    const trackedPercent = requirements.length ? Math.round((completed / requirements.length) * 100) : 0;
     const hours = audit?.creditHours;
     return (
         <div className='stack'>
@@ -88,23 +87,17 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
                     </div>
                     <div className='progress-summary'>
                         <div className='progress-big'>
-                            {completed}
-                            <span> / {requirements.length}</span>
+                            {audit.officialProgress?.percent !== undefined ? `${audit.officialProgress.percent}%` : '—'}
                         </div>
                         <div className='progress-info'>
-                            <b>Tracked requirements completed</b>
-                            <div
-                                className='progress-track'
-                                role='progressbar'
-                                aria-label='Completed tracked audit requirements'
-                                aria-valuenow={completed}
-                                aria-valuemin={0}
-                                aria-valuemax={requirements.length || 1}
-                            >
-                                <span style={{ width: `${trackedPercent}%` }} />
-                            </div>
+                            <b>{audit.officialProgress ? 'Degree completion shown on your IDA' : 'Official IDA degree completion'}</b>
+                            <p className='small muted'>
+                                {audit.officialProgress
+                                    ? 'This figure was read from an explicitly labeled degree-completion field in the imported audit.'
+                                    : 'Not detected in the imported audit. Open your IDA to see the official figure.'}
+                            </p>
                             <span className='small muted'>
-                                {remaining} unfinished · {trackedPercent}% of parsed requirements
+                                {completed} of {requirements.length} separately tracked audit checks marked complete · {remaining} unfinished
                             </span>
                         </div>
                     </div>
@@ -124,31 +117,17 @@ export function HomeTab({ go }: { go: (tab: string) => void }) {
                 </section>
             )}
             <div className='simple-cards'>
-                <button type='button' className='simple-action card' onClick={() => go(audit ? 'recommend' : 'audit')}>
+                <button type='button' className='simple-action card' onClick={() => go(audit ? 'finder' : 'audit')}>
                     <span className='action-icon'>01</span>
-                    <h3>{audit ? 'Find recommended classes' : 'Check degree progress'}</h3>
-                    <p>
-                        {audit
-                            ? 'Match courses to unfinished IDA requirements.'
-                            : 'Import your IDA to see what is left.'}
-                    </p>
-                    <span className='action-arrow'>Explore →</span>
-                </button>
-                <button type='button' className='simple-action card' onClick={() => go('finder')}>
-                    <span className='action-icon'>02</span>
-                    <h3>Filter classes</h3>
-                    <p>Search by department, days, professor or historical A grades.</p>
-                    <span className='action-arrow'>Browse →</span>
+                    <h3>{audit ? 'Find recommended classes' : 'Import your degree audit'}</h3>
+                    <p>Ask the planner for classes that count toward your degree and match your preferred days and times.</p>
+                    <span className='action-arrow'>Open AI planner →</span>
                 </button>
                 <button type='button' className='simple-action card' onClick={() => go('plan')}>
-                    <span className='action-icon'>03</span>
+                    <span className='action-icon'>02</span>
                     <h3>My schedule</h3>
-                    <p>
-                        {active?.courses.length
-                            ? `${active.courses.length} classes in ${active.name}.`
-                            : 'Build a weekly schedule and keep backup sections.'}
-                    </p>
-                    <span className='action-arrow'>Open schedule →</span>
+                    <p>{active?.courses.length ? `${active.courses.length} classes in ${active.name}.` : 'View your weekly calendar and saved mock schedules.'}</p>
+                    <span className='action-arrow'>View calendar →</span>
                 </button>
             </div>
         </div>
