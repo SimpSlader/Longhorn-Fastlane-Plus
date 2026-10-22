@@ -179,12 +179,12 @@ export function readOfficialIdaProgress(doc: Document): ParsedAudit['officialPro
     const widget = doc.querySelector('#progress_summary');
     if (!widget) return undefined;
     const displayed = clean(widget.querySelector('.progress_number')?.textContent);
-    const match = displayed.match(/^(100|[1-9]?\\d)\\s*%?$/);
+    const match = displayed.match(/^(100|[1-9]?\d)\s*%?$/);
     if (match) return { percent: Number(match[1]), source: 'ida-html' };
     const actualBar = [...widget.querySelectorAll('img[alt]')]
         .map(img => img.getAttribute('alt') ?? '')
-        .find(text => /^(100|[1-9]?\\d)\\s*%\\s*complete$/i.test(text.trim()));
-    const barMatch = actualBar?.trim().match(/^(100|[1-9]?\\d)\\s*%\\s*complete$/i);
+        .find(text => /^(100|[1-9]?\d)\s*%\s*complete$/i.test(text.trim()));
+    const barMatch = actualBar?.trim().match(/^(100|[1-9]?\d)\s*%\s*complete$/i);
     return barMatch ? { percent: Number(barMatch[1]), source: 'ida-html' } : undefined;
 }
 
@@ -384,7 +384,7 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
     if (requirements.length === 0)
         warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
     const transfer = splitTransfer(courses);
-    const explicit = lines.map(line => clean(line).match(/^(100|[1-9]?\\d)\\s*%\\s*complete$/i)).find(Boolean);
+    const explicit = lines.map(line => clean(line).match(/^(100|[1-9]?\d)\s*%\s*complete$/i)).find(Boolean);
     return {
         source: 'pdf',
         officialProgress: explicit ? { percent: Number(explicit[1]), source: 'ida-pdf' } : undefined,
