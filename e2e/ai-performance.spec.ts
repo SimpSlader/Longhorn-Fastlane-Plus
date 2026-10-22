@@ -113,12 +113,13 @@ test('AI screen stays responsive with the full UT course list and an IDA', async
     const t2 = Date.now();
     await page.getByRole('button', { name: 'Ask Fastlane' }).click();
     await expect(page.locator('.ai-result').first()).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole('region', { name: 'Proposed weekly calendar' })).toBeVisible();
     const submitMs = Date.now() - t2;
     const submitLong = await takeLong();
 
     // cancelling stops the work and sends nothing
     await box.fill('Only afternoons please');
-    await page.getByRole('button', { name: 'Ask Fastlane' }).click();
+    await page.getByRole('button', { name: 'Update plan' }).click();
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByText('Stopped. Nothing was sent.')).toBeVisible();
 

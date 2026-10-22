@@ -77,13 +77,30 @@ function hourLabel(minutes: number): string {
     return `${h12} ${h >= 12 ? 'PM' : 'AM'}`;
 }
 
-export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
+export default function WeekGrid({
+    sections,
+    compact = false,
+    label = 'Weekly calendar of active classes',
+    onSelect,
+    selectedId,
+    changed,
+}: {
+    sections: SectionRecord[];
+    /** smaller hours and type, for the AI proposal */
+    compact?: boolean;
+    label?: string;
+    /** when set, clicking a class selects it here instead of opening UTRP's popup */
+    onSelect?: (s: SectionRecord) => void;
+    selectedId?: number | null;
+    /** classes that are new in this version (outlined) */
+    changed?: Set<number>;
+}) {
     const timed = sections.filter(s => s.meetings.length);
     const starts = timed.flatMap(s => s.meetings.map(m => m.start));
     const ends = timed.flatMap(s => s.meetings.map(m => m.end));
-    const first = Math.min(8 * 60, ...starts.map(t => Math.floor(t / 60) * 60));
-    const last = Math.max(18 * 60, ...ends.map(t => Math.ceil(t / 60) * 60));
-    const px = HOUR_PX / 60;
+    const first = Math.min(compact ? 9 * 60 : 8 * 60, ...starts.map(t => Math.floor(t / 60) * 60));
+    const last = Math.max(compact ? 17 * 60 : 18 * 60, ...ends.map(t => Math.ceil(t / 60) * 60));
+    const px = (compact ? 40 : HOUR_PX) / 60;
     const height = (last - first) * px;
     const conflicted = new Set(
         scheduleConflicts(sections.map(toSectionTimes)).flatMap(([a, b]) => [a.uniqueId, b.uniqueId])
@@ -92,11 +109,14 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
     for (let t = first; t <= last; t += 60) hours.push(t);
     const untimed = sections.filter(s => !s.meetings.length);
     const colors = distinctColors(sections);
-    const [opened, setOpened] = useState<SectionRecord | null>(null);
+    const [opened, setOpenedState] = useState<SectionRecord | null>(null);
+    const setOpened = (s: SectionRecord) => (onSelect ? onSelect(s) : setOpenedState(s));
+    const state = (s: SectionRecord) =>
+        `${conflicted.has(s.uniqueId) ? 'conflict' : ''} ${changed?.has(s.uniqueId) ? 'changed' : ''} ${selectedId === s.uniqueId ? 'selected' : ''}`;
 
     return (
-        <div className='card' style={{ padding: '14px 16px 8px' }}>
-            <section className='week' aria-label='Weekly calendar of active classes'>
+        <div className={`card ${compact ? 'week-compact' : ''}`} style={{ padding: '14px 16px 8px' }}>
+            <section className='week' aria-label={label}>
                 <div>
                     <div className='dayhead'>&nbsp;</div>
                     <div style={{ position: 'relative', height }}>
@@ -138,7 +158,8 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                                         <button
                                             type='button'
                                             key={`${s.uniqueId}-${m.days.join('')}-${m.start}`}
-                                            className={`week-block ${conflicted.has(s.uniqueId) ? 'conflict' : ''}`}
+                                            className={`week-block ${state(s)}`}
+                                            aria-pressed={onSelect ? selectedId === s.uniqueId : undefined}
                                             style={{
                                                 top: (m.start - first) * px + 1,
                                                 height: Math.max(22, (m.end - m.start) * px - 2),
@@ -169,7 +190,7 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                     <button
                         type='button'
                         key={s.uniqueId}
-                        className='course-pill'
+                        className={`course-pill ${state(s)}`}
                         style={{ background: colors.get(s.uniqueId) }}
                         title={s.modality === 'async-online' ? 'Asynchronous online' : 'Meeting times not listed'}
                         onClick={() => setOpened(s)}
@@ -180,7 +201,7 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
             </div>
             {opened && (
                 <Suspense fallback={null}>
-                    <CoursePopup section={opened} onClosed={() => setOpened(null)} />
+                    <CoursePopup section={opened} onClosed={() => setOpenedState(null)} />
                 </Suspense>
             )}
         </div>

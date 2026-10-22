@@ -1879,3 +1879,188 @@ button.course-pill {
     font: inherit;
     cursor: pointer;
 }
+
+/* Online classes: the whole card turns light blue; async is a touch deeper than live online */
+.class-card.online {
+    --cc-bg: rgba(232, 242, 255, 0.82);
+    --cc-border: rgba(59, 130, 246, 0.35);
+}
+.class-card.online.async {
+    --cc-bg: rgba(219, 234, 254, 0.88);
+    --cc-border: rgba(37, 99, 235, 0.45);
+}
+.online-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #1d4ed8;
+    background: rgba(59, 130, 246, 0.14);
+}
+.class-card.online.async .online-badge {
+    color: #fff;
+    background: #2563eb;
+}
+:root[data-theme="dark"] .class-card.online {
+    --cc-bg: rgba(30, 58, 110, 0.5);
+    --cc-border: rgba(96, 165, 250, 0.35);
+}
+:root[data-theme="dark"] .class-card.online.async {
+    --cc-bg: rgba(29, 78, 216, 0.36);
+    --cc-border: rgba(147, 197, 253, 0.45);
+}
+:root[data-theme="dark"] .online-badge {
+    color: #bfdbfe;
+    background: rgba(96, 165, 250, 0.2);
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .class-card.online {
+        --cc-bg: rgba(30, 58, 110, 0.5);
+        --cc-border: rgba(96, 165, 250, 0.35);
+    }
+    :root:not([data-theme="light"]) .class-card.online.async {
+        --cc-bg: rgba(29, 78, 216, 0.36);
+        --cc-border: rgba(147, 197, 253, 0.45);
+    }
+    :root:not([data-theme="light"]) .online-badge {
+        color: #bfdbfe;
+        background: rgba(96, 165, 250, 0.2);
+    }
+}
+.class-card.in-plan {
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
+        var(--cc-shadow);
+}
+
+/* Compact proposal calendar */
+.week-compact .week-block {
+    padding: 3px 6px;
+    font-size: 11px;
+}
+.week-compact .week-block b {
+    font-size: 12px;
+}
+.week-compact .dayhead {
+    font-size: 12px;
+}
+.week-compact .course-pill {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+.week-block.changed,
+.course-pill.changed {
+    outline: 3px solid #facc15;
+    outline-offset: -3px;
+}
+.week-block.selected,
+.course-pill.selected {
+    box-shadow:
+        0 0 0 3px var(--surface),
+        0 0 0 5px var(--accent);
+    z-index: 2;
+}
+
+/* AI proposed schedule */
+.proposal {
+    margin: 14px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.proposal h3 {
+    margin: 2px 0 0;
+}
+.proposal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.proposal-versions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+.proposal-note {
+    margin: 0;
+}
+.proposal-diff {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+}
+.diff-add,
+.diff-remove {
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.diff-add {
+    background: rgba(250, 204, 21, 0.22);
+    color: #854d0e;
+}
+.diff-remove {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--muted);
+    text-decoration: line-through;
+}
+.proposal .card.week-compact {
+    margin: 0;
+}
+.proposal-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.detail-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 14px;
+    margin: 0;
+}
+.detail-list dt {
+    color: var(--muted);
+}
+.detail-list dd {
+    margin: 0;
+}
+.req-verified {
+    color: #15803d;
+    font-weight: 600;
+}
+.req-possible {
+    color: #a16207;
+}
+.proposal-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.danger-text {
+    color: var(--bad) !important;
+}
+.focus-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    font-size: 13px;
+}
+.ai-results-head {
+    margin: 16px 0 8px;
+}

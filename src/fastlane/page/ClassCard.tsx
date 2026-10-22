@@ -33,7 +33,7 @@ const BARS: Array<[keyof GradeCounts, string]> = [
 
 function meetingText(s: SectionRecord): string {
     if (s.meetings.length) return s.meetings.map(formatMeeting).join(' · ');
-    return s.modality === 'async-online' ? 'Online, no set meeting times' : 'Meeting times not listed';
+    return s.modality === 'async-online' ? 'Work on your own schedule, no class meetings' : 'Meeting times not listed';
 }
 
 export function ClassCard({
@@ -41,11 +41,14 @@ export function ClassCard({
     grade,
     badge,
     children,
+    className = '',
 }: {
     section: SectionRecord;
     grade: GradeStat | null | undefined;
     /** short warning such as an unmet prerequisite */
     badge?: string;
+    /** extra state classes, e.g. "in-plan" */
+    className?: string;
     /** actions, e.g. the Add button */
     children?: ReactNode;
 }) {
@@ -71,7 +74,9 @@ export function ClassCard({
     const r = grade?.result;
     const aOnly = r && r.graded ? ((counts?.A ?? NaN) / r.graded) * 100 : NaN;
     return (
-        <article className='class-card'>
+        <article
+            className={`class-card ${section.modality === 'async-online' ? 'online async' : section.modality === 'live-online' ? 'online live' : ''} ${className}`}
+        >
             <div className='class-card-main'>
                 <div className='class-card-text'>
                     <h4 className='class-title' title={section.title}>
@@ -80,6 +85,16 @@ export function ClassCard({
                     <p className='class-code'>
                         {section.courseCode} <span>· {String(section.uniqueId).padStart(5, '0')}</span>
                     </p>
+                    {section.modality === 'async-online' && (
+                        <span className='online-badge' title='Fully online with no scheduled meeting times'>
+                            Online · Asynchronous
+                        </span>
+                    )}
+                    {section.modality === 'live-online' && (
+                        <span className='online-badge' title='Online class that meets live at the listed times'>
+                            Online · Live at set times
+                        </span>
+                    )}
                     <p className='class-time'>{meetingText(section)}</p>
                     {badge && <span className='class-badge'>{badge}</span>}
                 </div>
