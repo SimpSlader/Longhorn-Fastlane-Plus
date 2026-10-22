@@ -1488,3 +1488,116 @@ fieldset.day-chips {
         align-items: flex-start;
     }
 }
+
+
+/* Chat-first planner and streamlined degree/schedule navigation */
+.side-theme {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 4px;
+}
+.side-theme select {
+    width: 100%;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    padding: 8px;
+}
+.planner-advanced summary,
+.audit-group summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 10px 2px;
+    list-style-position: inside;
+}
+.planner-advanced[open] > summary,
+.audit-group[open] > summary {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+}
+.audit-group summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.audit-detail {
+    overflow-x: auto;
+}
+.saved-schedules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.saved-schedules button {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    background: var(--surface-2);
+    cursor: pointer;
+    min-width: 145px;
+}
+.saved-schedules button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+.saved-schedules button span {
+    color: var(--muted);
+    font-size: 12px;
+}
+.chat-history {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.chat-turn {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.chat-user,
+.chat-answer {
+    max-width: min(90%, 650px);
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.chat-user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+}
+.chat-answer {
+    align-self: flex-start;
+    background: var(--surface-2);
+}
+.ai-quick-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+}
+.ai-quick-filters label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+    color: var(--muted);
+}
+.ai-quick-filters select {
+    padding: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: var(--r-btn);
+    color: var(--text);
+}
