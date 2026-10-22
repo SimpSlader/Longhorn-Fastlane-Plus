@@ -30,6 +30,7 @@ import {
     parseSharedSchedule,
     shareSchedule,
 } from '../services/planningService';
+import { availableSubjects } from '../data/subjects';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore } from '../storage/stores';
 import { useGradeStats } from './hooks';
@@ -163,7 +164,7 @@ function FilterControls({
     onChange: (v: PlannerFilters) => void;
     terms: string[];
     tags: string[];
-    departments: string[];
+    departments: Array<{ code: string; name: string }>;
     gradeThreshold: 'A' | 'A-';
     onGradeThresholdChange: (v: 'A' | 'A-') => void;
     showFits?: boolean;
@@ -206,8 +207,8 @@ function FilterControls({
                     >
                         <option value=''>All subjects</option>
                         {departments.map(d => (
-                            <option key={d} value={d}>
-                                {d}
+                            <option key={d.code} value={d.code}>
+                                {d.name} ({d.code})
                             </option>
                         ))}
                     </select>
@@ -424,7 +425,17 @@ function SectionSummary({ s, grades }: { s: SectionRecord; grades: Grades }) {
         </>
     );
 }
-export function FinderTab({ generate = false, embedded = false }: { generate?: boolean; embedded?: boolean }) {
+export function FinderTab({
+    generate = false,
+    embedded = false,
+    subject,
+    onSubjectChange,
+}: {
+    generate?: boolean;
+    embedded?: boolean;
+    subject?: string;
+    onSubjectChange?: (code: string) => void;
+}) {
     const [catalog, setCatalog] = useState<SectionRecord[]>([]);
     const [loaded, setLoaded] = useState(false);
     const [filters, setFilters] = useState<PlannerFilters>({ ...DEFAULT_FILTERS });
@@ -447,15 +458,16 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
         };
     }, []);
     const terms = [...new Set(catalog.map(s => semesterKey(s.semester)))].filter(t => t !== 'unknown');
-    const departments = [
-        ...new Set(catalog.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim()).filter(Boolean)),
-    ].sort();
+    const departments = availableSubjects(catalog.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim()));
     useEffect(() => {
         if (catalog.length && !filters.semester) {
             const lastSeen = [...catalog].sort((a, b) => (b.capturedAt || 0) - (a.capturedAt || 0))[0];
             if (lastSeen) setFilters(f => ({ ...f, semester: semesterKey(lastSeen.semester) }));
         }
     }, [catalog, filters.semester]);
+    useEffect(() => {
+        if (subject !== undefined) setFilters(f => f.department === subject ? f : { ...f, department: subject });
+    }, [subject]);
     const pool = useMemo(
         () => catalog.filter(s => semesterKey(s.semester) === filters.semester),
         [catalog, filters.semester]
@@ -498,6 +510,7 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                 value={filters}
                 onChange={f => {
                     if (f.semester !== filters.semester) setSelected([]);
+                    if (onSubjectChange && f.department !== filters.department) onSubjectChange(f.department);
                     setFilters(f);
                     setResult(null);
                 }}
@@ -509,6 +522,19 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                 showFits={!generate}
             />
             <p role='status'>{message}</p>
+            {loaded && filters.department && !catalog.some(s =>
+                semesterKey(s.semester) === filters.semester &&
+                s.courseCode.replace(/\s+\d.*$/, '').trim() === filters.department
+            ) && (
+                <div className='notice small' role='status'>
+                    No {departments.find(d => d.code === filters.department)?.name ?? filters.department} sections
+                    have been loaded for {filters.semester || 'the selected semester'}.
+                    The A–Z subject filter is complete, but the semester offerings database still needs to be populated.
+                    <a href='https://registrar.utexas.edu/schedules' target='_blank' rel='noopener noreferrer'>
+                        View official UT course schedules
+                    </a>.
+                </div>
+            )}
             {!loaded ? (
                 <p>Loading saved sections…</p>
             ) : !catalog.length ? (
@@ -516,7 +542,8 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                     <h2>No cached sections yet</h2>
                     <p>
                         Browse the official UT course schedule, open the class listings you want, then reopen this page.
-                        FastLane never invents sections.
+                        Fastlane does not invent sections, but every official UT subject is available in the filter above.
+                        Selecting Economics will not display UGS classes.
                     </p>
                 </section>
             ) : !filters.semester ? (
