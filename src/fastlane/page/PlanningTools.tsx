@@ -19,7 +19,8 @@ import {
     roadmapProjection,
 } from '../core/planning';
 import { normalizeCourseCode } from '../core/requirements';
-import { availabilityDisplay, type SectionRecord, semesterKey } from '../core/sections';
+import { type SectionRecord, semesterKey, subjectOf } from '../core/sections';
+import { utSubjectScheduleUrl } from '../data/subjects';
 import { HistoryStore, PlanningStore, type ScheduleSnapshot } from '../services/history';
 import {
     addOrSwap,
@@ -32,7 +33,11 @@ import {
 } from '../services/planningService';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore } from '../storage/stores';
+import { InventoryPanel, inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
 import { useGradeStats } from './hooks';
+
+const ROW_LIMIT = 120;
+
 import WeekGrid from './WeekGrid';
 
 export function HomeTab({ go }: { go: (tab: string) => void }) {
@@ -163,7 +168,7 @@ function FilterControls({
     onChange: (v: PlannerFilters) => void;
     terms: string[];
     tags: string[];
-    departments: string[];
+    departments: Array<{ code: string; name: string }>;
     gradeThreshold: 'A' | 'A-';
     onGradeThresholdChange: (v: 'A' | 'A-') => void;
     showFits?: boolean;
@@ -206,8 +211,8 @@ function FilterControls({
                     >
                         <option value=''>All subjects</option>
                         {departments.map(d => (
-                            <option key={d} value={d}>
-                                {d}
+                            <option key={d.code} value={d.code}>
+                                {d.name} ({d.code})
                             </option>
                         ))}
                     </select>
@@ -418,15 +423,25 @@ function SectionSummary({ s, grades }: { s: SectionRecord; grades: Grades }) {
                 {g
                     ? `${g.result.percent.toFixed(1)}% ${g.result.threshold === 'A' ? 'A' : 'A− or better'} · ${g.result.graded} historical grades · ${g.scope}${g.smallSample ? ' · small sample' : ''}`
                     : 'Historical grades unavailable'}
-                <br />
-                {availabilityDisplay(s.status).text}
             </p>
+            <SectionEvidence s={s} />
         </>
     );
 }
-export function FinderTab({ generate = false, embedded = false }: { generate?: boolean; embedded?: boolean }) {
-    const [catalog, setCatalog] = useState<SectionRecord[]>([]);
-    const [loaded, setLoaded] = useState(false);
+export function FinderTab({
+    generate = false,
+    embedded = false,
+    subject,
+    onSubjectChange,
+}: {
+    generate?: boolean;
+    embedded?: boolean;
+    subject?: string;
+    onSubjectChange?: (code: string) => void;
+}) {
+    const inventory = useInventory();
+    const catalog = inventory.sections;
+    const loaded = inventory.loaded;
     const [filters, setFilters] = useState<PlannerFilters>({ ...DEFAULT_FILTERS });
     const [gradeThreshold, setGradeThreshold] = useState<'A' | 'A-'>('A-');
     const [selected, setSelected] = useState<string[]>([]);
@@ -434,40 +449,47 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
     const [message, setMessage] = useState('');
     const active = useActiveSchedule();
     const audit = FastlaneAuditStore.useStore(s => s.audit) as ParsedAudit | null;
-    useEffect(() => {
-        let alive = true;
-        void loadCachedSections(null).then(s => {
-            if (alive) {
-                setCatalog(s);
-                setLoaded(true);
-            }
-        });
-        return () => {
-            alive = false;
-        };
-    }, []);
     const terms = [...new Set(catalog.map(s => semesterKey(s.semester)))].filter(t => t !== 'unknown');
-    const departments = [
-        ...new Set(catalog.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim()).filter(Boolean)),
-    ].sort();
+    const departments = inventorySubjects(inventory);
     useEffect(() => {
         if (catalog.length && !filters.semester) {
             const lastSeen = [...catalog].sort((a, b) => (b.capturedAt || 0) - (a.capturedAt || 0))[0];
             if (lastSeen) setFilters(f => ({ ...f, semester: semesterKey(lastSeen.semester) }));
         }
     }, [catalog, filters.semester]);
+    useEffect(() => {
+        if (subject !== undefined) setFilters(f => (f.department === subject ? f : { ...f, department: subject }));
+    }, [subject]);
     const pool = useMemo(
         () => catalog.filter(s => semesterKey(s.semester) === filters.semester),
         [catalog, filters.semester]
     );
-    const grades = useGradeStats(pool, gradeThreshold);
+    // cheap filters first, so historical grades are looked up only for what the student is looking at
+    const narrowed = useMemo(
+        () =>
+            pool.filter(
+                s =>
+                    (!filters.department || subjectOf(s.courseCode) === filters.department.toUpperCase()) &&
+                    `${s.courseCode} ${s.title}`.toLowerCase().includes(filters.query.toLowerCase()) &&
+                    s.instructors.join(' ').toLowerCase().includes(filters.professor.toLowerCase())
+            ),
+        [pool, filters.department, filters.query, filters.professor]
+    );
+    const gradeTargets = useMemo(
+        () =>
+            generate
+                ? narrowed.filter(s => selected.includes(s.courseCode))
+                : narrowed.slice(0, filters.department || filters.query || filters.professor ? 200 : 100),
+        [generate, narrowed, selected, filters.department, filters.query, filters.professor]
+    );
+    const grades = useGradeStats(gradeTargets, gradeThreshold);
     const activeSections = useMemo(() => active?.courses.map(c => sectionFromCourse(c)) ?? [], [active]);
     const tags = [...new Set(pool.flatMap(s => s.requirementTags))].sort();
     const needed = new Set(audit?.requirements.filter(r => r.status !== 'completed').flatMap(r => r.tags) ?? []);
     const finished = new Set(
         audit?.courses.filter(c => c.status === 'completed').map(c => normalizeCourseCode(c.code)) ?? []
     );
-    const rows = pool
+    const rows = narrowed
         .filter(s =>
             matchesFilters(s, { ...filters, noGaps: generate ? false : filters.noGaps }, grades, activeSections)
         )
@@ -478,8 +500,14 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                 (grades.get(b.uniqueId)?.result.percent ?? -1) - (grades.get(a.uniqueId)?.result.percent ?? -1)
         );
     const codes = [
-        ...new Set(rows.filter(s => !finished.has(normalizeCourseCode(s.courseCode))).map(s => s.courseCode)),
+        ...new Set(
+            narrowed
+                .filter(s => !finished.has(normalizeCourseCode(s.courseCode)) || selected.includes(s.courseCode))
+                .map(s => s.courseCode)
+        ),
     ];
+    const shownCodes = [...new Set([...selected, ...codes.slice(0, 200)])];
+    const shownRows = rows.slice(0, ROW_LIMIT);
     const run = async (action: () => Promise<unknown>, success: string) => {
         try {
             await action();
@@ -491,13 +519,12 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
     return (
         <>
             {!embedded && <h1>{generate ? 'Build a schedule' : 'Browse classes'}</h1>}
-            <p className='small muted'>
-                Sections come from UT course listings saved in this browser. Availability must be verified at UT.
-            </p>
+            {!embedded && <InventoryPanel />}
             <FilterControls
                 value={filters}
                 onChange={f => {
                     if (f.semester !== filters.semester) setSelected([]);
+                    if (onSubjectChange && f.department !== filters.department) onSubjectChange(f.department ?? '');
                     setFilters(f);
                     setResult(null);
                 }}
@@ -509,18 +536,37 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                 showFits={!generate}
             />
             <p role='status'>{message}</p>
+            {loaded &&
+                filters.department &&
+                filters.semester &&
+                !narrowed.length &&
+                !filters.query &&
+                !filters.professor && (
+                    <div className='notice small' role='status'>
+                        No {departments.find(d => d.code === filters.department)?.name ?? filters.department} sections
+                        are listed for {filters.semester}.{' '}
+                        {inventory.metas.some(m => m.term === filters.semester)
+                            ? "UT's course list for this semester has no sections in this subject."
+                            : "Import UT's course list above to see every subject's classes for this semester."}{' '}
+                        <a
+                            href={utSubjectScheduleUrl(filters.semester, filters.department ?? '')}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                        >
+                            Check this subject on UT's course schedule
+                        </a>
+                        .
+                    </div>
+                )}
             {!loaded ? (
-                <p>Loading saved sections…</p>
+                <p>Loading classes…</p>
             ) : !catalog.length ? (
-                <section className='card'>
-                    <h2>No cached sections yet</h2>
-                    <p>
-                        Browse the official UT course schedule, open the class listings you want, then reopen this page.
-                        FastLane never invents sections.
-                    </p>
-                </section>
+                <p className='muted'>
+                    No classes yet. Import UT's course list above. Fastlane never invents sections, and choosing
+                    Economics never shows other subjects.
+                </p>
             ) : !filters.semester ? (
-                <p>Choose a semester to see cached classes.</p>
+                <p>Choose a semester to see classes.</p>
             ) : (
                 <>
                     {generate ? (
@@ -551,8 +597,14 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                                         Use courses from active schedule
                                     </button>
                                 </div>
+                                {codes.length > shownCodes.length && (
+                                    <p className='small muted'>
+                                        Showing {shownCodes.length} of {codes.length} courses. Choose a subject or
+                                        search to narrow the list.
+                                    </p>
+                                )}
                                 <div className='course-choices'>
-                                    {codes.map(code => (
+                                    {shownCodes.map(code => (
                                         <label key={code}>
                                             <input
                                                 type='checkbox'
@@ -664,17 +716,16 @@ export function FinderTab({ generate = false, embedded = false }: { generate?: b
                     ) : (
                         <>
                             <p>
-                                {rows.length} matching sections · sorted by unfinished requirement matches, then
-                                historical A− or better. Course-wide grades and small samples are labeled.
+                                {rows.length.toLocaleString()} matching sections · sorted by unfinished requirement
+                                matches, then historical A− or better. Course-wide grades and small samples are labeled.
+                                {rows.length > shownRows.length &&
+                                    ` Showing the first ${shownRows.length}; choose a subject or search to narrow.`}
                             </p>
                             {!rows.length && (
-                                <p>
-                                    No cached sections meet these filters. Try Reset filters or browse additional UT
-                                    course listings.
-                                </p>
+                                <p>No sections meet these filters. Try Reset filters or another subject.</p>
                             )}
                             <div className='planner-results'>
-                                {rows.map(s => (
+                                {shownRows.map(s => (
                                     <article className='card planner-glass' key={s.uniqueId}>
                                         <SectionSummary s={s} grades={grades} />
                                         {s.requirementTags.some(t => needed.has(t)) && (

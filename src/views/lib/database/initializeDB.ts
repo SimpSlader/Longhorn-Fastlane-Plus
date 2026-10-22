@@ -40,6 +40,7 @@ export async function initializeDB(): Promise<Database> {
         try {
             const candidate = new Database(new Uint8Array(override.buffer));
             candidate.exec('SELECT 1 FROM grade_distributions LIMIT 1');
+            indexForCourseLookups(candidate);
             db = candidate;
             setActiveGradeDataset({
                 version: override.descriptor.version,
@@ -55,6 +56,21 @@ export async function initializeDB(): Promise<Database> {
 
     const dbBuffer = await fetch(DB_FILE_URL).then(res => res.arrayBuffer());
     db = new Database(new Uint8Array(dbBuffer));
+    indexForCourseLookups(db);
 
     return db;
+}
+
+/**
+ * Fastlane: an in-memory index so per-course lookups do not scan every row (Browse classes can show hundreds of
+ * sections at once). Only the in-memory copy is changed, never the bundled file.
+ */
+function indexForCourseLookups(database: Database): void {
+    try {
+        database.exec(
+            'CREATE INDEX IF NOT EXISTS fastlane_course ON grade_distributions (Department_Code, Course_Number)'
+        );
+    } catch (e) {
+        console.warn('[Fastlane] could not index grade data', e);
+    }
 }

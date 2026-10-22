@@ -1,12 +1,32 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
+import { scheduleTimes } from '../adapters/utrp';
+import { outstandingTags } from '../audit/parseAudit';
+import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
+import { finalizeAiCandidates, shortlistAiCandidates } from '../core/aiCandidates';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
+import type { PrerequisiteCheck } from '../core/prerequisites';
+import { describePrerequisites, subjectNameIndex } from '../core/prerequisites';
 import { normalizeCourseCode } from '../core/requirements';
-import { type SectionRecord, semesterKey } from '../core/sections';
+import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
+import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
-import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
+import { inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
 import { useGradeStats } from './hooks';
+
+/** Planning facts computed locally and sent with each candidate (public course data only). */
+function aiFacts(c: AiCandidate | undefined) {
+    if (!c) return {};
+    return {
+        applies: c.applies.slice(0, 6),
+        prereq: c.prerequisite.status,
+        prereqMissing: c.prerequisite.missing.join('; ').slice(0, 120),
+        prereqText: (c.section.prerequisites ?? '').slice(0, 200),
+        conflict: c.conflict,
+        evidence: isConfirmedSection(c.section) ? 'confirmed-on-ut' : 'registrar-listing',
+    };
+}
 
 const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
 interface AiSelection {
@@ -22,42 +42,13 @@ interface AiResponse {
     error?: string;
 }
 
-const department = (code: string) =>
-    code
-        .replace(/\s+\d.*$/, '')
-        .trim()
-        .toUpperCase();
-
-/** Spread a limited request across actual departments, rather than sending only the first UGS rows. */
-function diverseCandidates(sections: SectionRecord[], wantedSemester: string, taken: Set<string>) {
-    const groups = new Map<string, SectionRecord[]>();
-    const newest = [...sections].sort((a, b) => b.capturedAt - a.capturedAt);
-    for (const section of newest) {
-        if (section.status?.value === 'CANCELLED' || !section.course) continue;
-        if (wantedSemester && semesterKey(section.semester) !== wantedSemester) continue;
-        if (taken.has(normalizeCourseCode(section.courseCode))) continue;
-        const subject = department(section.courseCode);
-        const group = groups.get(subject) ?? [];
-        if (group.length < 8) group.push(section);
-        groups.set(subject, group);
-    }
-    const selected: SectionRecord[] = [];
-    // Round-robin prevents a large UGS cache from crowding out ECO, M, HIS, etc.
-    for (let i = 0; i < 8 && selected.length < 38; i++) {
-        for (const group of groups.values()) {
-            const entry = group[i];
-            if (entry && selected.length < 38) selected.push(entry);
-        }
-    }
-    return selected;
-}
-
-export default function AiRecommendations() {
+export default function AiRecommendations({ subject = '' }: { subject?: string }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit);
     const settings = FastlaneSettingsStore.useStore(s => s);
     const schedule = useActiveSchedule();
-    const [catalog, setCatalog] = useState<SectionRecord[]>([]);
-    const [loadingCatalog, setLoadingCatalog] = useState(true);
+    const inventory = useInventory();
+    const catalog = inventory.sections;
+    const loadingCatalog = !inventory.loaded;
     const [expanded, setExpanded] = useState(false);
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
@@ -67,19 +58,6 @@ export default function AiRecommendations() {
     const [recommendations, setRecommendations] = useState<AiSelection[]>([]);
     const [savedId, setSavedId] = useState<number | null>(null);
     const [draftResult, setDraftResult] = useState('');
-
-    useEffect(() => {
-        let active = true;
-        void loadCachedSections(null).then(items => {
-            if (active) {
-                setCatalog(items);
-                setLoadingCatalog(false);
-            }
-        });
-        return () => {
-            active = false;
-        };
-    }, []);
 
     const taken = useMemo(
         () =>
@@ -92,15 +70,40 @@ export default function AiRecommendations() {
         [audit, schedule]
     );
 
-    const candidates = useMemo(
-        () => diverseCandidates(catalog, settings.targetSemester ?? '', taken),
-        [catalog, settings.targetSemester, taken]
-    );
-    const grades = useGradeStats(candidates, 'A-');
-    const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
-    const coveredSubjects = [...new Set(candidates.map(c => department(c.courseCode)))];
     const latest = [...new Set(catalog.map(c => semesterKey(c.semester)).filter(x => x !== 'unknown'))];
-    const actualTerm = settings.targetSemester ?? (latest.length === 1 ? latest[0] : '');
+    const listedTerm = [...inventory.metas].sort((a, b) => b.termCode.localeCompare(a.termCode))[0]?.term;
+    const actualTerm = settings.targetSemester ?? listedTerm ?? (latest.length === 1 ? (latest[0] ?? '') : '');
+    const selectionInput = useMemo<AiCandidateInput>(
+        () => ({
+            sections: catalog,
+            term: actualTerm,
+            taken,
+            outstanding: audit ? outstandingTags(audit) : [],
+            subject,
+            active: scheduleTimes(schedule),
+            avoidFriday: settings.avoidFriday,
+            preferAsync: settings.preferAsync,
+            subjectIndex: subjectNameIndex(inventorySubjects(inventory)),
+        }),
+        [catalog, actualTerm, taken, audit, subject, schedule, settings.avoidFriday, settings.preferAsync, inventory]
+    );
+    // ranked only while the AI panel is open
+    const shortlist = useMemo(
+        () => (expanded ? shortlistAiCandidates(selectionInput) : []),
+        [expanded, selectionInput]
+    );
+    const grades = useGradeStats(
+        useMemo(() => shortlist.map(c => c.section), [shortlist]),
+        'A-'
+    );
+    const chosen = useMemo(
+        () => finalizeAiCandidates(shortlist, selectionInput, s => grades.get(s.uniqueId)),
+        [shortlist, selectionInput, grades]
+    );
+    const candidates = useMemo(() => chosen.map(c => c.section), [chosen]);
+    const facts = useMemo(() => new Map(chosen.map(c => [c.section.uniqueId, c])), [chosen]);
+    const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
+    const coveredSubjects = [...new Set(candidates.map(c => subjectOf(c.courseCode)))];
 
     const run = async () => {
         if (!consent || busy) return;
@@ -110,7 +113,7 @@ export default function AiRecommendations() {
         }
         if (!candidates.length) {
             setError(
-                'No verified sections are cached for your filters. Browse the official UT course schedule, then try again.'
+                "No UT sections are available for the selected subject and semester. Import UT's course list for the semester, then try again. AI never suggests classes that are not listed."
             );
             return;
         }
@@ -131,6 +134,7 @@ export default function AiRecommendations() {
                         .map(r => ({ text: r.text.slice(0, 220), tags: r.tags, status: r.status })),
                     completed: [...taken].slice(0, 70),
                     candidates: candidates.map(c => ({
+                        ...aiFacts(facts.get(c.uniqueId)),
                         id: c.uniqueId,
                         code: c.courseCode,
                         title: c.title,
@@ -163,7 +167,8 @@ export default function AiRecommendations() {
     };
     const draft = safeAiScheduleDraft(
         recommendations.map(r => r.id),
-        candidates,
+        // a clearly missing printed prerequisite keeps a section out of an automatic draft
+        candidates.filter(c => facts.get(c.uniqueId)?.prerequisite.status !== 'unmet'),
         16,
         settings.avoidFriday
     );
@@ -213,23 +218,33 @@ export default function AiRecommendations() {
             {expanded && (
                 <div className='ai-advisor-body'>
                     <p className='small muted'>
-                        Local catalog: {catalog.length} sections, {coveredSubjects.length} subjects.
+                        AI input: {candidates.length} real UT sections from {coveredSubjects.length} subjects, chosen
+                        locally from {catalog.length.toLocaleString()} by unfinished IDA requirements, printed
+                        prerequisites, conflicts with your schedule, your preferences and historical grades.
+                        {subject ? ` Subject filter: ${subjectForCode(subject)?.name ?? subject} (${subject}).` : ''}
                         {coveredSubjects.length > 0 && ` Includes ${coveredSubjects.slice(0, 10).join(', ')}.`}
                     </p>
-                    {loadingCatalog ? <p className='small muted'>Checking saved UT listings…</p> : null}
-                    {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
-                    {coveredSubjects.length < 3 && (
-                        <div className='notice small'>
-                            Your saved catalog covers too few subjects. AI cannot discover missing UT sections.
+                    {loadingCatalog ? <p className='small muted'>Loading UT classes…</p> : null}
+                    {!loadingCatalog && subject && candidates.length === 0 && (
+                        <p role='status' className='notice warn'>
+                            No {subjectForCode(subject)?.name ?? subject} sections are listed for{' '}
+                            {actualTerm || 'this semester'}. AI never substitutes UGS or another subject when {subject}{' '}
+                            is selected.
                             <a
-                                href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                                href={utSubjectScheduleUrl(actualTerm, subject)}
                                 target='_blank'
                                 rel='noopener noreferrer'
                             >
-                                {' '}
-                                Browse other UT departments
+                                Open this subject on UT's course schedule
                             </a>{' '}
-                            to populate it.
+                            to check it.
+                        </p>
+                    )}
+                    {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
+                    {!subject && !inventory.metas.length && coveredSubjects.length < 3 && (
+                        <div className='notice small'>
+                            Only a few subjects are available. Import UT's course list at the top of this page so AI can
+                            compare classes from every subject.
                         </div>
                     )}
                     <label className='field'>
@@ -288,7 +303,10 @@ export default function AiRecommendations() {
                                 <p className='small muted'>
                                     Requirement: {rec.requirement || 'Verify against IDA'}.
                                     {rec.warning && ` ${rec.warning}`}
+                                    {facts.get(c.uniqueId) &&
+                                        ` ${describePrerequisites(facts.get(c.uniqueId)?.prerequisite as PrerequisiteCheck)}.`}
                                 </p>
+                                <SectionEvidence s={c} />
                                 <button
                                     type='button'
                                     className='btn sm'

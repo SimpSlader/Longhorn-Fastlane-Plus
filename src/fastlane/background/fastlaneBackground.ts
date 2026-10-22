@@ -10,10 +10,10 @@
 import type { PlannedReminder, ReminderConfig } from '../core/reminders';
 import { ALARM_PREFIX, normalizeReminderConfig, planReminders } from '../core/reminders';
 import type { SectionRecord } from '../core/sections';
-import { semesterKey } from '../core/sections';
 import bundled from '../data/bundled-datasets.json';
 import { checkForUpdates } from '../data/datasets';
-import { idbDatasetStore, idbGetAll, idbPutMany, STORES } from '../data/idb';
+import { idbDatasetStore } from '../data/idb';
+import { putObservedSections, readSections } from '../data/sectionStore';
 import { dataManifestConfig } from '../services/dataConfig';
 import { registerHistory } from '../services/history';
 import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
@@ -24,27 +24,8 @@ export const UT_REGISTRATION_URL = 'https://utdirect.utexas.edu/registration/cho
 const DATA_ALARM = 'fastlane-data-check';
 const NOTIFICATION_ICON = 'icons/icon_production_128.png';
 
-interface CachedSection extends SectionRecord {
-    key: string;
-    semesterLabel: string;
-}
-
 async function cacheSections(sections: SectionRecord[]): Promise<number> {
-    const rows: CachedSection[] = sections
-        .filter(s => Number.isInteger(s.uniqueId) && typeof s.courseCode === 'string')
-        .slice(0, 500)
-        .map(s => ({
-            ...s,
-            key: `${s.semester?.code ?? semesterKey(s.semester)}:${s.uniqueId}`,
-            semesterLabel: semesterKey(s.semester),
-        }));
-    await idbPutMany(STORES.sections, rows);
-    return rows.length;
-}
-
-async function getSections(semester: string | null | undefined): Promise<SectionRecord[]> {
-    const all = await idbGetAll<CachedSection>(STORES.sections);
-    return semester ? all.filter(s => s.semesterLabel === semester) : all;
+    return putObservedSections(sections.slice(0, 500));
 }
 
 export async function syncReminderAlarms(config?: ReminderConfig): Promise<PlannedReminder[]> {
@@ -122,7 +103,7 @@ export function registerFastlaneBackground() {
                 respond(cacheSections(msg.sections));
                 return true;
             case 'getSections':
-                respond(getSections(msg.semester));
+                respond(readSections(msg.semester));
                 return true;
             case 'getGradesOverride':
                 respond(
