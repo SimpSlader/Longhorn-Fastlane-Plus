@@ -2,7 +2,7 @@ import { background } from '@shared/messages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 import CalendarDotsIcon from '~icons/ph/calendar-dots';
 import GearSixIcon from '~icons/ph/gear-six';
@@ -37,6 +37,7 @@ const TABS = [
 
 function FindClasses({ initialRequirement }: { initialRequirement?: string | null }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit);
+    const [subject, setSubject] = useState('');
     return (
         <InventoryProvider>
             <div className='stack'>
@@ -47,15 +48,15 @@ function FindClasses({ initialRequirement }: { initialRequirement?: string | nul
                         <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
                     </div>
                 </div>
-                <AiRecommendations />
+                <AiRecommendations subject={subject} />
                 <details className='card planner-advanced'>
                     <summary>Browse courses and adjust advanced filters</summary>
                     <div className='stack'>
                         <InventoryPanel />
                         {audit ? (
-                            <RecommendTab initialRequirement={initialRequirement} embedded />
+                            <RecommendTab initialRequirement={initialRequirement} embedded subject={subject} onSubjectChange={setSubject} />
                         ) : (
-                            <FinderTab embedded />
+                            <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
                         )}
                     </div>
                 </details>
