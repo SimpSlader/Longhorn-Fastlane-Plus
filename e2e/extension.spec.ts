@@ -427,7 +427,8 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         expect(text).toContain('Satisfies Core 050');
         await expect(page.getByRole('button', { name: 'Add to my schedule' }).first()).toBeVisible();
         await page.getByRole('button', { name: 'Add to my schedule' }).first().click();
-        await expect(page.getByRole('status')).toContainText('Added');
+        // the course-inventory panel has its own (empty) status line
+        await expect(page.getByRole('status').filter({ hasText: 'Added' })).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/5-recommendations.png`, fullPage: false });
     });
 
