@@ -1,7 +1,7 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
-import { subjectForCode } from '../data/subjects';
+import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
 import { normalizeCourseCode } from '../core/requirements';
 import { type SectionRecord, semesterKey } from '../core/sections';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
@@ -225,7 +225,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         <p role='status' className='notice warn'>
                             No {subjectForCode(subject)?.name ?? subject} sections are available in Fastlane's saved data.
                             AI cannot recommend UGS or another subject when {subject} is selected.
-                            Import the semester's complete course offerings to enable this subject.
+                            <a
+                                href={utSubjectScheduleUrl(actualTerm, subject)}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                            >
+                                Open this subject on UT's course schedule
+                            </a>{' '}
+                            to load real listings; a university-wide semester dataset is still needed for full coverage.
                         </p>
                     )}
                     {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
