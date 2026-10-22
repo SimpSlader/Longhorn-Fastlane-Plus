@@ -2,7 +2,7 @@ import { background } from '@shared/messages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect } from 'react';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 import CalendarDotsIcon from '~icons/ph/calendar-dots';
 import GearSixIcon from '~icons/ph/gear-six';
@@ -35,46 +35,30 @@ const TABS = [
     ['audit', 'Degree progress', ListChecksIcon],
 ] as const;
 
-function FindClasses({
-    initialRequirement,
-    forceRecommended = false,
-}: {
-    initialRequirement?: string | null;
-    forceRecommended?: boolean;
-}) {
+function FindClasses({ initialRequirement }: { initialRequirement?: string | null }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit);
-    const [mode, setMode] = useState<'recommended' | 'all'>(audit || forceRecommended ? 'recommended' : 'all');
-    const [subject, setSubject] = useState('');
     return (
         <InventoryProvider>
             <div className='stack'>
                 <div className='simple-heading'>
                     <div>
-                        <span className='eyebrow'>YOUR COURSE SEARCH</span>
+                        <span className='eyebrow'>YOUR COURSE PLANNER</span>
                         <h1>Find classes</h1>
-                        <p>Find sections that fit your degree, week and grade preferences.</p>
+                        <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
                     </div>
                 </div>
-                <InventoryPanel />
-                <AiRecommendations subject={subject} />
-                <fieldset className='mode-toggle' aria-label='Class finder view'>
-                    <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
-                        For my degree
-                    </button>
-                    <button type='button' aria-pressed={mode === 'all'} onClick={() => setMode('all')}>
-                        Browse all classes
-                    </button>
-                </fieldset>
-                {mode === 'recommended' ? (
-                    <RecommendTab
-                        initialRequirement={initialRequirement}
-                        embedded
-                        subject={subject}
-                        onSubjectChange={setSubject}
-                    />
-                ) : (
-                    <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
-                )}
+                <AiRecommendations />
+                <details className='card planner-advanced'>
+                    <summary>Browse courses and adjust advanced filters</summary>
+                    <div className='stack'>
+                        <InventoryPanel />
+                        {audit ? (
+                            <RecommendTab initialRequirement={initialRequirement} embedded />
+                        ) : (
+                            <FinderTab embedded />
+                        )}
+                    </div>
+                </details>
             </div>
         </InventoryProvider>
     );
@@ -196,6 +180,23 @@ function Workspace() {
                         Open my IDA ↗
                     </a>
                 </div>
+                <label className='side-theme'>
+                    <span>Appearance</span>
+                    <select
+                        aria-label='Appearance theme'
+                        value={theme}
+                        onChange={e =>
+                            void FastlaneSettingsStore.set(
+                                'themePreference',
+                                e.target.value as 'system' | 'light' | 'dark'
+                            )
+                        }
+                    >
+                        <option value='system'>System</option>
+                        <option value='light'>Light</option>
+                        <option value='dark'>Dark</option>
+                    </select>
+                </label>
                 <div className='side-foot'>
                     <span>{online ? 'Online' : 'Offline — cached data only'} · local-only, no tracking</span>
                     <span>Independent student project. Not affiliated with UT Austin.</span>
@@ -216,7 +217,7 @@ function Workspace() {
             <main className='main'>
                 {current === 'home' && <HomeTab go={go} />}
                 {current === 'finder' && (
-                    <FindClasses initialRequirement={params.get('req')} forceRecommended={tab === 'recommend'} />
+                    <FindClasses initialRequirement={params.get('req')} />
                 )}
                 {current === 'plan' && <PlanTab onNavigate={go} />}
                 {current === 'audit' && <AuditTab onNavigate={go} />}
