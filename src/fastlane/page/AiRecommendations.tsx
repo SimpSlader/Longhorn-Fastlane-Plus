@@ -283,7 +283,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                                 placeholder='Enter once to enable AI'
                             />
                         </label>
-                    )
+                    )}
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
