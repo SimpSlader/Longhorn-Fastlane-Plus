@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 
-const SHOTS = resolve(process.cwd(), 'store-assets/screenshots');
+const SHOTS = resolve(process.cwd(), 'reports/screenshots');
 mkdirSync(SHOTS, { recursive: true });
 
 async function openDemo(page: Page, extensionId: string) {
@@ -74,6 +74,78 @@ test.describe('fresh profile', () => {
     });
 });
 
+test.describe('calendar sidebar usability', () => {
+    test('calendar shows saved backups and separates its black title from totals and toggle', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await page.goto(`chrome-extension://${extensionId}/calendar.html`);
+        const backups = page.getByRole('complementary', { name: 'Backups' });
+        await expect(backups).toBeVisible();
+        await expect(backups).toContainText('33505');
+        await expect(backups).toContainText('23095');
+        const summary = page.getByTestId('schedule-summary');
+        const title = summary.getByText('Fastlane demo (Ideal)', { exact: true });
+        await expect(title).toHaveCSS('color', 'rgb(17, 17, 17)');
+        const titleBox = await title.boundingBox();
+        const totalsBox = await page.getByTestId('schedule-totals').boundingBox();
+        expect(titleBox && totalsBox && titleBox.y + titleBox.height <= totalsBox.y).toBe(true);
+        await page.getByRole('button', { name: 'Hide schedule sidebar' }).click();
+        const toggleBox = await page.getByRole('button', { name: 'Show schedule sidebar' }).boundingBox();
+        await expect.poll(async () => (await summary.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(72);
+        expect(toggleBox?.x).toBe(16);
+        await page.screenshot({ path: `${SHOTS}/calendar-backups.png` });
+    });
+
+    test('a compact icon button reopens the sidebar when it is collapsed', async ({ context, extensionId }) => {
+        const page = await context.newPage();
+        await page.goto(`chrome-extension://${extensionId}/calendar.html`);
+        const hide = page.getByRole('button', { name: 'Hide schedule sidebar' });
+        await expect(hide).toBeVisible();
+        await hide.click();
+        const reopen = page.getByRole('button', { name: 'Show schedule sidebar' });
+        await expect(reopen).toBeVisible();
+        const dimensions = await reopen.boundingBox();
+        expect(dimensions).not.toBeNull();
+        expect(dimensions?.width).toBeGreaterThanOrEqual(40);
+        expect(dimensions?.height).toBeGreaterThanOrEqual(40);
+        await page.screenshot({ path: `${SHOTS}/calendar-sidebar-closed.png`, fullPage: false });
+        for (const viewport of [
+            { width: 1440, height: 1000 },
+            { width: 800, height: 600 },
+        ]) {
+            await page.setViewportSize(viewport);
+            const geometry = await reopen.evaluate(button => {
+                const rect = button.getBoundingClientRect();
+                const root = button.getRootNode() as Document | ShadowRoot;
+                return {
+                    position: getComputedStyle(button).position,
+                    left: rect.left,
+                    top: rect.top,
+                    clickable: button.contains(
+                        root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+                    ),
+                    clipped: Array.from(
+                        (function* () {
+                            for (let parent = button.parentElement; parent; parent = parent.parentElement) yield parent;
+                        })()
+                    ).some(parent => /auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflow)),
+                };
+            });
+            expect(geometry).toEqual({ position: 'fixed', left: 16, top: 16, clickable: true, clipped: false });
+        }
+        await page.reload();
+        await expect(reopen).toBeVisible();
+        await reopen.click();
+        await expect(hide).toBeVisible();
+        await expect(reopen).toHaveCount(0);
+        await page.reload();
+        await expect(hide).toBeVisible();
+    });
+});
+
 test.describe('course listing integration (demo fixtures, real code)', () => {
     test('inline grade percentages, threshold changes, async and conflict indicators', async ({
         context,
@@ -107,6 +179,8 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         const live = rowFor(page, '27425');
         await expect(live.locator('[data-fastlane="live-online"]')).toBeVisible();
         expect(await live.getAttribute('class')).not.toMatch(/isAsync/);
+        await expect(live.locator('td[data-th="Unique"] a')).toHaveCSS('color', 'rgb(29, 78, 216)');
+        await expect(music.locator('td[data-th="Unique"] a')).toHaveCSS('color', 'rgb(29, 78, 216)');
         expect(await rowFor(page, '33505').getAttribute('class')).not.toMatch(/isAsync/);
 
         // confirmed conflict names the planned class and strikes the row
@@ -185,6 +259,17 @@ test.describe('grade distribution graph (Highcharts replacement)', () => {
         const box = (await chart.boundingBox())!;
         expect(box.height).toBeGreaterThan(200);
         expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+        await chart.locator('rect[data-grade="A"]').hover();
+        await expect(page.getByRole('tooltip')).toContainText(/A.*\d+ students · \d+\.\d%/s);
+        await expect(page.getByRole('tooltip')).toHaveCSS('color', 'rgb(0, 0, 0)');
+        expect((await page.getByRole('tooltip').boundingBox())?.width).toBeGreaterThanOrEqual(160);
+        for (const [name, color] of [
+            ['Past Syllabi', 'rgb(255, 243, 204)'],
+            ['CES', 'rgb(230, 247, 246)'],
+            ['RateMyProf', 'rgb(234, 243, 248)'],
+        ]) {
+            await expect(page.getByRole('button', { name, exact: true })).toHaveCSS('background-color', color);
+        }
         await page.screenshot({ path: `${SHOTS}/9-grade-distribution-popup.png` });
     });
 });
@@ -204,7 +289,16 @@ test.describe('registration assistant', () => {
         await expect(panel.locator('.code')).toHaveText('65605');
         await page.reload();
         await expect(panel.locator('.code')).toHaveText('65605');
-        await expect(panel.locator('.hist li')).toHaveCount(4);
+        await expect(panel.getByText('Attempt history')).toHaveCount(0);
+        const historyLength = await page.evaluate(
+            async () =>
+                (
+                    (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as {
+                        history: unknown[];
+                    }
+                ).history.length
+        );
+        expect(historyLength).toBe(4);
         await panel.screenshot({ path: `${SHOTS}/3-registration-assistant.png` });
     });
 
@@ -215,19 +309,19 @@ test.describe('registration assistant', () => {
         // off by default: nothing is filled
         await expect(panel.locator('.code')).toHaveText('65555');
         await expect(page.locator('#s_unique_add')).toHaveValue('');
-        // manual "Fill next code" works even with autofill off
-        await panel.getByRole('button', { name: 'Fill next code' }).click();
+        // Turning on the switch fills the current code without submitting.
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).check();
         await expect(page.locator('#s_unique_add')).toHaveValue('65555');
         await expect(page.locator('#s_swap_unique_add')).toHaveValue('');
         await expect(page.locator('#ds_request_STADD')).toBeChecked();
         await expect(page.locator('#message')).toHaveText('');
 
-        // enable autofill: marking Full moves to the next fallback and fills it
-        await page.evaluate(async () => {
-            const key = 'FastlaneSettings:autofill';
-            await chrome.storage.sync.set({ [key]: { enabled: true, paused: false, preserveNonEmpty: true } });
-        });
+        // Off prevents filling the next code; switching back on fills it immediately.
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).uncheck();
         await panel.getByRole('button', { name: 'Full' }).click();
+        await expect(panel.locator('.code')).toHaveText('65705');
+        await expect(page.locator('#s_unique_add')).toHaveValue('65555');
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).check();
         await expect(page.locator('#s_unique_add')).toHaveValue('65705');
         await expect(page.locator('#message')).toHaveText(''); // no submission happened
 
@@ -365,6 +459,11 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         await expect(page.getByText(/estimates, not verified routes/)).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/7-campus-map.png`, fullPage: false });
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#wallpaper`);
+        await expect(page.getByRole('combobox', { name: 'Schedule for wallpaper' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Open calendar to add or review classes' })).toHaveAttribute(
+            'href',
+            `chrome-extension://${extensionId}/calendar.html`
+        );
         const dataUrlLength = await page
             .locator('canvas')
             .evaluate(c => (c as HTMLCanvasElement).toDataURL('image/png').length);

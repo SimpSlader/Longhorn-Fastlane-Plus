@@ -5,6 +5,7 @@ import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storag
 
 import { FastlaneAuditStore, FastlanePlanStore, FastlaneQueueStore, FastlaneSettingsStore } from '../../storage/stores';
 import { ASSISTANT_CSS } from './assistantStyles';
+import { contextInvalidated, watchAssistantContext } from './contextLifetime';
 import RegistrationAssistant from './RegistrationAssistant';
 
 export const HOST_ID = 'fastlane-registration-assistant';
@@ -32,7 +33,14 @@ export function mountRegistrationAssistant(doc: Document = document): HTMLElemen
     const root = doc.createElement('div');
     shadow.append(style, root);
     doc.body.append(host);
-    createRoot(root).render(
+    const reactRoot = createRoot(root, {
+        onUncaughtError(error) {
+            if (contextInvalidated(error)) expire();
+            else console.error(error);
+        },
+    });
+    const expire = watchAssistantContext(host, () => reactRoot.unmount());
+    reactRoot.render(
         <StrictMode>
             <Suspense fallback={null}>
                 <Bootstrap host={host} />

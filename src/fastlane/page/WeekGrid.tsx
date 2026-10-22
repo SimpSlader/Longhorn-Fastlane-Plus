@@ -84,7 +84,7 @@ export default function WeekGrid({ sections }: { sections: SectionRecord[] }) {
                                     .map(m => (
                                         <div
                                             key={`${s.uniqueId}-${m.days.join('')}-${m.start}`}
-                                            className={`block ${conflicted.has(s.uniqueId) ? 'conflict' : ''}`}
+                                            className={`week-block ${conflicted.has(s.uniqueId) ? 'conflict' : ''}`}
                                             style={{
                                                 top: (m.start - first) * px + 1,
                                                 height: Math.max(22, (m.end - m.start) * px - 2),

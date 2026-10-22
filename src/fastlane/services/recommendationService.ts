@@ -46,7 +46,7 @@ export async function buildRecommendations(ctx: RecommendationContext): Promise<
     // grade lookups only for the relevant pool, bounded so this stays fast
     const grades = new Map<number, GradeStat | null>();
     await Promise.all(
-        relevant.slice(0, 80).map(async s => {
+        relevant.map(async s => {
             if (!s.course) return;
             try {
                 const course = new Course(s.course as Serialized<Course>);

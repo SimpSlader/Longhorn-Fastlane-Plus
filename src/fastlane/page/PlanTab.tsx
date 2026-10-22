@@ -44,7 +44,7 @@ function RequirementPicker({ value, onChange }: { value: string; onChange: (v: s
             <option value=''>No requirement</option>
             {CORE_COMPONENTS.map(c => (
                 <option key={c.code} value={coreTag(c.code)}>
-                    Core {c.code} · {c.name}
+                    {c.name} (Core {c.code})
                 </option>
             ))}
             {custom && <option value={value}>{describeRequirement(value)}</option>}
@@ -353,7 +353,7 @@ export default function PlanTab({
                         target='_blank'
                         rel='noopener'
                     >
-                        <PlusCircleIcon /> Add courses
+                        <PlusCircleIcon /> Browse UT classes
                     </a>
                     <button
                         type='button'
@@ -368,7 +368,7 @@ export default function PlanTab({
                         <ExportIcon /> Export
                     </button>
                     <a className='tool' href={chrome.runtime.getURL('calendar.html')} target='_blank' rel='noopener'>
-                        <CalendarDotsIcon /> Calendar
+                        <CalendarDotsIcon /> Open full calendar
                     </a>
                 </div>
             </div>
@@ -392,7 +392,7 @@ export default function PlanTab({
             )}
             {active.length === 0 ? (
                 <div className='card'>
-                    <h2>Start by adding classes</h2>
+                    <h2>No classes in {schedule?.name ?? 'this schedule'} yet</h2>
                     <p className='muted'>
                         Open{' '}
                         <a
@@ -400,10 +400,29 @@ export default function PlanTab({
                             target='_blank'
                             rel='noopener'
                         >
-                            UT’s course schedule
+                            UT’s course catalog
                         </a>
-                        , add sections with UT Registration Plus, then return here to rank backups for each one.
+                        , choose a section, and use the extension’s Add to Schedule button. Courses in other saved
+                        schedules are separate; select that schedule in the left sidebar to see its calendar.
                     </p>
+                    <div className='row' style={{ marginTop: 12 }}>
+                        <a
+                            className='btn primary'
+                            href={chrome.runtime.getURL('calendar.html')}
+                            target='_blank'
+                            rel='noopener'
+                        >
+                            Open calendar &amp; schedules
+                        </a>
+                        <a
+                            className='btn'
+                            href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                            target='_blank'
+                            rel='noopener'
+                        >
+                            Find classes
+                        </a>
+                    </div>
                 </div>
             ) : (
                 <>

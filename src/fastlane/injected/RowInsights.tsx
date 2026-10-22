@@ -74,6 +74,17 @@ function GradeChip({ course }: { course: Course }) {
                     ? 'bg-[#BF5700]/10 text-[#7a3800] border border-[#BF5700]/40'
                     : 'border border-dashed border-gray-400 text-gray-700'
             )}
+            style={{
+                background: instructor
+                    ? 'linear-gradient(145deg, rgba(255,255,255,.94), rgba(255,237,220,.65))'
+                    : 'rgba(255,255,255,.7)',
+                backdropFilter: 'blur(14px) saturate(140%)',
+                border: '1px solid rgba(191,87,0,.18)',
+                borderRadius: 9,
+                padding: '5px 8px',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), 0 2px 7px rgba(90,50,20,.07)',
+                color: '#713b18',
+            }}
             title={describeGradeStat(stat)}
             role='img'
             aria-label={describeGradeStat(stat).replace(/\n/g, '. ')}

@@ -81,8 +81,8 @@ export default function SettingsTab() {
                     <Toggle k='showInlineGrades' label='Show grade percentages beside the grade graph button' />
                     <Toggle
                         k='highlightAsync'
-                        label='Highlight verified asynchronous sections in blue'
-                        help='Live online sections get a separate purple label; in-person and hybrid stay normal.'
+                        label='Color online course text blue'
+                        help='Both live and asynchronous online course rows use blue text; asynchronous sections also have a light blue background.'
                     />
                     <Toggle k='showConflictDetails' label='Show which planned class causes each conflict' />
                     <label className='field'>

@@ -25,9 +25,8 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
     const schedule = useActiveSchedule();
     const online = useOnline();
     const outstanding = useMemo(() => (audit ? outstandingTags(audit) : []), [audit]);
-    const [selected, setSelected] = useState<string[]>(() =>
-        initialRequirement ? [initialRequirement] : outstanding.filter(t => t.startsWith('CORE')).slice(0, 1)
-    );
+    const [selected, setSelected] = useState<string[]>(() => (initialRequirement ? [initialRequirement] : outstanding));
+    const [gradeThreshold, setGradeThreshold] = useState<'A' | 'A-'>('A');
     const [results, setResults] = useState<Recommendation[] | null>(null);
     const [cache, setCache] = useState<SectionRecord[]>([]);
     const [message, setMessage] = useState<string | null>(null);
@@ -55,11 +54,17 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
         }
         setResults(null);
         let alive = true;
-        void buildRecommendations({ requirements: selected, schedule, settings, audit, queue, plan, limit: 15 }).then(
-            r => {
-                if (alive) setResults(r);
-            }
-        );
+        void buildRecommendations({
+            requirements: selected,
+            schedule,
+            settings: { ...settings, gradeThreshold },
+            audit,
+            queue,
+            plan,
+            limit: 15,
+        }).then(r => {
+            if (alive) setResults(r);
+        });
         return () => {
             alive = false;
         };
@@ -69,7 +74,9 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
         settings.preferAsync,
         settings.preferOnline,
         settings.avoidFriday,
-        settings.gradeThreshold,
+        gradeThreshold,
+        audit,
+        schedule?.updatedAt,
         schedule?.id,
         cache.length,
     ]);
@@ -152,7 +159,19 @@ export default function RecommendTab({ initialRequirement }: { initialRequiremen
                         );
                     })}
                 </div>
+                <p className='small muted'>
+                    Unfinished requirements first, then semester fit, conflicts and availability, reliable historical
+                    grade rates, and your delivery preferences. Matches are suggestions, not an official degree
+                    evaluation.
+                </p>
                 <div className='row'>
+                    <label className='field'>
+                        Historical grade ranking
+                        <select value={gradeThreshold} onChange={e => setGradeThreshold(e.target.value as 'A' | 'A-')}>
+                            <option value='A'>A percentage</option>
+                            <option value='A-'>A− or better percentage</option>
+                        </select>
+                    </label>
                     <label className='field'>
                         Semester
                         <select

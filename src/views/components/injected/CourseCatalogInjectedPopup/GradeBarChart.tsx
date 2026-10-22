@@ -64,6 +64,8 @@ export default function GradeBarChart({
     const ticks: number[] = [];
     for (let t = 0; t <= top + 1e-9; t += step) ticks.push(Math.round(t * 100) / 100);
     const hovered = hover !== null ? bars[hover] : undefined;
+    const total = bars.reduce((sum, bar) => sum + bar.value, 0);
+    const percent = (value: number) => `${total ? ((value / total) * 100).toFixed(1) : '0.0'}%`;
 
     return (
         <div
@@ -152,6 +154,7 @@ export default function GradeBarChart({
                                 y={pad.top}
                                 width={slot}
                                 height={plotH + 30}
+                                data-grade={b.label}
                                 fill='transparent'
                                 onMouseEnter={() => setHover(i)}
                                 onMouseLeave={() => setHover(null)}
@@ -165,17 +168,28 @@ export default function GradeBarChart({
             </svg>
             {hovered && hover !== null && (
                 <div
+                    role='tooltip'
                     className='pointer-events-none absolute rounded bg-white px-3 py-1.5 text-center text-sm'
                     style={{
                         left: `${((pad.left + hover * slot + slot / 2) / WIDTH) * 100}%`,
                         top: `${(Math.max(pad.top, y(hovered.value) - 46) / height) * 100}%`,
                         transform: 'translateX(-50%)',
                         boxShadow: '0 1px 3px rgba(51, 63, 72, 0.30)',
-                        color: '#1A2024',
+                        color: '#000',
+                        zIndex: 2,
+                        background: 'rgba(255,255,255,.97)',
+                        padding: '8px 12px',
+                        borderRadius: 9,
+                        minWidth: 160,
+                        whiteSpace: 'nowrap',
                     }}
                 >
-                    <span className='block font-bold'>{hovered.label}</span>
-                    <span className='block font-medium'>{hovered.value} Students</span>
+                    <span style={{ display: 'block', position: 'static', color: '#000', fontWeight: 700 }}>
+                        {hovered.label}
+                    </span>
+                    <span style={{ display: 'block', position: 'static', color: '#000', fontWeight: 500 }}>
+                        {hovered.value} students · {percent(hovered.value)}
+                    </span>
                 </div>
             )}
             <table className='sr-only' style={{ position: 'absolute', left: -9999 }}>
@@ -185,6 +199,7 @@ export default function GradeBarChart({
                         <tr key={b.label}>
                             <th scope='row'>{b.label}</th>
                             <td>{b.value}</td>
+                            <td>{percent(b.value)}</td>
                         </tr>
                     ))}
                 </tbody>

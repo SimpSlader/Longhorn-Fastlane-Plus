@@ -291,6 +291,7 @@ export default function HeadingAndActions({
                     variant='outline'
                     color='ut-blue'
                     icon={ChatTextIcon}
+                    style={{ backgroundColor: '#eaf3f8' }}
                     onClick={handleOpenRateMyProf}
                     disabled={instructors.length === 0}
                 >
@@ -300,12 +301,19 @@ export default function HeadingAndActions({
                     variant='outline'
                     color='ut-teal'
                     icon={SmileyIcon}
+                    style={{ backgroundColor: '#e6f7f6' }}
                     onClick={handleOpenCES}
                     disabled={instructors.length === 0}
                 >
                     CES
                 </Button>
-                <Button variant='outline' color='ut-orange' icon={FileTextIcon} onClick={handleOpenPastSyllabi}>
+                <Button
+                    style={{ backgroundColor: '#fff3cc' }}
+                    variant='outline'
+                    color='ut-orange'
+                    icon={FileTextIcon}
+                    onClick={handleOpenPastSyllabi}
+                >
                     Past Syllabi
                 </Button>
                 <Button

@@ -13,6 +13,13 @@ const out = 'package';
 const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const name = `${pkg.name}-${pkg.version}.zip`;
+// store packages must never contain the local self-reload helper
+for (const f of readdirSync(join(dist, 'assets'))) {
+    if (f.endsWith('.js') && readFileSync(join(dist, 'assets', f), 'utf8').includes('fastlane-dev-build.json')) {
+        console.error('Refusing to package a local development build (auto-reload). Rebuild with `pnpm build`.');
+        process.exit(1);
+    }
+}
 mkdirSync(out, { recursive: true });
 // remove older packages so package/*.zip always means this build
 for (const f of readdirSync(out)) if (f.endsWith('.zip')) rmSync(join(out, f), { force: true });

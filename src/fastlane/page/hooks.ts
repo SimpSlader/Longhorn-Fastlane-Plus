@@ -8,7 +8,9 @@ import type { SectionRecord } from '../core/sections';
 
 /** Historical grade stats for a set of sections (async, cached per course+instructor). */
 export function useGradeStats(sections: SectionRecord[], threshold: GradeThreshold): Map<number, GradeStat | null> {
-    const key = sections.map(s => s.uniqueId).join(',');
+    const key = sections
+        .map(s => `${s.semester?.year}:${s.semester?.season}:${s.uniqueId}:${s.capturedAt}:${s.instructors.join('|')}`)
+        .join(',');
     const [raw, setRaw] = useState<Map<number, Awaited<ReturnType<typeof lookupGrades>>>>(new Map());
     // biome-ignore lint/correctness/useExhaustiveDependencies: `key` (the joined unique numbers) stands in for the sections array
     useEffect(() => {
@@ -45,8 +47,8 @@ export function useGradeStats(sections: SectionRecord[], threshold: GradeThresho
 }
 
 function readHash() {
-    const [tab = 'plan', query = ''] = window.location.hash.replace(/^#/, '').split('?');
-    return { tab: tab || 'plan', params: new URLSearchParams(query) };
+    const [tab = 'home', query = ''] = window.location.hash.replace(/^#/, '').split('?');
+    return { tab: tab || 'home', params: new URLSearchParams(query) };
 }
 
 export function useHashRoute(): [string, URLSearchParams, (tab: string, params?: Record<string, string>) => void] {

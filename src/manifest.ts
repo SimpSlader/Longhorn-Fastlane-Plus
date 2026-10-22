@@ -16,6 +16,7 @@ if (isBeta && process.env.NODE_ENV !== 'production') throw new Error('Cannot hav
 // Fastlane: only UT pages the extension enhances. Upstream's login.utexas.edu match was removed so no
 // script ever runs on UT's sign-in page.
 const HOST_PERMISSIONS: string[] = [
+    'https://utdirect.utexas.edu/apps/degree/audits/results/*',
     '*://*.utdirect.utexas.edu/apps/registrar/course_schedule/*',
     '*://*.utdirect.utexas.edu/registration/*',
     '*://*.utexas.collegescheduler.com/*',

@@ -10,7 +10,7 @@
  *  - Pending transfer credit is NEVER counted as completed. A requirement that depends on pending
  *    transfer work is downgraded to in-progress and flagged.
  */
-import { coreCodesInText, coreTag, normalizeCourseCode } from '../core/requirements';
+import { coreCodesInText, coreTag, courseTag, normalizeCourseCode } from '../core/requirements';
 import type {
     AuditCourse,
     AuditCourseStatus,
@@ -62,6 +62,10 @@ function finalizeRequirement(
     baseConfidence: Confidence
 ): AuditRequirement {
     const tags = coreCodesInText(base.text).map(coreTag);
+    // Named courses are recommendation candidates; OR/AND and applicability still require audit review.
+    for (const match of base.text.matchAll(/\b([A-Z][A-Z ]{0,5})\s+(\d{3}[A-Z]{0,2})\b/g)) {
+        tags.push(courseTag(`${match[1]} ${match[2]}`));
+    }
     const issues = [...(base.issues ?? [])];
     let confidence: Confidence = baseConfidence;
     const numeric = statusFromNumbers(base.applied, base.remaining);

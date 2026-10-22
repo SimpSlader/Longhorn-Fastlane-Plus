@@ -121,7 +121,7 @@ export default function AuditTab({
         <div className='stack'>
             <PageHead
                 title='Degree audit'
-                subtitle='Import your UT Interactive Degree Audit. It is read inside this browser and never uploaded.'
+                subtitle='See which degree requirements you have finished and which courses you still need. Your audit stays on this computer.'
                 actions={
                     audit && (
                         <button type='button' className='btn danger' onClick={() => void save(null)}>
@@ -151,8 +151,9 @@ export default function AuditTab({
                 />
                 <b>{busy ? 'Reading audit…' : 'Drop your audit here or click to choose a file'}</b>
                 <div className='small muted'>
-                    In IDA, open your audit results and use the browser’s <i>Save page as… → Webpage, HTML only</i>{' '}
-                    (most accurate) or <i>Print → Save as PDF</i>.
+                    While viewing your audit in Chrome, press <b>Command+S</b> (Mac) or <b>Ctrl+S</b> (Windows) and
+                    select <i>Webpage, HTML Only</i>. You can also use <i>Print → Save as PDF</i>. On a live IDA results
+                    page, click “Add IDA” to import it directly into this browser.
                 </div>
             </label>
             {error && (

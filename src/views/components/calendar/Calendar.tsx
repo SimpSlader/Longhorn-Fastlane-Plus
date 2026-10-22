@@ -3,6 +3,7 @@ import importSchedule from '@pages/background/lib/importSchedule';
 import type { CalendarTabMessages } from '@shared/messages/CalendarMessages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import type { Course } from '@shared/types/Course';
+import CalendarBackups from '@views/components/calendar/CalendarBackups';
 import CalendarBottomBar from '@views/components/calendar/CalendarBottomBar';
 import CalendarGrid from '@views/components/calendar/CalendarGrid';
 import CalendarHeader from '@views/components/calendar/CalendarHeader/CalendarHeader';
@@ -22,14 +23,12 @@ import { memo, useEffect, useRef, useState } from 'react';
 import OutwardArrowIcon from '~icons/material-symbols/arrow-outward';
 import SidebarIcon from '~icons/ph/sidebar';
 
-import { Button } from '../common/Button';
 import { LargeLogo } from '../common/LogoIcon';
 import Text from '../common/Text/Text';
 import CalendarFooter from './CalendarFooter';
 
 const CalendarSidebar = memo(function CalendarSidebar() {
     const showSidebar = OptionsStore.useStore(store => store.showCalendarSidebar);
-    const toggleSidebar = () => void OptionsStore.set('showCalendarSidebar', !showSidebar);
     const showReportIssueDialog = useReportIssueDialog();
     const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -50,23 +49,15 @@ const CalendarSidebar = memo(function CalendarSidebar() {
             className={clsx(
                 'py-spacing-5 relative h-full min-h-screen w-full flex flex-none flex-col justify-between overflow-clip whitespace-nowrap border-r border-ut-offwhite/50 shadow-[2px_0_10px,rgba(214_210_196_/_.1)] motion-safe:duration-300 motion-safe:ease-out-expo motion-safe:transition-[max-width] screenshot:hidden',
                 {
-                    'max-w-[20.3125rem] ': showSidebar,
+                    'max-w-[23rem] ': showSidebar,
                     'max-w-0 pointer-events-none': !showSidebar,
                 }
             )}
             tabIndex={-1}
             aria-hidden={!showSidebar}
         >
-            <div className='flex items-center justify-between px-spacing-7 mb-spacing-2'>
+            <div className='flex items-center justify-between px-spacing-7 mb-spacing-2' style={{ paddingTop: 80 }}>
                 <LargeLogo />
-                <Button
-                    variant='minimal'
-                    size='small'
-                    color='theme-black'
-                    onClick={toggleSidebar}
-                    className='screenshot:hidden'
-                    icon={SidebarIcon}
-                />
             </div>
 
             <div
@@ -250,6 +241,41 @@ export default function Calendar(): ReactNode {
                     </div>
                 )}
 
+                {/* Shared fixed control stays outside scrolling containers; the header reserves its own space. */}
+                {
+                    <button
+                        type='button'
+                        data-testid='calendar-sidebar-toggle'
+                        aria-label={showSidebar ? 'Hide schedule sidebar' : 'Show schedule sidebar'}
+                        title={showSidebar ? 'Hide your saved schedules' : 'Show your saved schedules'}
+                        onClick={toggleSidebar}
+                        className='screenshot:hidden'
+                        style={{
+                            position: 'fixed',
+                            left: 16,
+                            top: 16,
+                            zIndex: 2147483000,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 10,
+                            minWidth: 40,
+                            minHeight: 40,
+                            padding: 8,
+                            border: '2px solid #fff',
+                            borderRadius: 14,
+                            background: '#BF5700',
+                            color: '#fff',
+                            fontSize: 17,
+                            fontWeight: 750,
+                            cursor: 'pointer',
+                            boxShadow: '0 6px 24px rgba(0, 0, 0, .32)',
+                        }}
+                    >
+                        <SidebarIcon aria-hidden='true' className='h-6 w-6' />
+                    </button>
+                }
+
                 {/** biome-ignore lint/a11y/noStaticElementInteractions: TODO: */}
                 <div
                     className='screenshot:calendar-target h-screen flex overflow-auto'
@@ -267,13 +293,16 @@ export default function Calendar(): ReactNode {
                                 // scrollbarGutter: 'stable',
                             }
                         }
-                        className='z-1 h-full flex flex-grow flex-col overflow-x-scroll [&>*]:px-spacing-5'
+                        className='z-1 h-full min-w-0 flex flex-grow flex-col overflow-x-auto [&>*]:px-spacing-5'
                     >
-                        <CalendarHeader sidebarOpen={showSidebar} onSidebarToggle={toggleSidebar} />
+                        <CalendarHeader />
                         <div
-                            className={clsx('min-h-2xl min-w-5xl flex-grow gap-0 pl-spacing-3 screenshot:min-h-xl', {
-                                'screenshot:flex-grow-0': bottomBar !== null, // html-to-image seems to have a bug with flex-grow
-                            })}
+                            className={clsx(
+                                'min-h-2xl min-w-[640px] flex-grow gap-0 pl-spacing-3 screenshot:min-h-xl',
+                                {
+                                    'screenshot:flex-grow-0': bottomBar !== null, // html-to-image seems to have a bug with flex-grow
+                                }
+                            )}
                         >
                             <CalendarGrid
                                 courseCells={courseCells}
@@ -284,6 +313,7 @@ export default function Calendar(): ReactNode {
                         </div>
                         {bottomBar}
                     </div>
+                    <CalendarBackups />
                 </div>
 
                 {course && (

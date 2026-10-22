@@ -18,6 +18,7 @@ Fastlane Course Planner ("Fastlane") is an independent, student-developed Chrome
 | Schedules, planned classes and ranked backups | `chrome.storage.local` | Planning, calendar, conflicts |
 | Registration priority queue and attempt history | `chrome.storage.local` | The manual registration assistant |
 | Imported degree audit (requirements, course history, transfer credit) | `chrome.storage.local` | Requirement-aware recommendations. The file is parsed in your browser; it is never uploaded. |
+| Roadmap, prerequisite rules, setup preference and up to 30 schedule snapshots | `chrome.storage.local` | Future planning and undo; no audit or registration queue in history |
 | Reminder date/time/time zone | `chrome.storage.local` + `chrome.alarms` | Local notifications |
 | Course sections shown on UT course-schedule pages you open (public catalog data such as unique number, course, times, room, instructor, seat status and when you saw it) | IndexedDB (extension) | Offline recommendations |
 | Preferences (grade threshold, toggles) | `chrome.storage.sync` | Settings follow you if Chrome Sync is on. No academic data is stored here. |
@@ -43,6 +44,8 @@ This list was verified by inspecting every URL in the built extension and by rec
 
 ## Reading UT pages
 
+On UT IDA results pages, the **Add IDA** button reads academic tables only after you click it. It replaces the locally imported audit. Raw HTML, the audit URL and the page heading are not saved by this button. The host permission is limited to `https://utdirect.utexas.edu/apps/degree/audits/results/*`; it does not grant access to login pages.
+
 On UT course-schedule pages, Fastlane reads the visible listing to show grades, delivery mode and conflicts. On UT's registration screen, the assistant reads nothing by default. Two optional settings, both off by default:
 
 - **Registration autofill** places the next unique number in UT's add field. It never submits.
@@ -51,9 +54,12 @@ On UT course-schedule pages, Fastlane reads the visible listing to show grades, 
 ## Your controls
 
 - **Settings & privacy → Export** downloads your schedules/plans (and optionally your audit) as JSON.
-- **Delete Fastlane data** removes plans, backups, queue, audit, reminders, cached sections and downloaded datasets.
+- **Compare & share** exports a schedule-only JSON file or a comparison image. These omit personal schedule names, audit data, registration links, queue and notes. Files stay on your device until you choose to share them. Import appends a new schedule.
+- **Delete Fastlane data** removes plans, backups, queue, audit, roadmap, prerequisite rules, history, reminders, cached sections and downloaded datasets.
 - **Delete all saved information** removes everything the extension stored, including schedules.
 - Uninstalling the extension removes all of its storage.
+
+Local storage is not a password-protected vault. Anyone with access to your unlocked browser profile may be able to read it. Avoid importing private academic records on a shared computer.
 
 ## Children
 

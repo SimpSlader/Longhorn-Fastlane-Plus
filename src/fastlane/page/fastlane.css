@@ -668,7 +668,7 @@ table.list td {
     padding-right: 10px;
     white-space: nowrap;
 }
-.block {
+.week-block {
     position: absolute;
     left: 3px;
     right: 3px;
@@ -683,11 +683,11 @@ table.list td {
         filter var(--ease),
         box-shadow var(--ease);
 }
-.block:hover {
+.week-block:hover {
     filter: brightness(1.06);
     box-shadow: var(--shadow);
 }
-.block b {
+.week-block b {
     display: block;
     font-size: 15px;
     font-weight: 700;
@@ -695,7 +695,7 @@ table.list td {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.block.conflict {
+.week-block.conflict {
     outline: 3px solid var(--bad);
     outline-offset: -3px;
 }
@@ -922,5 +922,84 @@ table.list td {
     }
     .main {
         padding: 16px;
+    }
+}
+
+/* Planning workbench: quiet translucent surfaces, compact controls. */
+.planner-glass {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 65%, white);
+    box-shadow:
+        0 8px 28px #4a260908,
+        inset 0 1px 0 #ffffff88;
+    backdrop-filter: blur(20px);
+}
+.planner-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 18px;
+}
+.planner-fields label,
+.compare-course label {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 13px;
+}
+.planner-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 16px 0;
+}
+.planner-actions label,
+.course-choices label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.planner-actions input[type="checkbox"],
+.course-choices input {
+    width: auto;
+}
+.planner-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+.comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+.planning-metrics {
+    display: grid;
+    gap: 10px;
+    padding: 14px 0;
+    line-height: 1.6;
+}
+.compare-course {
+    border-top: 1px solid var(--border);
+    padding: 16px 0;
+}
+.comparison-calendar {
+    overflow: auto;
+}
+.comparison-calendar .week {
+    min-width: 600px;
+}
+.course-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+    max-height: 260px;
+    overflow: auto;
+    margin: 16px 0;
+}
+@media (max-width: 1000px) {
+    .comparison-grid {
+        grid-template-columns: 1fr;
     }
 }

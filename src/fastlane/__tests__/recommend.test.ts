@@ -95,9 +95,9 @@ describe('recommend (emergency backups)', () => {
         expect(ids).toEqual([20002, 20003, 20004, 20001, 20006]);
     });
 
-    it('online/async preference outranks grade percentage', () => {
+    it('reliable grade percentage outranks delivery preference', () => {
         const ids = recommend({ ...base, prefs: { preferAsync: true } }).map(r => r.section.uniqueId);
-        expect(ids[0]).toBe(20003);
+        expect(ids[0]).toBe(20002);
     });
 
     it('avoid-Friday preference demotes Friday meetings among otherwise equal options', () => {

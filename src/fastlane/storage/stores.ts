@@ -88,5 +88,12 @@ export const FastlaneReminderStore = createLocalStore<ReminderStoreShape>('Fastl
 });
 
 /** Every chrome.storage key Fastlane owns (used by "delete my data") */
-export const FASTLANE_LOCAL_PREFIXES = ['FastlanePlans:', 'FastlaneQueue:', 'FastlaneAudit:', 'FastlaneReminders:'];
+export const FASTLANE_LOCAL_PREFIXES = [
+    'FastlanePlans:',
+    'FastlaneQueue:',
+    'FastlaneAudit:',
+    'FastlaneReminders:',
+    'FastlanePlanning:',
+    'FastlaneHistory:',
+];
 export const FASTLANE_SYNC_PREFIXES = ['FastlaneSettings:'];

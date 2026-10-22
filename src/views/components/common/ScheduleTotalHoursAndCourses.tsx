@@ -83,9 +83,13 @@ export default function ScheduleTotalHoursAndCourses({
     };
 
     return (
-        <div className='gap-0.5 grid'>
+        <div
+            data-testid='schedule-summary'
+            style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, maxWidth: 320 }}
+        >
             {isEditingName ? (
                 <Text
+                    style={{ color: '#111', lineHeight: 1.3, fontSize: 24, minHeight: 32 }}
                     variant='h1'
                     as='input'
                     className='block min-w-0 w-full text-theme-black flex-initial overflow-hidden border-0 bg-transparent px-0 outline-blue-500'
@@ -100,6 +104,7 @@ export default function ScheduleTotalHoursAndCourses({
                     className={`block truncate text-theme-black flex-initial overflow-hidden ${
                         scheduleId ? 'cursor-pointer' : 'cursor-text'
                     }`}
+                    style={{ color: '#111', lineHeight: 1.3, fontSize: 24, minHeight: 32 }}
                     variant='h1'
                     as='div'
                     onDoubleClick={() => {
@@ -113,7 +118,13 @@ export default function ScheduleTotalHoursAndCourses({
                     {displayName}
                 </Text>
             )}
-            <Text variant='h4' as='p' className='text-ut-burntorange inline-flex gap-3'>
+            <Text
+                data-testid='schedule-totals'
+                style={{ margin: 0, lineHeight: 1.4, flexWrap: 'wrap' }}
+                variant='h4'
+                as='p'
+                className='text-ut-burntorange inline-flex gap-3'
+            >
                 <span>
                     {totalHours}&nbsp;
                     <span className='ml-0.5 uppercase'>{totalHours === 1 ? 'Hour' : 'Hours'}</span>

@@ -1,7 +1,6 @@
 import { background } from '@shared/messages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
-import { LogoIcon } from '@views/components/common/LogoIcon';
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { Suspense, useEffect } from 'react';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
@@ -14,6 +13,7 @@ import MapTrifoldIcon from '~icons/ph/map-trifold';
 import PlusIcon from '~icons/ph/plus';
 import SparkleIcon from '~icons/ph/sparkle';
 import type { PlanMeta } from '../core/plans';
+import { HistoryStore, PlanningStore } from '../services/history';
 import {
     FastlaneAuditStore,
     FastlanePlanStore,
@@ -24,6 +24,7 @@ import {
 import AuditTab from './AuditTab';
 import { useHashRoute, useOnline } from './hooks';
 import MapTab from './MapTab';
+import { CompareTab, FinderTab, HistoryTab, HomeTab, RoadmapTab } from './PlanningTools';
 import PlanTab from './PlanTab';
 import RecommendTab from './RecommendTab';
 import RegisterTab from './RegisterTab';
@@ -31,10 +32,16 @@ import SettingsTab from './SettingsTab';
 import WallpaperTab from './WallpaperTab';
 
 const TABS = [
-    ['plan', 'Schedule & backups', CalendarDotsIcon],
-    ['recommend', 'Recommendations', SparkleIcon],
-    ['audit', 'Degree audit', ListChecksIcon],
-    ['register', 'Registration prep', LightningIcon],
+    ['home', 'What should I do next?', SparkleIcon],
+    ['finder', 'Advanced course finder', ListChecksIcon],
+    ['generate', 'Build schedules', CalendarDotsIcon],
+    ['compare', 'Compare & share', CalendarDotsIcon],
+    ['roadmap', 'Roadmap & prerequisites', ListChecksIcon],
+    ['history', 'History & undo', CalendarDotsIcon],
+    ['plan', 'My classes & backups', CalendarDotsIcon],
+    ['recommend', 'Find classes for my degree', SparkleIcon],
+    ['audit', 'My degree progress', ListChecksIcon],
+    ['register', 'Get ready to register', LightningIcon],
     ['map', 'Campus map', MapTrifoldIcon],
     ['wallpaper', 'Phone wallpaper', DeviceMobileIcon],
     ['settings', 'Settings & privacy', GearSixIcon],
@@ -66,6 +73,8 @@ function Workspace() {
         FastlaneQueueStore,
         FastlaneAuditStore,
         FastlaneReminderStore,
+        PlanningStore,
+        HistoryStore,
     ]);
     const [tab, params, go] = useHashRoute();
     const theme = FastlaneSettingsStore.useStore(s => s.themePreference);
@@ -87,12 +96,7 @@ function Workspace() {
         <div className='shell'>
             <aside className='side'>
                 <div className='logo'>
-                    <LogoIcon className='h-11 w-11' style={{ width: 44, height: 44 }} />
-                    <div className='logo-text'>
-                        Fastlane
-                        <br />
-                        Course Planner
-                    </div>
+                    <div className='logo-text'>FastLane</div>
                 </div>
                 <h3>
                     My schedules
@@ -119,7 +123,9 @@ function Workspace() {
                             aria-pressed={s.id === active?.id}
                         >
                             <span className={`radio ${s.id === active?.id ? 'on' : ''}`} />
-                            <span>{s.name}</span>
+                            <span>
+                                {s.name} <span className='small muted'>({s.courses.length})</span>
+                            </span>
                             {plans[s.id] && plans[s.id]!.kind !== 'custom' && (
                                 <span className='sched-kind'>{plans[s.id]!.kind}</span>
                             )}
@@ -127,7 +133,7 @@ function Workspace() {
                     ))}
                 </div>
                 <hr />
-                <h3>Fastlane</h3>
+                <h3>FastLane</h3>
                 <nav className='nav' aria-label='Sections'>
                     {TABS.map(([id, label, Icon]) => (
                         <button
@@ -167,6 +173,12 @@ function Workspace() {
                 </div>
             </aside>
             <main className='main'>
+                {tab === 'home' && <HomeTab go={go} />}
+                {tab === 'finder' && <FinderTab />}
+                {tab === 'generate' && <FinderTab generate />}
+                {tab === 'compare' && <CompareTab />}
+                {tab === 'roadmap' && <RoadmapTab />}
+                {tab === 'history' && <HistoryTab />}
                 {tab === 'plan' && <PlanTab onNavigate={go} />}
                 {tab === 'recommend' && <RecommendTab initialRequirement={params.get('req')} />}
                 {tab === 'audit' && <AuditTab onNavigate={go} />}

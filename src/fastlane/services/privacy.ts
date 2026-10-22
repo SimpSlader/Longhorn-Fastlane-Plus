@@ -2,7 +2,6 @@
  * Export / import / delete of everything Fastlane stores. All local; nothing is sent anywhere.
  */
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
-
 import type { ParsedAudit } from '../audit/types';
 import type { PlanMeta } from '../core/plans';
 import type { QueueState } from '../core/queue';
@@ -20,6 +19,7 @@ import {
     FastlaneReminderStore,
     FastlaneSettingsStore,
 } from '../storage/stores';
+import { clearPlanningHistory, PlanningStore } from './history';
 
 export const EXPORT_FORMAT = 'fastlane-course-planner-export';
 /** exports created before the rename */
@@ -110,6 +110,8 @@ export async function importAll(data: FastlaneExport): Promise<void> {
 
 /** Deletes Fastlane's own data (plans, backups, queue, audit, reminders, settings, caches) and resets to empty defaults. */
 export async function deleteFastlaneData(): Promise<void> {
+    await PlanningStore.set({ roadmap: [], onboarded: false, rules: {} });
+    await clearPlanningHistory();
     // overwrite with empty defaults (rather than removing keys) so open pages never see a missing value
     await FastlanePlanStore.set('plans', {} as never);
     await FastlaneAuditStore.set('audit', null as never);
@@ -118,6 +120,10 @@ export async function deleteFastlaneData(): Promise<void> {
     await FastlaneSettingsStore.set(DEFAULT_SETTINGS as never);
     // remove any other Fastlane-owned keys (e.g. from older versions)
     const keep = new Set([
+        'FastlanePlanning:roadmap',
+        'FastlanePlanning:onboarded',
+        'FastlanePlanning:rules',
+        'FastlaneHistory:snapshots',
         'FastlanePlans:plans',
         'FastlaneAudit:audit',
         'FastlaneQueue:queue',
@@ -136,6 +142,7 @@ export async function deleteFastlaneData(): Promise<void> {
 
 /** Deletes everything this extension stored, including UT Registration Plus schedules. */
 export async function deleteEverything(): Promise<void> {
+    await clearPlanningHistory();
     await chrome.storage.local.clear();
     await chrome.storage.sync.clear();
     await chrome.storage.session?.clear();

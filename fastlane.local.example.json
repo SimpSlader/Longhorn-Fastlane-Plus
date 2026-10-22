@@ -1,0 +1,9 @@
+{
+    "repo": "/absolute/path/to/Longhorn-Fastlane-Plus",
+    "branch": "fix/clearer-planner-and-sidebar",
+    "toolchainBin": "/absolute/path/to/node-toolchain/node_modules/.bin",
+    "extensionDir": "/absolute/path/to/the/unpacked/extension/folder/Chrome/loads",
+    "chromeProfileDir": "/absolute/path/to/Chrome/user-data/<Profile>",
+    "extensionId": "abcdefghijklmnopabcdefghijklmnop",
+    "backupDir": "/absolute/path/to/backups"
+}

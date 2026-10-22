@@ -6,6 +6,7 @@
  *  - optionally check for static dataset updates at most once per day
  * No network request here ever goes to a developer-controlled server with student data.
  */
+
 import type { PlannedReminder, ReminderConfig } from '../core/reminders';
 import { ALARM_PREFIX, normalizeReminderConfig, planReminders } from '../core/reminders';
 import type { SectionRecord } from '../core/sections';
@@ -14,8 +15,10 @@ import bundled from '../data/bundled-datasets.json';
 import { checkForUpdates } from '../data/datasets';
 import { idbDatasetStore, idbGetAll, idbPutMany, STORES } from '../data/idb';
 import { dataManifestConfig } from '../services/dataConfig';
+import { registerHistory } from '../services/history';
 import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
 import { FastlaneReminderStore, FastlaneSettingsStore } from '../storage/stores';
+import { checkForNewLocalBuild, isDevNotification, registerDevAutoReload } from './devAutoReload';
 
 export const UT_REGISTRATION_URL = 'https://utdirect.utexas.edu/registration/chooseSemester.WBX';
 const DATA_ALARM = 'fastlane-data-check';
@@ -106,6 +109,8 @@ function openTab(url: string) {
 }
 
 export function registerFastlaneBackground() {
+    if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true') registerDevAutoReload();
+    registerHistory();
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (!isFastlaneRequest(msg)) return false;
         const respond = (p: Promise<unknown>) =>
@@ -142,6 +147,13 @@ export function registerFastlaneBackground() {
             case 'checkDataUpdates':
                 respond(runDataCheck(!!msg.force));
                 return true;
+            case 'devCheckReload':
+                if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true') {
+                    respond(checkForNewLocalBuild());
+                    return true;
+                }
+                sendResponse({ ok: true, data: false });
+                return false;
             case 'openFastlane':
                 openTab(chrome.runtime.getURL(`fastlane.html${msg.tab ? `#${msg.tab}` : ''}`));
                 sendResponse({ ok: true });
@@ -154,10 +166,15 @@ export function registerFastlaneBackground() {
     chrome.alarms.onAlarm.addListener(alarm => void onAlarm(alarm));
 
     chrome.notifications.onButtonClicked.addListener((id, index) => {
+        if (isDevNotification(id)) return; // handled by devAutoReload
         openTab(index === 0 ? UT_REGISTRATION_URL : chrome.runtime.getURL('fastlane.html#register'));
         chrome.notifications.clear(id);
     });
     chrome.notifications.onClicked.addListener(id => {
+        if (isDevNotification(id)) {
+            chrome.notifications.clear(id);
+            return;
+        }
         if (id.startsWith('fastlane')) openTab(UT_REGISTRATION_URL);
         chrome.notifications.clear(id);
     });

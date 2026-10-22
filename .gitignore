@@ -228,3 +228,6 @@ test-results/
 playwright-report/
 package/
 reports/
+
+# Fastlane local machine configuration (paths, Chrome profile, extension ID) — never commit
+fastlane.local.json

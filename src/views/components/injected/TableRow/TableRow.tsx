@@ -84,11 +84,14 @@ export default function TableRow({ row, isSelected, activeSchedule, onClick }: P
 
     useEffect(() => {
         const isAsync = highlightAsync && rowAnalysis.modality.modality === 'async-online';
+        const isOnline = highlightAsync && ['async-online', 'live-online'].includes(rowAnalysis.modality.modality);
+        element.classList.toggle(styles.isOnline ?? 'fastlane-online', isOnline);
         // biome-ignore lint/style/noNonNullAssertion: CSS module class
         element.classList[isAsync ? 'add' : 'remove'](styles.isAsync!);
         return () => {
             // biome-ignore lint/style/noNonNullAssertion: CSS module class
             element.classList.remove(styles.isAsync!);
+            element.classList.remove(styles.isOnline ?? 'fastlane-online');
         };
     }, [element, highlightAsync, rowAnalysis]);
 
