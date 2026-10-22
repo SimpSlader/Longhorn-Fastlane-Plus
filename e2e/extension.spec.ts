@@ -516,7 +516,6 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
     });
 });
 
-
 test.describe('UT course-schedule search form resilience', () => {
     const ut = 'https://utdirect.utexas.edu/apps/registrar/course_schedule/';
 
