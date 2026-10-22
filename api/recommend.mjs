@@ -21,7 +21,7 @@ function send(res, status, data, extra = {}) {
     res.end(JSON.stringify(data));
 }
 function safeString(value, length = 130) {
-    return typeof value === 'string' ? value.slice(0, length).replace(/[\\x00-\\x1f]/g, ' ').trim() : '';
+    return typeof value === 'string' ? value.slice(0, length).split('').map(c => c.charCodeAt(0) < 32 ? ' ' : c).join('').trim() : '';
 }
 function secureEqual(a, b) {
     const left = Buffer.from(a);
