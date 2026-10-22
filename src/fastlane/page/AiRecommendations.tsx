@@ -255,7 +255,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 <textarea
                     rows={3}
                     value={request}
-                    onChange={e => setRequest(e.target.value)}
+                    onChange={e => {
+                        setRequest(e.target.value);
+                        setRecommendations([]);
+                        setDraftResult('');
+                    }}
                     placeholder='Find me 12–13 credits that count for my degree, no Monday/Wednesday/Friday classes, and 1–2 fully asynchronous online classes. I plan to take Macro through ACC.'
                     aria-label='Ask Fastlane for class recommendations'
                 />
@@ -306,6 +310,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         </p>
                     )}
                     {!audit && <div className='notice warn'>Import your IDA in Degree progress first.</div>}
+                    {!loadingCatalog && audit && candidates.length === 0 && (
+                        <p role='status' className='notice warn'>
+                            No matching real UT sections were found in the currently loaded catalog.
+                            Widen the time/grade preferences or expand advanced browsing to import additional subjects.
+                        </p>
+                    )}
                     {!subject && !inventory.metas.length && coveredSubjects.length < 3 && (
                         <div className='notice small'>
                             Only a few subjects are available. Import UT's course list at the top of this page so AI can
