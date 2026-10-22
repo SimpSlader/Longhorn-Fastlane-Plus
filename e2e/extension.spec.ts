@@ -210,6 +210,20 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
             .locator('section')
             .nth(1)
             .screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
+
+        // green + quick-adds the class to the active schedule, takes the class color, and removes on a second click
+        const quick = live.locator('[data-fastlane="quick-add"]');
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
+        expect(await quick.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(22, 163, 74)');
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'true');
+        // the button fades from green to the color UTRP gave the class
+        await page.waitForTimeout(400);
+        const added = await quick.evaluate(el => getComputedStyle(el).backgroundColor);
+        expect(added).not.toBe('rgb(22, 163, 74)');
+        await live.locator('[data-fastlane="row"]').screenshot({ path: `${SHOTS}/1b-quick-add-added.png` });
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
     });
 
     test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({

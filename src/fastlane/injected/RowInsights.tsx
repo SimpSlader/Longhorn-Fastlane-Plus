@@ -3,10 +3,13 @@
  *   72.4% A-+ · Prof   |  ASYNC  |  Conflicts: C S 314 (52345)  |  + Backup
  * Rendered inside UTRP's shadow-root portal for the row.
  */
+import { background } from '@shared/messages';
 import type { Course } from '@shared/types/Course';
 import type { UserSchedule } from '@shared/types/UserSchedule';
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
+import CheckIcon from '~icons/ph/check-bold';
+import PlusIcon from '~icons/ph/plus-bold';
 
 import { gradeStatFrom, lookupGrades, sectionFromCourse } from '../adapters/utrp';
 import type { GradeStat } from '../core/grades';
@@ -154,6 +157,60 @@ function RatingChip({ course }: { course: Course }) {
             </strong>
             <span className='opacity-70'>RMP · {rating.numRatings}</span>
         </a>
+    );
+}
+
+/** One-click add to the active schedule (UTRP picks the class color); turns into the class color once added. */
+function QuickAddButton({ course, activeSchedule }: Pick<Props, 'course' | 'activeSchedule'>) {
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState<string | null>(null);
+    if (!activeSchedule) return null;
+    const saved = activeSchedule.courses.find(c => c.uniqueId === course.uniqueId);
+    const otherSemester = activeSchedule.courses.some(
+        c => c.semester.year !== course.semester.year || c.semester.season !== course.semester.season
+    );
+    const label = saved
+        ? `Remove ${course.department} ${course.number} from ${activeSchedule.name}`
+        : `Add ${course.department} ${course.number} to ${activeSchedule.name}`;
+    const toggle = async () => {
+        if (busy) return;
+        if (!saved && otherSemester) {
+            setNote(`${activeSchedule.name} has classes from another semester`);
+            return;
+        }
+        setBusy(true);
+        setNote(null);
+        try {
+            if (saved) await background.removeCourse({ course, scheduleId: activeSchedule.id });
+            else await background.addCourse({ course, scheduleId: activeSchedule.id });
+        } catch {
+            setNote('Could not update your schedule');
+        } finally {
+            setBusy(false);
+        }
+    };
+    const color = saved?.colors?.primaryColor ?? '#16a34a';
+    return (
+        <button
+            type='button'
+            className='inline-flex h-[24px] w-[24px] items-center justify-center rounded-full border-none text-white'
+            style={{
+                background: color,
+                boxShadow: '0 2px 6px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.35)',
+                transition: 'background 200ms ease, transform 120ms ease',
+                cursor: busy ? 'progress' : 'pointer',
+            }}
+            aria-label={label}
+            aria-pressed={!!saved}
+            title={note ?? (saved ? `Added to ${activeSchedule.name} · click to remove` : label)}
+            onClick={e => {
+                e.stopPropagation();
+                void toggle();
+            }}
+            data-fastlane='quick-add'
+        >
+            {saved ? <CheckIcon className='h-3.5 w-3.5' /> : <PlusIcon className='h-3.5 w-3.5' />}
+        </button>
     );
 }
 
@@ -310,6 +367,7 @@ export default function RowInsights({ course, modality, conflict, activeSchedule
             {settings.highlightAsync && <ModalityChip modality={modality} />}
             {settings.showConflictDetails && conflict && <ConflictChip conflict={conflict} />}
             <BackupButton course={course} activeSchedule={activeSchedule} rowAnalysis={rowAnalysis} />
+            <QuickAddButton course={course} activeSchedule={activeSchedule} />
         </span>
     );
 }
