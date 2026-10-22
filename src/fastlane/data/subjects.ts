@@ -23,3 +23,18 @@ export function availableSubjects(codes: Iterable<string>): Subject[] {
     }
     return [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+
+/**
+ * Official UT course-schedule field search. This opens UT in the student's browser,
+ * using their own university session. It does not scrape pages in the background.
+ */
+export function utSubjectScheduleUrl(semester: string, subject: string): string {
+    const match = semester.match(/^(Spring|Summer|Fall) (20\d{2})$/);
+    const code = subjectForCode(subject)?.code;
+    if (!match || !code) return 'https://registrar.utexas.edu/schedules';
+    const season = match[1] as 'Spring' | 'Summer' | 'Fall';
+    const term = match[2] + ({ Spring: '2', Summer: '6', Fall: '9' }[season]);
+    const params = new URLSearchParams({ fos_fl: code, level: 'U', search_type_main: 'FIELD' });
+    return 'https://utdirect.utexas.edu/apps/registrar/course_schedule/' + term + '/results/?' + params.toString();
+}
