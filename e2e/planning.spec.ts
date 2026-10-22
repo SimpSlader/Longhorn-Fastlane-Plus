@@ -91,7 +91,10 @@ test('IDA-based home and simple course filters work without hidden advanced scre
     await subject.selectOption('MUS');
     await expect(page.locator('.planner-results article').first()).toContainText('MUS');
     await page.getByRole('combobox', { name: 'Minimum historical A minus percentage' }).selectOption('80');
-    await expect(page.getByText(/historical A− or better/i).first()).toBeVisible();
+    await expect(page.locator('.planner-results .class-grade').first()).toContainText(/A or A−/);
+    const gradeButton = page.locator('.planner-results').getByRole('button', { name: 'Grade distribution' }).first();
+    await gradeButton.click();
+    await expect(page.locator('.class-chart svg').first()).toBeVisible();
     await page.getByRole('button', { name: 'Fri', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Fri', exact: true })).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText('More filters')).toBeVisible();

@@ -9,15 +9,15 @@ import { chooseAiCandidates } from '../core/aiCandidates';
 import { safeAiScheduleDraft } from '../core/aiSchedule';
 import { describePreferences, planningPreferences } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
-import { DAY_NAMES, formatMeeting } from '../core/meetings';
-import type { PrerequisiteCheck } from '../core/prerequisites';
-import { describePrerequisites, subjectNameIndex } from '../core/prerequisites';
+import { DAY_NAMES } from '../core/meetings';
+import { subjectNameIndex } from '../core/prerequisites';
 import { normalizeCourseCode } from '../core/requirements';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
 import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
 import { FastlaneAiAccessStore, FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
-import { inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
+import { ClassCard } from './ClassCard';
+import { inventorySubjects, useInventory } from './CourseInventory';
 
 /** Planning facts computed locally and sent with each candidate (public course data only). */
 function aiFacts(c: AiCandidate | undefined) {
@@ -445,47 +445,24 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     const g = answered.grades.get(c.uniqueId);
                     return (
                         <div key={rec.id} className='ai-result'>
-                            <div className='row between'>
-                                <b>
-                                    {c.courseCode} · {c.title}
-                                </b>
-                                <span className='chip'>
-                                    {rec.confidence === 'high' ? 'Likely match' : 'Review degree fit'}
-                                </span>
-                            </div>
-                            <p className='small'>{rec.reason}</p>
-                            <p className='small'>
-                                Unique <b>{String(c.uniqueId).padStart(5, '0')}</b> · {c.creditHours} hrs ·{' '}
-                                {c.meetings.length
-                                    ? c.meetings.map(formatMeeting).join('; ')
-                                    : c.modality === 'async-online'
-                                      ? 'Asynchronous online (no meeting times)'
-                                      : 'Meeting times not listed'}
-                            </p>
-                            <p className='small muted'>
-                                {c.instructors.join(', ') || 'Instructor unlisted'} · {semesterKey(c.semester)}
-                                {g
-                                    ? ` · ${g.result.percent.toFixed(0)}% historical A− or better (${g.scope === 'instructor' ? 'this professor' : 'all professors'}, n=${g.result.graded})`
-                                    : ' · No historical grade data'}
-                                {answered.facts.get(c.uniqueId)?.applies.length
-                                    ? ` · Degree: ${answered.facts.get(c.uniqueId)?.applies.join(', ')}`
-                                    : ' · Degree fit: verify on your IDA'}
-                            </p>
-                            <p className='small muted'>
-                                Requirement: {rec.requirement || 'Verify against IDA'}.
-                                {rec.warning && ` ${rec.warning}`}
-                                {answered.facts.get(c.uniqueId) &&
-                                    ` ${describePrerequisites(answered.facts.get(c.uniqueId)?.prerequisite as PrerequisiteCheck)}.`}
-                            </p>
-                            <SectionEvidence s={c} />
-                            <button
-                                type='button'
-                                className='btn sm'
-                                disabled={!schedule || !c.course}
-                                onClick={() => void add(c)}
+                            <ClassCard
+                                section={c}
+                                grade={g}
+                                badge={
+                                    answered.facts.get(c.uniqueId)?.prerequisite.status === 'unmet'
+                                        ? 'Prerequisite needed'
+                                        : undefined
+                                }
                             >
-                                {savedId === c.uniqueId ? 'Added to schedule' : 'Add to my schedule'}
-                            </button>
+                                <button
+                                    type='button'
+                                    className='btn sm'
+                                    disabled={!schedule || !c.course}
+                                    onClick={() => void add(c)}
+                                >
+                                    {savedId === c.uniqueId ? 'Added to schedule' : 'Add to my schedule'}
+                                </button>
+                            </ClassCard>
                         </div>
                     );
                 })}

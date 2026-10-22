@@ -62,7 +62,7 @@ test('every subject in the official course list is browsable without visiting UT
     for (const code of ['ECO', 'FIN', 'ACC']) {
         await subject.selectOption(code);
         await expect(cards.first()).toBeVisible();
-        const titles = await cards.locator('b').allTextContents();
+        const titles = await cards.locator('.class-code').allTextContents();
         expect(titles.length).toBeGreaterThan(2);
         expect(titles.every(t => t.startsWith(`${code} `))).toBe(true);
     }
@@ -70,6 +70,8 @@ test('every subject in the official course list is browsable without visiting UT
     // official listing, confirmed details and availability are shown separately
     await subject.selectOption('ECO');
     const first = cards.first();
+    await expect(first.locator('.class-time')).not.toBeEmpty();
+    await first.getByRole('button', { name: 'Seats' }).click();
     await expect(first.getByText(/Listed by UT Registrar · as of Oct 1, 2026/)).toBeVisible();
     await expect(first.getByText('Section details not yet confirmed on UT')).toBeVisible();
     await expect(first.getByText('Seat availability: confirm on UT')).toBeVisible();

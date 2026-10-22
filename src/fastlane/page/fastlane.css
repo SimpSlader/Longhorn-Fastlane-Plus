@@ -1470,17 +1470,8 @@ fieldset.day-chips {
 .ai-advisor-body > .btn.primary {
     width: fit-content;
 }
-.ai-result {
-    padding: 15px 16px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface) 86%, transparent);
-}
-.ai-result .row {
-    gap: 9px;
-}
-.ai-result .chip {
-    white-space: normal;
+.ai-result + .ai-result {
+    margin-top: 10px;
 }
 @media (max-width: 630px) {
     .ai-advisor > .row.between {
@@ -1771,4 +1762,112 @@ ul.plain {
 .degree-page .dropzone.compact:hover {
     border-color: var(--accent);
     background: var(--accent-soft);
+}
+
+/* Compact glass class cards (AI results, Browse, Compare) */
+.class-card {
+    --cc-bg: rgba(255, 255, 255, 0.7);
+    --cc-border: rgba(255, 255, 255, 0.9);
+    --cc-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 8px 24px rgba(17, 24, 39, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    box-shadow: var(--cc-shadow);
+    backdrop-filter: blur(10px) saturate(1.4);
+}
+:root[data-theme="dark"] .class-card {
+    --cc-bg: rgba(44, 44, 50, 0.66);
+    --cc-border: rgba(255, 255, 255, 0.08);
+    --cc-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .class-card {
+        --cc-bg: rgba(44, 44, 50, 0.66);
+        --cc-border: rgba(255, 255, 255, 0.08);
+        --cc-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    }
+}
+.class-card-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+}
+.class-card-text {
+    min-width: 0;
+}
+.class-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-transform: capitalize;
+}
+.class-code {
+    margin: 2px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+}
+.class-code span {
+    color: var(--muted);
+    font-weight: 500;
+}
+.class-time {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+.class-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+}
+.class-grade {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 76px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    text-align: center;
+}
+.class-grade b {
+    font-size: 24px;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+}
+.class-grade span {
+    font-size: 11px;
+    color: var(--muted);
+}
+.class-chart {
+    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    padding-top: 10px;
+}
+.class-chart svg {
+    width: 100%;
+    height: auto;
+}
+.class-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.class-actions .btn {
+    border-radius: 999px;
+}
+.compare-course .class-card {
+    margin-bottom: 8px;
 }

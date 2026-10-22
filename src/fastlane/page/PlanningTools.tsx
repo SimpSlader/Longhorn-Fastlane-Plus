@@ -4,7 +4,7 @@ import { useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { sectionFromCourse } from '../adapters/utrp';
 import type { ParsedAudit } from '../audit/types';
-import { DAY_ORDER, formatMinutes } from '../core/meetings';
+import { DAY_ORDER } from '../core/meetings';
 import {
     catalogPrerequisite,
     confirmedAuditHours,
@@ -33,7 +33,8 @@ import {
 } from '../services/planningService';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore } from '../storage/stores';
-import { InventoryPanel, inventorySubjects, SectionEvidence, useInventory } from './CourseInventory';
+import { ClassCard } from './ClassCard';
+import { InventoryPanel, inventorySubjects, useInventory } from './CourseInventory';
 import { useGradeStats } from './hooks';
 
 const ROW_LIMIT = 120;
@@ -401,29 +402,6 @@ function Metrics({ sections, grades }: { sections: SectionRecord[]; grades: Grad
         </div>
     );
 }
-function SectionSummary({ s, grades }: { s: SectionRecord; grades: Grades }) {
-    const g = grades.get(s.uniqueId);
-    return (
-        <>
-            <b>
-                {s.courseCode} · {String(s.uniqueId).padStart(5, '0')}
-            </b>
-            <div>{s.title}</div>
-            <p className='small muted'>
-                {s.instructors.join(' · ') || 'Professor not listed'} · {s.creditHours} hours · {s.modality}
-                <br />
-                {s.meetings
-                    .map(m => `${m.days.join('/')} ${formatMinutes(m.start)}–${formatMinutes(m.end)}`)
-                    .join(' · ') || (s.modality === 'async-online' ? 'Asynchronous' : 'Meeting times unknown')}
-                <br />
-                {g
-                    ? `${g.result.percent.toFixed(1)}% ${g.result.threshold === 'A' ? 'A' : 'A− or better'} · ${g.result.graded} historical grades · ${g.scope}${g.smallSample ? ' · small sample' : ''}`
-                    : 'Historical grades unavailable'}
-            </p>
-            <SectionEvidence s={s} />
-        </>
-    );
-}
 export function FinderTab({
     generate = false,
     embedded = false,
@@ -722,17 +700,19 @@ export function FinderTab({
                             )}
                             <div className='planner-results'>
                                 {shownRows.map(s => (
-                                    <article className='card planner-glass' key={s.uniqueId}>
-                                        <SectionSummary s={s} grades={grades} />
-                                        {s.requirementTags.some(t => needed.has(t)) && (
-                                            <p>
-                                                Matches an unfinished requirement tag — confirm exact applicability in
-                                                your audit.
-                                            </p>
-                                        )}
+                                    <ClassCard
+                                        key={s.uniqueId}
+                                        section={s}
+                                        grade={grades.get(s.uniqueId)}
+                                        badge={
+                                            s.requirementTags.some(t => needed.has(t))
+                                                ? 'May fit an unfinished requirement'
+                                                : undefined
+                                        }
+                                    >
                                         <button
                                             type='button'
-                                            className='btn'
+                                            className='btn sm'
                                             disabled={!active || !s.course || s.status?.value === 'CANCELLED'}
                                             onClick={() =>
                                                 void run(
@@ -743,7 +723,7 @@ export function FinderTab({
                                         >
                                             Add to {active?.name ?? 'schedule'}
                                         </button>
-                                    </article>
+                                    </ClassCard>
                                 ))}
                             </div>
                         </>
@@ -912,7 +892,10 @@ export function CompareTab() {
                                     );
                                     return (
                                         <article className='compare-course' key={s.uniqueId}>
-                                            <SectionSummary s={s} grades={index === 0 ? leftGrades : rightGrades} />
+                                            <ClassCard
+                                                section={s}
+                                                grade={(index === 0 ? leftGrades : rightGrades).get(s.uniqueId)}
+                                            />
                                             <label>
                                                 Swap this class
                                                 <select

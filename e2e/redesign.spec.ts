@@ -175,9 +175,11 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     const cards = page.locator('.ai-result');
     await expect(cards.first()).toBeVisible();
     expect(await cards.count()).toBeLessThanOrEqual(3); // the invented ID 99999 is dropped
-    await expect(cards.first()).toContainText(/Unique \d{5}/);
-    await expect(cards.first()).toContainText(/historical|No historical grade data/);
-    await expect(cards.first()).toContainText(/Degree/);
+    await expect(cards.first().locator('.class-code')).toHaveText(/^[A-Z ]+ \d{3}[A-Z]? · \d{5}$/);
+    await expect(cards.first().locator('.class-time')).not.toBeEmpty();
+    await expect(cards.first().locator('.class-grade')).toContainText(/% *A or A−|No grade data/);
+    await expect(cards.first().getByRole('button', { name: 'Grade distribution' })).toBeVisible();
+    await page.locator('.ai-advisor').screenshot({ path: 'test-results/redesign/class-cards.png' });
 
     // follow-up keeps earlier preferences and adds an exclusion
     await box.fill('Actually Fridays are fine.');
