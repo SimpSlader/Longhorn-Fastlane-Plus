@@ -102,7 +102,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
     const coveredSubjects = [...new Set(candidates.map(c => department(c.courseCode)))];
     const latest = [...new Set(catalog.map(c => semesterKey(c.semester)).filter(x => x !== 'unknown'))];
-    const actualTerm = settings.targetSemester ?? (latest.length === 1 ? latest[0] : '');
+    const actualTerm = settings.targetSemester ?? (latest.length === 1 ? latest[0] ?? '' : '');
 
     const run = async () => {
         if (!consent || busy) return;
