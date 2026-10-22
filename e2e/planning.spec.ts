@@ -46,97 +46,57 @@ test('IDA import is opt-in, local, and excludes page identity', async ({ context
     expect(saved.program).toBeUndefined();
     expect(outbound).toEqual([]);
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-    await expect(page.getByText('My degree progress', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Degree audit' })).toBeVisible();
 });
-test('duplicate, swap, history and sanitized share import keep existing plans', async ({
-    context,
-    extensionId,
-    sw,
-}) => {
+test('minimal planner navigation keeps saved schedules accessible', async ({ context, extensionId, sw }) => {
     const page = await demo(context, extensionId);
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#compare`);
-    await page.getByRole('button', { name: /Duplicate / }).click();
-    await expect(page.getByRole('status')).toContainText('Copy created');
-    const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
-    const newId = before.at(-1).id;
-    await expect(page.getByLabel('Right schedule')).toHaveValue(newId);
-    const right = page.locator('.comparison-grid > section').last();
-    const swap = right.getByLabel('Swap this class').first();
-    await expect(swap).toBeVisible();
-    await expect.poll(() => swap.locator('option').count()).toBeGreaterThan(1);
-    const options = await swap.locator('option').all();
-    expect(options.length).toBeGreaterThan(1);
-    const value = await options.at(-1)!.getAttribute('value');
-    await swap.selectOption(value!);
-    await expect(page.getByRole('status')).toContainText('Class changed');
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#home`);
+    const nav = page.getByRole('navigation', { name: 'Sections' });
+    await expect(nav.getByRole('button')).toHaveCount(4);
+    await expect(nav.getByRole('button', { name: 'Overview' })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'Find classes' })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'My schedule' })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'Degree progress' })).toBeVisible();
+
+    const schedules = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
+    await expect(page.getByRole('combobox', { name: 'CURRENT SCHEDULE' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'CURRENT SCHEDULE' }).locator('option')).toHaveCount(
+        schedules.length
+    );
+    await nav.getByRole('button', { name: 'My schedule' }).click();
+    await expect(page.getByRole('link', { name: 'Open full calendar' })).toBeVisible();
+    // Nothing in the simplified planner should mutate existing schedule data just by navigating.
     const after = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
-    expect(after[0].courses).toEqual(before[0].courses);
-    const downloadPromise = page.waitForEvent('download');
-    await right.getByRole('button', { name: 'Share schedule file' }).click();
-    const download = await downloadPromise;
-    const path = await download.path();
-    const shared = JSON.parse(readFileSync(path!, 'utf8'));
-    expect(Object.keys(shared).sort()).toEqual(['format', 'sections', 'version']);
-    const serialized = JSON.stringify(shared);
-    for (const key of ['registerURL', 'audit', 'queue', 'notes', 'scheduleId', 'url', 'outcomes'])
-        expect(serialized).not.toContain(`"${key}"`);
-    await page.getByLabel('Import schedule-only file').setInputFiles(path!);
-    await expect(page.getByRole('status')).toContainText('Imported into a new schedule');
-    const imported = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
-    expect(imported.length).toBe(after.length + 1);
-    expect(imported[0]).toEqual(after[0]);
-    expect(
-        imported.at(-1).courses.find((c: { uniqueId: number }) => c.uniqueId === 53780).instructors[0].lastName
-    ).toBe('SMITH');
-    const imageDownload = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Save comparison image' }).click();
-    expect((await imageDownload).suggestedFilename()).toBe('FastLane-comparison.png');
-    await page.screenshot({ path: 'reports/screenshots/planning-comparison.png', fullPage: true });
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#history`);
-    await expect(page.getByRole('button', { name: 'Undo last change by restoring a copy' })).toBeVisible();
-    await page.getByRole('button', { name: 'Undo last change by restoring a copy' }).click();
-    await expect(page.getByRole('status')).toContainText('Restored');
-    await page.screenshot({ path: 'reports/screenshots/planning-history.png' });
+    expect(after).toEqual(schedules);
 });
-test('finder, generator, roadmap and first-use guidance render and save locally', async ({
+
+test('IDA-based home and simple course filters work without hidden advanced screens', async ({
     context,
     extensionId,
-    sw,
 }) => {
     const page = await demo(context, extensionId);
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#home`);
-    await expect(page.getByRole('heading', { name: 'What should I do next?' })).toBeVisible();
-    await page.getByRole('button', { name: 'Got it' }).click();
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Welcome to FastLane' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Plan your next semester.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Import my IDA' })).toBeVisible();
+
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
-    await page.getByLabel('Semester', { exact: true }).selectOption('Spring 2027');
+    await page.getByRole('button', { name: 'Browse all classes' }).click();
+    await page.getByRole('combobox', { name: 'Semester' }).selectOption('Spring 2027');
     await expect(page.locator('.planner-results article').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Tuesday / Thursday' }).click();
-    await expect(page.getByLabel('M', { exact: true })).not.toBeChecked();
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#generate`);
-    await page.getByLabel('Semester', { exact: true }).selectOption('Spring 2027');
-    await page.locator('.course-choices input').first().check();
-    await page.getByRole('button', { name: 'Generate combinations' }).click();
-    await expect(page.getByRole('heading', { name: 'Combination 1', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Save as new schedule' }).first().click();
-    await expect(page.getByRole('status')).toContainText('Saved as a new schedule');
-    await page.screenshot({ path: 'reports/screenshots/planning-generator.png', fullPage: true });
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#roadmap`);
-    await page.getByLabel('Semester', { exact: true }).fill('Summer 2027');
-    await page.getByLabel('Course or exam code').fill('M 408C');
-    await page.getByRole('button', { name: 'Add planned credit' }).click();
-    await expect(page.getByRole('heading', { name: 'Summer 2027 · 3 new planned hours' })).toBeVisible();
-    await page.screenshot({ path: 'reports/screenshots/planning-roadmap.png', fullPage: true });
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#settings`);
-    page.on('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: 'Delete Fastlane data', exact: true }).click();
-    await expect(page.getByText('Fastlane data deleted.')).toBeVisible();
-    const local = await sw.evaluate(() => chrome.storage.local.get(null));
-    expect(local['FastlaneHistory:snapshots']).toEqual([]);
-    expect(local['FastlanePlanning:roadmap']).toEqual([]);
-    expect(local['FastlanePlanning:rules']).toEqual({});
+    const subject = page.getByRole('combobox', { name: 'Subject' });
+    await expect(subject).toBeVisible();
+    await subject.selectOption('MUS');
+    await expect(page.locator('.planner-results article').first()).toContainText('MUS');
+    await page.getByRole('combobox', { name: 'Minimum historical A minus percentage' }).selectOption('80');
+    await expect(page.getByText(/historical A− or better/i).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Fri', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Fri', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByText('More filters')).toBeVisible();
+
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+    await expect(page.getByRole('heading', { name: 'Degree audit' })).toBeVisible();
+    await expect(page.getByText(/Drop your audit here/)).toBeVisible();
     expect(errors).toEqual([]);
 });

@@ -2,18 +2,14 @@ import { background } from '@shared/messages';
 import { OptionsStore } from '@shared/storage/OptionsStore';
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 import CalendarDotsIcon from '~icons/ph/calendar-dots';
-import DeviceMobileIcon from '~icons/ph/device-mobile';
 import GearSixIcon from '~icons/ph/gear-six';
 import LightningIcon from '~icons/ph/lightning';
 import ListChecksIcon from '~icons/ph/list-checks';
-import MapTrifoldIcon from '~icons/ph/map-trifold';
 import PlusIcon from '~icons/ph/plus';
 import SparkleIcon from '~icons/ph/sparkle';
-import type { PlanMeta } from '../core/plans';
-import { HistoryStore, PlanningStore } from '../services/history';
 import {
     FastlaneAuditStore,
     FastlanePlanStore,
@@ -23,37 +19,53 @@ import {
 } from '../storage/stores';
 import AuditTab from './AuditTab';
 import { useHashRoute, useOnline } from './hooks';
-import MapTab from './MapTab';
-import { CompareTab, FinderTab, HistoryTab, HomeTab, RoadmapTab } from './PlanningTools';
+import { FinderTab, HomeTab } from './PlanningTools';
 import PlanTab from './PlanTab';
 import RecommendTab from './RecommendTab';
 import RegisterTab from './RegisterTab';
 import SettingsTab from './SettingsTab';
-import WallpaperTab from './WallpaperTab';
 
 const TABS = [
-    ['home', 'What should I do next?', SparkleIcon],
-    ['finder', 'Advanced course finder', ListChecksIcon],
-    ['generate', 'Build schedules', CalendarDotsIcon],
-    ['compare', 'Compare & share', CalendarDotsIcon],
-    ['roadmap', 'Roadmap & prerequisites', ListChecksIcon],
-    ['history', 'History & undo', CalendarDotsIcon],
-    ['plan', 'My classes & backups', CalendarDotsIcon],
-    ['recommend', 'Find classes for my degree', SparkleIcon],
-    ['audit', 'My degree progress', ListChecksIcon],
-    ['register', 'Get ready to register', LightningIcon],
-    ['map', 'Campus map', MapTrifoldIcon],
-    ['wallpaper', 'Phone wallpaper', DeviceMobileIcon],
-    ['settings', 'Settings & privacy', GearSixIcon],
+    ['home', 'Overview', SparkleIcon],
+    ['finder', 'Find classes', ListChecksIcon],
+    ['plan', 'My schedule', CalendarDotsIcon],
+    ['audit', 'Degree progress', ListChecksIcon],
 ] as const;
 
-const RESOURCES: Array<[string, string]> = [
-    ['Course Schedule', 'https://utdirect.utexas.edu/apps/registrar/course_schedule/'],
-    ['My Degree Audit (IDA)', 'https://utdirect.utexas.edu/apps/degree/audits/'],
-    ['Registration Info Sheet (RIS)', 'https://utdirect.utexas.edu/registrar/ris.WBX'],
-    ['Register for Courses', 'https://utdirect.utexas.edu/registration/chooseSemester.WBX'],
-    ['Academic Calendars', 'https://registrar.utexas.edu/calendars'],
-];
+function FindClasses({
+    initialRequirement,
+    forceRecommended = false,
+}: {
+    initialRequirement?: string | null;
+    forceRecommended?: boolean;
+}) {
+    const audit = FastlaneAuditStore.useStore(s => s.audit);
+    const [mode, setMode] = useState<'recommended' | 'all'>(audit || forceRecommended ? 'recommended' : 'all');
+    return (
+        <div className='stack'>
+            <div className='simple-heading'>
+                <div>
+                    <span className='eyebrow'>YOUR COURSE SEARCH</span>
+                    <h1>Find classes</h1>
+                    <p>Find sections that fit your degree, week and grade preferences.</p>
+                </div>
+            </div>
+            <fieldset className='mode-toggle' aria-label='Class finder view'>
+                <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
+                    For my degree
+                </button>
+                <button type='button' aria-pressed={mode === 'all'} onClick={() => setMode('all')}>
+                    Browse all classes
+                </button>
+            </fieldset>
+            {mode === 'recommended' ? (
+                <RecommendTab initialRequirement={initialRequirement} embedded />
+            ) : (
+                <FinderTab embedded />
+            )}
+        </div>
+    );
+}
 
 export function LogoMark({ size = 20 }: { size?: number }) {
     return (
@@ -73,15 +85,25 @@ function Workspace() {
         FastlaneQueueStore,
         FastlaneAuditStore,
         FastlaneReminderStore,
-        PlanningStore,
-        HistoryStore,
     ]);
     const [tab, params, go] = useHashRoute();
+    const current = ['home', 'finder', 'plan', 'audit', 'register', 'settings'].includes(tab)
+        ? tab
+        : ((
+              {
+                  recommend: 'finder',
+                  generate: 'finder',
+                  compare: 'plan',
+                  roadmap: 'audit',
+                  history: 'plan',
+                  map: 'home',
+                  wallpaper: 'home',
+              } as Record<string, string>
+          )[tab] ?? 'home');
     const theme = FastlaneSettingsStore.useStore(s => s.themePreference);
     const online = useOnline();
     const schedules = useAllSchedules();
     const active = useActiveSchedule();
-    const plans = FastlanePlanStore.useStore(st => st.plans ?? {}) as unknown as Record<string, PlanMeta>;
 
     useEffect(() => {
         if (theme === 'system') document.documentElement.removeAttribute('data-theme');
@@ -89,8 +111,8 @@ function Workspace() {
     }, [theme]);
 
     useEffect(() => {
-        document.title = `${TABS.find(t => t[0] === tab)?.[1] ?? 'Fastlane'} · Fastlane Course Planner`;
-    }, [tab]);
+        document.title = `${TABS.find(t => t[0] === current)?.[1] ?? 'Fastlane'} · Fastlane Course Planner`;
+    }, [current]);
 
     return (
         <div className='shell'>
@@ -98,8 +120,8 @@ function Workspace() {
                 <div className='logo'>
                     <div className='logo-text'>FastLane</div>
                 </div>
-                <h3>
-                    My schedules
+                <div className='schedule-header'>
+                    <label htmlFor='active-schedule'>CURRENT SCHEDULE</label>
                     <button
                         type='button'
                         className='icon-btn'
@@ -107,53 +129,58 @@ function Workspace() {
                         title='New schedule'
                         onClick={async () => {
                             const name = prompt('Name for the new schedule', 'Backup schedule');
-                            if (name) await background.createSchedule({ scheduleName: name });
+                            if (name?.trim()) await background.createSchedule({ scheduleName: name.trim() });
                         }}
                     >
                         <PlusIcon />
                     </button>
-                </h3>
-                <div className='sched-list'>
-                    {schedules.map(s => (
-                        <button
-                            key={s.id}
-                            type='button'
-                            className='sched-item'
-                            onClick={() => void switchSchedule(s.id)}
-                            aria-pressed={s.id === active?.id}
-                        >
-                            <span className={`radio ${s.id === active?.id ? 'on' : ''}`} />
-                            <span>
-                                {s.name} <span className='small muted'>({s.courses.length})</span>
-                            </span>
-                            {plans[s.id] && plans[s.id]!.kind !== 'custom' && (
-                                <span className='sched-kind'>{plans[s.id]!.kind}</span>
-                            )}
-                        </button>
-                    ))}
                 </div>
+                <select
+                    id='active-schedule'
+                    className='active-schedule-select'
+                    value={active?.id ?? ''}
+                    onChange={e => void switchSchedule(e.target.value)}
+                >
+                    {schedules.map(s => (
+                        <option key={s.id} value={s.id}>
+                            {s.name} · {s.courses.length} classes
+                        </option>
+                    ))}
+                </select>
                 <hr />
-                <h3>FastLane</h3>
+                <div className='nav-label'>PLANNER</div>
                 <nav className='nav' aria-label='Sections'>
                     {TABS.map(([id, label, Icon]) => (
                         <button
                             key={id}
                             type='button'
-                            aria-current={tab === id ? 'page' : undefined}
+                            aria-current={current === id ? 'page' : undefined}
                             onClick={() => go(id)}
                         >
                             <Icon aria-hidden='true' /> {label}
                         </button>
                     ))}
                 </nav>
-                <hr />
-                <h3>Resources</h3>
-                <div className='resources'>
-                    {RESOURCES.map(([text, url]) => (
-                        <a key={url} href={url} target='_blank' rel='noopener'>
-                            {text} ↗
-                        </a>
-                    ))}
+                <div className='sidebar-utilities'>
+                    <button type='button' className='utility-link' onClick={() => go('register')}>
+                        <LightningIcon aria-hidden='true' /> Registration prep
+                    </button>
+                    <a
+                        className='utility-link'
+                        href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                        target='_blank'
+                        rel='noopener noreferrer'
+                    >
+                        UT course schedule ↗
+                    </a>
+                    <a
+                        className='utility-link'
+                        href='https://utdirect.utexas.edu/apps/degree/audits/'
+                        target='_blank'
+                        rel='noopener noreferrer'
+                    >
+                        Open my IDA ↗
+                    </a>
                 </div>
                 <div className='side-foot'>
                     <span>{online ? 'Online' : 'Offline — cached data only'} · local-only, no tracking</span>
@@ -173,19 +200,14 @@ function Workspace() {
                 </div>
             </aside>
             <main className='main'>
-                {tab === 'home' && <HomeTab go={go} />}
-                {tab === 'finder' && <FinderTab />}
-                {tab === 'generate' && <FinderTab generate />}
-                {tab === 'compare' && <CompareTab />}
-                {tab === 'roadmap' && <RoadmapTab />}
-                {tab === 'history' && <HistoryTab />}
-                {tab === 'plan' && <PlanTab onNavigate={go} />}
-                {tab === 'recommend' && <RecommendTab initialRequirement={params.get('req')} />}
-                {tab === 'audit' && <AuditTab onNavigate={go} />}
-                {tab === 'register' && <RegisterTab />}
-                {tab === 'map' && <MapTab />}
-                {tab === 'wallpaper' && <WallpaperTab />}
-                {tab === 'settings' && <SettingsTab />}
+                {current === 'home' && <HomeTab go={go} />}
+                {current === 'finder' && (
+                    <FindClasses initialRequirement={params.get('req')} forceRecommended={tab === 'recommend'} />
+                )}
+                {current === 'plan' && <PlanTab onNavigate={go} />}
+                {current === 'audit' && <AuditTab onNavigate={go} />}
+                {current === 'register' && <RegisterTab />}
+                {current === 'settings' && <SettingsTab />}
                 <div className='footer-note'>
                     Planning information comes from UT pages you viewed and bundled public datasets. Always verify
                     unique numbers, availability, restrictions and rooms in UT’s official course schedule. Historical

@@ -28,11 +28,11 @@ test('local build triggers its own reload when a newly synced build lands in its
         const id = new URL(sw.url()).host;
         const page = await context.newPage();
         await page.goto(`chrome-extension://${id}/fastlane.html#settings`);
-        // same build: nothing happens
-        const unchanged = await page.evaluate(() =>
-            chrome.runtime.sendMessage({ fastlane: true, type: 'devCheckReload' })
-        );
-        expect(unchanged).toEqual({ ok: true, data: { action: 'none', reason: 'same-build' } });
+        // same build: nothing happens. (The very first check may arrive before the background has recorded the
+        // running build at startup; it then records it, which is also not a reload.)
+        await expect
+            .poll(() => page.evaluate(() => chrome.runtime.sendMessage({ fastlane: true, type: 'devCheckReload' })))
+            .toEqual({ ok: true, data: { action: 'none', reason: 'same-build' } });
 
         // the sync script writes a new stamp; the next check reloads the extension (no chrome://extensions click)
         writeFileSync(join(folder, STAMP), JSON.stringify({ buildId: 'build-2' }));

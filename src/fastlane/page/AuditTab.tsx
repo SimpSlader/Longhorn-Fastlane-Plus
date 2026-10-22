@@ -88,7 +88,7 @@ export default function AuditTab({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [over, setOver] = useState(false);
-    const [filter, setFilter] = useState<'review' | 'remaining' | 'all'>('review');
+    const [filter, setFilter] = useState<'review' | 'remaining' | 'all'>('remaining');
 
     const save = (a: ParsedAudit | null) => FastlaneAuditStore.set('audit', a as never);
 
@@ -113,9 +113,6 @@ export default function AuditTab({
     const reqs = audit?.requirements ?? [];
     const shown =
         filter === 'review' ? review : filter === 'remaining' ? reqs.filter(r => r.status !== 'completed') : reqs;
-    const core = reqs.filter(r => r.category === 'core');
-    const major = reqs.filter(r => r.category === 'major');
-    const count = (list: AuditRequirement[], s: RequirementStatus) => list.filter(r => r.status === s).length;
 
     return (
         <div className='stack'>
@@ -168,41 +165,28 @@ export default function AuditTab({
                             {w}
                         </div>
                     ))}
-                    <div className='metrics'>
+                    <div className='metrics simple-audit-metrics'>
                         <div className='metric'>
                             <b>
-                                {count(core, 'completed')}/{core.length}
+                                {reqs.filter(r => r.status === 'completed').length} / {reqs.length}
                             </b>
-                            <span>core requirements complete</span>
+                            <span>requirements complete</span>
                         </div>
                         <div className='metric'>
-                            <b>
-                                {count(major, 'completed')}/{major.length}
-                            </b>
-                            <span>major/degree requirements complete</span>
-                        </div>
-                        <div className='metric'>
-                            <b>{count(reqs, 'in-progress')}</b>
-                            <span>in progress</span>
+                            <b>{reqs.filter(r => r.status !== 'completed').length}</b>
+                            <span>remaining requirements</span>
                         </div>
                         <div className='metric'>
                             <b>{audit.creditHours.remaining ?? '—'}</b>
-                            <span>
-                                hours remaining
-                                {audit.creditHours.required ? ` of ${audit.creditHours.required}` : ''}
-                            </span>
-                        </div>
-                        <div className='metric'>
-                            <b>{audit.transfer.accepted.length}</b>
-                            <span>accepted transfer/exam credits</span>
-                        </div>
-                        <div className='metric'>
-                            <b style={{ color: audit.transfer.pending.length ? 'var(--warn)' : undefined }}>
-                                {audit.transfer.pending.length}
-                            </b>
-                            <span>pending transfer (not counted)</span>
+                            <span>degree hours remaining</span>
                         </div>
                     </div>
+                    {review.length > 0 && (
+                        <div className='notice warn small'>
+                            {review.length} imported requirements need confirmation. Check “Needs review” before relying
+                            on recommendations.
+                        </div>
+                    )}
                     {audit.transfer.pending.length > 0 && (
                         <div className='notice warn'>
                             Pending transfer credit is not treated as awarded:{' '}

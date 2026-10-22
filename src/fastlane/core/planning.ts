@@ -8,6 +8,8 @@ export type Grades = Map<number, GradeStat | null>;
 export interface PlannerFilters {
     semester: string;
     query: string;
+    /** Optional department prefix, for example UGS, ECO or M. */
+    department?: string;
     professor: string;
     modality: string;
     days: DayCode[];
@@ -25,6 +27,7 @@ export interface PlannerFilters {
 export const DEFAULT_FILTERS: PlannerFilters = {
     semester: '',
     query: '',
+    department: '',
     professor: '',
     modality: '',
     days: [...DAY_ORDER],
@@ -42,6 +45,14 @@ export const DEFAULT_FILTERS: PlannerFilters = {
 export function matchesFilters(s: SectionRecord, f: PlannerFilters, grades: Grades, active: SectionRecord[] = []) {
     if (f.semester && semesterKey(s.semester) !== f.semester) return false;
     if (!`${s.courseCode} ${s.title}`.toLowerCase().includes(f.query.toLowerCase())) return false;
+    if (
+        f.department &&
+        s.courseCode
+            .replace(/\s+\d.*$/, '')
+            .trim()
+            .toUpperCase() !== f.department.toUpperCase()
+    )
+        return false;
     if (!s.instructors.join(' ').toLowerCase().includes(f.professor.toLowerCase())) return false;
     if (f.modality && s.modality !== f.modality) return false;
     if (f.hours && s.creditHours !== f.hours) return false;
