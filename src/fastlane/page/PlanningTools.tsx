@@ -531,7 +531,7 @@ export function FinderTab({
                     have been loaded for {filters.semester || 'the selected semester'}.
                     The A–Z subject list is complete. Fastlane has not yet loaded this department's real sections for that semester.
                     <a
-                        href={utSubjectScheduleUrl(filters.semester, filters.department)}
+                        href={utSubjectScheduleUrl(filters.semester, filters.department ?? '')}
                         target='_blank'
                         rel='noopener noreferrer'
                     >
