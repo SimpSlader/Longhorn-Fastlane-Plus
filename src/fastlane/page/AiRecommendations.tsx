@@ -1,5 +1,5 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { scheduleTimes } from '../adapters/utrp';
 import { requestedDaysOff } from '../core/chatPreferences';
 import { outstandingTags } from '../audit/parseAudit';
