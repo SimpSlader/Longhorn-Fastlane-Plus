@@ -510,7 +510,7 @@ export function FinderTab({
                 value={filters}
                 onChange={f => {
                     if (f.semester !== filters.semester) setSelected([]);
-                    if (onSubjectChange && f.department !== filters.department) onSubjectChange(f.department);
+                    if (onSubjectChange && f.department !== filters.department) onSubjectChange(f.department ?? '');
                     setFilters(f);
                     setResult(null);
                 }}
