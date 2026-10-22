@@ -3,9 +3,8 @@
  * Active sections live in the UT Registration Plus schedule (calendar, credit hours, conflicts);
  * ranked backups live here and never count until activated.
  */
-import { useActiveSchedule } from '@views/hooks/useSchedules';
+import { switchSchedule, useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
-import CalendarDotsIcon from '~icons/ph/calendar-dots';
 import ExportIcon from '~icons/ph/export';
 import PlusCircleIcon from '~icons/ph/plus-circle';
 import { formatMeeting } from '../core/meetings';
@@ -307,6 +306,7 @@ export default function PlanTab({
     onNavigate: (tab: string, params?: Record<string, string>) => void;
 }) {
     const schedule = useActiveSchedule();
+    const schedules = useAllSchedules();
     const plans = FastlanePlanStore.useStore(s => s.plans ?? {}) as unknown as Record<string, PlanMeta>;
     const threshold = FastlaneSettingsStore.useStore(s => s.gradeThreshold);
     const [error, setError] = useState<string | null>(null);
@@ -367,11 +367,31 @@ export default function PlanTab({
                     >
                         <ExportIcon /> Export
                     </button>
-                    <a className='tool' href={chrome.runtime.getURL('calendar.html')} target='_blank' rel='noopener'>
-                        <CalendarDotsIcon /> Open full calendar
-                    </a>
                 </div>
             </div>
+            <section className='card stack'>
+                <div className='row between'>
+                    <div>
+                        <h2>Saved mock schedules</h2>
+                        <p className='small muted'>Select a schedule to see its calendar here. Your other drafts remain saved.</p>
+                    </div>
+                    <button type='button' className='btn sm' onClick={() => onNavigate('finder')}>Find classes</button>
+                </div>
+                <div className='saved-schedules' role='group' aria-label='Saved schedule scenarios'>
+                    {schedules.map(s => (
+                        <button
+                            type='button'
+                            key={s.id}
+                            aria-pressed={schedule?.id === s.id}
+                            onClick={() => void switchSchedule(s.id)}
+                        >
+                            <b>{s.name}</b>
+                            <span>{s.courses.length} classes</span>
+                        </button>
+                    ))}
+                </div>
+            </section>
+            <WeekGrid sections={active} />
             {conflicts.length === 0 && untimed.some(s => !s.scheduleComplete && s.modality !== 'async-online') && (
                 <div className='notice warn small'>
                     Some classes have incomplete meeting times, so conflicts with them cannot be ruled out.
@@ -391,42 +411,12 @@ export default function PlanTab({
                 </div>
             )}
             {active.length === 0 ? (
-                <div className='card'>
-                    <h2>No classes in {schedule?.name ?? 'this schedule'} yet</h2>
-                    <p className='muted'>
-                        Open{' '}
-                        <a
-                            href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
-                            target='_blank'
-                            rel='noopener'
-                        >
-                            UT’s course catalog
-                        </a>
-                        , choose a section, and use the extension’s Add to Schedule button. Courses in other saved
-                        schedules are separate; select that schedule in the left sidebar to see its calendar.
-                    </p>
-                    <div className='row' style={{ marginTop: 12 }}>
-                        <a
-                            className='btn primary'
-                            href={chrome.runtime.getURL('calendar.html')}
-                            target='_blank'
-                            rel='noopener'
-                        >
-                            Open calendar &amp; schedules
-                        </a>
-                        <a
-                            className='btn'
-                            href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
-                            target='_blank'
-                            rel='noopener'
-                        >
-                            Find classes
-                        </a>
-                    </div>
+                <div className='notice small'>
+                    No classes in this draft yet. Use Find classes to add sections, or select another saved
+                    schedule above. The weekly calendar stays visible even when a draft is empty.
                 </div>
             ) : (
                 <>
-                    <WeekGrid sections={active} />
                     <div className='section-title'>Planned classes &amp; backups</div>
                     <div className='stack'>
                         {plan?.slots.map((slot, i) => (
