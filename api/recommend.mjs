@@ -91,7 +91,11 @@ function sanitize(body) {
             ? body.preferences.timeOfDay
             : 'any',
         avoidDays: Array.isArray(body.preferences?.avoidDays)
-            ? [...new Set(body.preferences.avoidDays.filter(day => ['M', 'T', 'W', 'TH', 'F', 'S', 'SU'].includes(day)))].slice(0, 7)
+            ? [
+                  ...new Set(
+                      body.preferences.avoidDays.filter(day => ['M', 'T', 'W', 'TH', 'F', 'S', 'SU'].includes(day))
+                  ),
+              ].slice(0, 7)
             : [],
     };
     const planningRequest = safeString(body.planningRequest, 900);
