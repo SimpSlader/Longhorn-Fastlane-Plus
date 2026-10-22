@@ -44,7 +44,10 @@ export function classifyCategory(section: string, text: string, tags: string[]):
     ) {
         return 'hours';
     }
-    if (/major|minor|degree|program|certificate|requirements|b\.?a\.?|b\.?s\.?/i.test(section)) return 'major';
+    if (/\bminor\b/i.test(section)) return 'minor';
+    if (/general education|general requirements|university requirements|writing flag|global cultures/i.test(section))
+        return 'general';
+    if (/major|degree|program|certificate|requirements|b\.?a\.?|b\.?s\.?/i.test(section)) return 'major';
     return 'other';
 }
 
@@ -170,6 +173,21 @@ function deriveCreditHours(reqs: AuditRequirement[]): ParsedAudit['creditHours']
 }
 
 /** Parses an IDA results page (live DOM or a saved .html file loaded with DOMParser). */
+/** UT's progress widget contains both an expected-progress marker and an actual completion
+ * number. Read only the latter; never confuse the expected marker with degree completion. */
+export function readOfficialIdaProgress(doc: Document): ParsedAudit['officialProgress'] {
+    const widget = doc.querySelector('#progress_summary');
+    if (!widget) return undefined;
+    const displayed = clean(widget.querySelector('.progress_number')?.textContent);
+    const match = displayed.match(/^(100|[1-9]?\\d)\\s*%?$/);
+    if (match) return { percent: Number(match[1]), source: 'ida-html' };
+    const actualBar = [...widget.querySelectorAll('img[alt]')]
+        .map(img => img.getAttribute('alt') ?? '')
+        .find(text => /^(100|[1-9]?\\d)\\s*%\\s*complete$/i.test(text.trim()));
+    const barMatch = actualBar?.trim().match(/^(100|[1-9]?\\d)\\s*%\\s*complete$/i);
+    return barMatch ? { percent: Number(barMatch[1]), source: 'ida-html' } : undefined;
+}
+
 export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now()): ParsedAudit {
     const warnings: string[] = [];
     const courses = parseCourseRows(doc);
@@ -229,6 +247,7 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         parsedAt: now,
         program,
         requirements,
+        officialProgress: readOfficialIdaProgress(doc),
         courses,
         transfer,
         creditHours: deriveCreditHours(requirements),
@@ -365,8 +384,10 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
     if (requirements.length === 0)
         warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
     const transfer = splitTransfer(courses);
+    const explicit = lines.map(line => clean(line).match(/^(100|[1-9]?\\d)\\s*%\\s*complete$/i)).find(Boolean);
     return {
         source: 'pdf',
+        officialProgress: explicit ? { percent: Number(explicit[1]), source: 'ida-pdf' } : undefined,
         fileName,
         parsedAt: now,
         requirements,
