@@ -12,6 +12,7 @@ import type { ParsedAudit } from '../audit/types';
 import type { GradeStat } from '../core/grades';
 import type { PlanMeta } from '../core/plans';
 import { usedUniqueIds } from '../core/plans';
+import { sectionMatchesRequirement } from '../core/requirements';
 import type { QueueState } from '../core/queue';
 import type { Recommendation } from '../core/recommend';
 import { recommend } from '../core/recommend';
@@ -41,7 +42,7 @@ export async function loadCachedSections(semester: string | null): Promise<Secti
 
 export async function buildRecommendations(ctx: RecommendationContext): Promise<Recommendation[]> {
     const catalog = ctx.catalog ?? (await loadCachedSections(ctx.settings.targetSemester));
-    const relevant = catalog.filter(s => ctx.requirements.some(r => s.requirementTags.includes(r)));
+    const relevant = catalog.filter(s => ctx.requirements.some(r => sectionMatchesRequirement(s, r)));
 
     // grade lookups only for the relevant pool, bounded so this stays fast
     const grades = new Map<number, GradeStat | null>();
