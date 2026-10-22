@@ -129,13 +129,16 @@ describe('Fastlane chat-request sanitization', () => {
             }),
         });
         vi.stubGlobal('fetch', fakeFetch);
-        const { req, res } = request({
-            ...body,
-            planningRequest: 'No classes on Monday, Wednesday or Friday. Macro planned through ACC.',
-            chatHistory: [{ request: 'Prefer async', summary: 'Prior plan' }],
-            preferences: { ...body.preferences, timeOfDay: 'afternoon', avoidDays: ['M', 'W', 'F', 'INVALID'] },
-            studentName: 'Do not send identifying metadata',
-        }, '198.51.100.125');
+        const { req, res } = request(
+            {
+                ...body,
+                planningRequest: 'No classes on Monday, Wednesday or Friday. Macro planned through ACC.',
+                chatHistory: [{ request: 'Prefer async', summary: 'Prior plan' }],
+                preferences: { ...body.preferences, timeOfDay: 'afternoon', avoidDays: ['M', 'W', 'F', 'INVALID'] },
+                studentName: 'Do not send identifying metadata',
+            },
+            '198.51.100.125'
+        );
         await handler(req, res);
         expect(res.statusCode).toBe(200);
         const sent = JSON.parse(fakeFetch.mock.calls[0][1].body);
