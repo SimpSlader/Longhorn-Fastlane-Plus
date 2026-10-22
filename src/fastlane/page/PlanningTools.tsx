@@ -30,7 +30,7 @@ import {
     parseSharedSchedule,
     shareSchedule,
 } from '../services/planningService';
-import { availableSubjects } from '../data/subjects';
+import { availableSubjects, utSubjectScheduleUrl } from '../data/subjects';
 import { loadCachedSections } from '../services/recommendationService';
 import { FastlaneAuditStore } from '../storage/stores';
 import { useGradeStats } from './hooks';
@@ -529,7 +529,15 @@ export function FinderTab({
                 <div className='notice small' role='status'>
                     No {departments.find(d => d.code === filters.department)?.name ?? filters.department} sections
                     have been loaded for {filters.semester || 'the selected semester'}.
-                    The A–Z subject filter is complete, but the semester offerings database still needs to be populated.
+                    The A–Z subject list is complete. Fastlane has not yet loaded this department's real sections for that semester.
+                    <a
+                        href={utSubjectScheduleUrl(filters.semester, filters.department)}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                    >
+                        Open the selected department on UT's course schedule
+                    </a>
+                    {' '}to load available listings into the extension's local cache.
                     <a href='https://registrar.utexas.edu/schedules' target='_blank' rel='noopener noreferrer'>
                         View official UT course schedules
                     </a>.
