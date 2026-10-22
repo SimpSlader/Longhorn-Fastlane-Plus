@@ -11,6 +11,7 @@ import type { Recommendation } from '../core/recommend';
 import { CORE_COMPONENTS, coreTag, describeRequirement } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
 import { formatObservedTime, formatUnique, semesterKey } from '../core/sections';
+import { availableSubjects } from '../data/subjects';
 import { addOrSwap } from '../services/planningService';
 import { addBackupFor } from '../services/planService';
 import { buildRecommendations, loadCachedSections } from '../services/recommendationService';
@@ -21,9 +22,13 @@ import { useOnline } from './hooks';
 export default function RecommendTab({
     initialRequirement,
     embedded = false,
+    subject,
+    onSubjectChange,
 }: {
     initialRequirement?: string | null;
     embedded?: boolean;
+    subject?: string;
+    onSubjectChange?: (code: string) => void;
 }) {
     const settings = FastlaneSettingsStore.useStore(s => s);
     const audit = FastlaneAuditStore.useStore(s => s.audit);
@@ -37,7 +42,9 @@ export default function RecommendTab({
     const [results, setResults] = useState<Recommendation[] | null>(null);
     const [cache, setCache] = useState<SectionRecord[]>([]);
     const [message, setMessage] = useState<string | null>(null);
-    const [subject, setSubject] = useState('');
+    const [internalSubject, setInternalSubject] = useState('');
+    const selectedSubject = subject ?? internalSubject;
+    const setSubject = onSubjectChange ?? setInternalSubject;
     const [minGrade, setMinGrade] = useState(0);
     const [search, setSearch] = useState('');
     const [days, setDays] = useState<DayCode[]>([...DAY_ORDER]);
@@ -92,13 +99,13 @@ export default function RecommendTab({
         cache.length,
     ]);
 
-    const departments = [
-        ...new Set(cache.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim()).filter(Boolean)),
-    ].sort();
+    const departments = availableSubjects(
+        cache.map(s => s.courseCode.replace(/\s+\d.*$/, '').trim())
+    );
     const filteredResults =
         results?.filter(rec => {
             const s = rec.section;
-            if (subject && s.courseCode.replace(/\s+\d.*$/, '').trim() !== subject) return false;
+            if (selectedSubject && s.courseCode.replace(/\s+\d.*$/, '').trim() !== selectedSubject) return false;
             if (
                 search &&
                 !`${s.courseCode} ${s.title} ${s.instructors.join(' ')}`.toLowerCase().includes(search.toLowerCase())
@@ -202,13 +209,13 @@ export default function RecommendTab({
                         Subject
                         <select
                             aria-label='Recommended class subject'
-                            value={subject}
+                            value={selectedSubject}
                             onChange={e => setSubject(e.target.value)}
                         >
                             <option value=''>All subjects</option>
                             {departments.map(d => (
-                                <option key={d} value={d}>
-                                    {d}
+                                <option key={d.code} value={d.code}>
+                                    {d.name} ({d.code})
                                 </option>
                             ))}
                         </select>
@@ -350,9 +357,9 @@ export default function RecommendTab({
             {results === null && <div className='muted'>Ranking options…</div>}
             {results !== null && filteredResults.length === 0 && selected.length > 0 && (
                 <div className='card'>
-                    <h3>No classes match these preferences</h3>
+                    <h3>{selectedSubject ? `No verified ${departments.find(d => d.code === selectedSubject)?.name ?? selectedSubject} sections in this local catalog` : 'No classes match these preferences'}</h3>
                     <p className='muted small'>
-                        Broaden your filters or visit UT’s course schedule to cache more sections. Search for{' '}
+                        This planner currently holds only UT sections already imported or viewed. Choosing a subject does not load its course offerings. Browse that subject in the official UT schedule or import the complete semester dataset. Search for{' '}
                         {selected.map(describeRequirement).join(', ')} once (for example, search by core component) —
                         the listing is saved locally and recommendations work offline afterwards.
                     </p>
