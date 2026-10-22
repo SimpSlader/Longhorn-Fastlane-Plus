@@ -1,6 +1,7 @@
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { scheduleTimes } from '../adapters/utrp';
+import type { DayCode } from '../core/meetings';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { finalizeAiCandidates, shortlistAiCandidates } from '../core/aiCandidates';
@@ -28,6 +29,25 @@ function aiFacts(c: AiCandidate | undefined) {
     };
 }
 
+/** Only exclusion wording counts: mentioning Tuesday alone does not mean avoid Tuesday. */
+export function requestedDaysOff(request: string): DayCode[] {
+    const fragment = request.toLowerCase().match(
+        /(?:no\\s+classes?(?:\\s+on)?|avoid|no\\s+class\\s+on|not\\s+on|free\\s+on)\\s*([^.;!?]{1,110})/
+    )?.[1] ?? '';
+    const days: Array<[DayCode, RegExp]> = [
+        ['M', /\\bmonday\\b|\\bmondays\\b|\\bmon\\b/],
+        ['T', /\\btuesday\\b|\\btuesdays\\b|\\btue\\b/],
+        ['W', /\\bwednesday\\b|\\bwednesdays\\b|\\bwed\\b/],
+        ['TH', /\\bthursday\\b|\\bthursdays\\b|\\bthu\\b|\\bthurs\\b/],
+        ['F', /\\bfriday\\b|\\bfridays\\b|\\bfri\\b/],
+        ['S', /\\bsaturday\\b|\\bsaturdays\\b|\\bsat\\b/],
+        ['SU', /\\bsunday\\b|\\bsundays\\b|\\bsun\\b/],
+    ];
+    const excluded = days.filter(([, pattern]) => pattern.test(fragment)).map(([day]) => day);
+    if (/\\bmwf\\b|\\bm\\s*\\/\\s*w\\s*\\/\\s*f\\b/.test(fragment)) return [...new Set([...excluded, 'M', 'W', 'F'])];
+    return excluded;
+}
+
 const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
 interface AiSelection {
     id: number;
@@ -49,7 +69,13 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const inventory = useInventory();
     const catalog = inventory.sections;
     const loadingCatalog = !inventory.loaded;
-    const [expanded, setExpanded] = useState(false);
+    const expanded = true;
+    const [request, setRequest] = useState('');
+    const [lastRequest, setLastRequest] = useState('');
+    const [history, setHistory] = useState<Array<{ request: string; summary: string }>>([]);
+    const [timeOfDay, setTimeOfDay] = useState<'any' | 'morning' | 'afternoon' | 'evening'>('any');
+    const [minGrade, setMinGrade] = useState(0);
+    const avoidDays = useMemo(() => requestedDaysOff(request || lastRequest), [request, lastRequest]);
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
@@ -101,13 +127,28 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         () => finalizeAiCandidates(shortlist, selectionInput, s => grades.get(s.uniqueId)),
         [shortlist, selectionInput, grades]
     );
-    const candidates = useMemo(() => chosen.map(c => c.section), [chosen]);
+    const candidates = useMemo(() => chosen.map(c => c.section).filter(section => {
+        const grade = grades.get(section.uniqueId)?.result;
+        if (minGrade > 0 && (!grade || grade.percent < minGrade)) return false;
+        if (avoidDays.some(day => section.meetings.some(meeting => meeting.days.includes(day)))) return false;
+        if (timeOfDay !== 'any' && section.modality !== 'async-online') {
+            if (!section.meetings.length) return false; // unknown meeting times aren't safe matches
+            if (timeOfDay === 'morning' && section.meetings.some(m => m.start >= 12 * 60)) return false;
+            if (timeOfDay === 'afternoon' && section.meetings.some(m => m.start < 12 * 60 || m.end > 17 * 60)) return false;
+            if (timeOfDay === 'evening' && section.meetings.some(m => m.start < 17 * 60)) return false;
+        }
+        return true;
+    }), [chosen, grades, minGrade, timeOfDay, avoidDays]);
     const facts = useMemo(() => new Map(chosen.map(c => [c.section.uniqueId, c])), [chosen]);
     const candidateIndex = useMemo(() => new Map(candidates.map(c => [c.uniqueId, c])), [candidates]);
     const coveredSubjects = [...new Set(candidates.map(c => subjectOf(c.courseCode)))];
 
     const run = async () => {
         if (!consent || busy) return;
+        if (!request.trim()) {
+            setError('Tell Fastlane what kind of classes or schedule you want first.');
+            return;
+        }
         const code = savedCode || inviteCode.trim();
         if (!code) {
             setError('Enter the beta invite code once. Fastlane will remember it on this device.');
@@ -153,11 +194,15 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         gradePercent: grades.get(c.uniqueId)?.result.percent ?? null,
                         gradeSample: grades.get(c.uniqueId)?.result.graded ?? null,
                     })),
+                    planningRequest: request.trim(),
+                    chatHistory: history.slice(-4),
                     preferences: {
                         semester: actualTerm,
                         avoidFriday: settings.avoidFriday,
                         preferAsync: settings.preferAsync,
-                        minGrade: 0,
+                        minGrade,
+                        timeOfDay,
+                        avoidDays,
                     },
                 }),
             });
@@ -170,6 +215,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             setSummary(payload.summary ?? '');
             setRecommendations((payload.recommendations ?? []).filter(r => candidateIndex.has(r.id)));
+            setHistory(previous => [...previous, { request: request.trim(), summary: payload.summary ?? '' }].slice(-5));
+            setLastRequest(request.trim());
+            setRequest('');
         } catch (failure) {
             setError(failure instanceof Error ? failure.message : 'AI recommendations are unavailable.');
         } finally {
@@ -209,23 +257,50 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
 
     return (
         <section className='card planner-glass ai-advisor'>
-            <div className='row between'>
-                <div>
-                    <div className='eyebrow'>OPTIONAL · AI ASSISTED</div>
-                    <h2>Find better classes with AI</h2>
-                    <p className='small muted'>
-                        Use your remaining IDA requirements to compare real UT sections, including subjects beyond UGS.
-                    </p>
-                </div>
-                <button
-                    type='button'
-                    className='btn primary'
-                    onClick={() => setExpanded(v => !v)}
-                    aria-expanded={expanded}
-                >
-                    {expanded ? 'Hide AI' : 'Try AI recommendations'}
-                </button>
+            <div>
+                <span className='eyebrow'>ASK FASTLANE</span>
+                <h2>What classes should I take?</h2>
+                <p className='small muted'>Describe your ideal week, degree needs, online classes, or planned ACC courses.
+                    Fastlane uses listed UT sections and your imported IDA, not invented classes.</p>
             </div>
+            <div className='chat-history' role='log' aria-label='Planning conversation'>
+                {history.map((turn, i) => (
+                    <div key={i} className='chat-turn'>
+                        <p className='chat-user'>{turn.request}</p>
+                        <p className='chat-answer'>{turn.summary || 'Recommendations are shown below.'}</p>
+                    </div>
+                ))}
+            </div>
+            <label className='field'>
+                Tell Fastlane what you need
+                <textarea
+                    rows={3}
+                    value={request}
+                    onChange={e => setRequest(e.target.value)}
+                    placeholder='Find me 12–13 credits that count for my degree, no Monday/Wednesday/Friday classes, and 1–2 fully asynchronous online classes. I plan to take Macro through ACC.'
+                    aria-label='Ask Fastlane for class recommendations'
+                />
+            </label>
+            <div className='ai-quick-filters'>
+                <label>Preferred class time
+                    <select value={timeOfDay} onChange={e => setTimeOfDay(e.target.value as typeof timeOfDay)}>
+                        <option value='any'>Any time</option>
+                        <option value='morning'>Morning</option>
+                        <option value='afternoon'>Afternoon</option>
+                        <option value='evening'>Evening</option>
+                    </select>
+                </label>
+                <label>Historical A− or better
+                    <select value={minGrade} onChange={e => setMinGrade(Number(e.target.value))}>
+                        <option value={0}>Any / unknown</option>
+                        <option value={60}>60% or higher</option>
+                        <option value={70}>70% or higher</option>
+                        <option value={80}>80% or higher</option>
+                        <option value={90}>90% or higher</option>
+                    </select>
+                </label>
+            </div>
+            {avoidDays.length > 0 && <p className='small muted'>Days excluded from this request: {avoidDays.join(', ')}.</p>}
             {expanded && (
                 <div className='ai-advisor-body'>
                     <p className='small muted'>
@@ -288,24 +363,23 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
                             I agree to send my unfinished requirement descriptions, completed course codes, preferences
-                            and selected public course details to Fastlane's Vercel server and Groq. No name, EID or
+                            your typed planning request and selected public course details to Fastlane's Vercel server and Groq. No name, EID or
                             full IDA file is sent.
                         </span>
                     </label>
                     <button
                         type='button'
                         className='btn primary'
-                        disabled={!consent || !audit || !candidates.length || busy}
+                        disabled={!consent || !audit || !candidates.length || busy || !request.trim()}
                         onClick={() => void run()}
                     >
-                        {busy ? 'Analyzing classes…' : 'Get recommendations'}
+                        {busy ? 'Checking real UT sections…' : 'Ask Fastlane'}
                     </button>
                     {error && (
                         <p className='notice warn' role='alert'>
                             {error}
                         </p>
                     )}
-                    {summary && <p className='small'>{summary}</p>}
                     {recommendations.map(rec => {
                         const c = candidateIndex.get(rec.id);
                         if (!c) return null;
