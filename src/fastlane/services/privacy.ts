@@ -13,6 +13,7 @@ import type { FastlaneSettings } from '../storage/stores';
 import {
     DEFAULT_SETTINGS,
     FASTLANE_LOCAL_PREFIXES,
+    FastlaneAiAccessStore,
     FastlaneAuditStore,
     FastlanePlanStore,
     FastlaneQueueStore,
@@ -115,6 +116,7 @@ export async function deleteFastlaneData(): Promise<void> {
     // overwrite with empty defaults (rather than removing keys) so open pages never see a missing value
     await FastlanePlanStore.set('plans', {} as never);
     await FastlaneAuditStore.set('audit', null as never);
+    await FastlaneAiAccessStore.set('accessCode', '');
     await FastlaneQueueStore.set({ queue: emptyQueue(), lastFilled: null } as never);
     await FastlaneReminderStore.set('reminders', defaultReminderConfig() as never);
     await FastlaneSettingsStore.set(DEFAULT_SETTINGS as never);
