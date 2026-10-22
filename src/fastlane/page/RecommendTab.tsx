@@ -11,7 +11,7 @@ import type { Recommendation } from '../core/recommend';
 import { CORE_COMPONENTS, coreTag, describeRequirement } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
 import { formatObservedTime, formatUnique, semesterKey } from '../core/sections';
-import { availableSubjects } from '../data/subjects';
+import { availableSubjects, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap } from '../services/planningService';
 import { addBackupFor } from '../services/planService';
 import { buildRecommendations, loadCachedSections } from '../services/recommendationService';
@@ -362,6 +362,15 @@ export default function RecommendTab({
                         This planner currently holds only UT sections already imported or viewed. Choosing a subject does not load its course offerings. Browse that subject in the official UT schedule or import the complete semester dataset. Search for{' '}
                         {selected.map(describeRequirement).join(', ')} once (for example, search by core component) —
                         the listing is saved locally and recommendations work offline afterwards.
+                        {selectedSubject && (
+                            <>
+                                {' '}
+                                <a href={utSubjectScheduleUrl(settings.targetSemester ?? '', selectedSubject)}
+                                    target='_blank' rel='noopener noreferrer'>
+                                    Open this subject's official UT listings
+                                </a>
+                            </>
+                        )}
                     </p>
                 </div>
             )}
