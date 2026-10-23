@@ -158,7 +158,13 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
 
         // A- or better percentage with professor attribution next to the graph button
         const music = rowFor(page, '23095');
-        await expect(music.locator('[data-fastlane="grade"]')).toContainText(/\d+\.\d%\s*A-\+\s*·\s*Prof/);
+        // professor-specific data names the professor and the sample size; course-wide data says "All profs"
+        await expect(music.locator('[data-fastlane="grade"]')).toContainText(
+            /\d+\.\d%\s*A-\+\s*·\s*Middleton\s*·\s*n=\d/
+        );
+        await expect(rowFor(page, '55675').locator('[data-fastlane="grade"]')).toContainText(
+            /All profs\s*·\s*n=[\d,]+/
+        );
         const before = await music.locator('[data-fastlane="grade"]').innerText();
         // professor rating sits right after the A distribution and links to the professor's RMP page
         const rmp = music.locator('[data-fastlane="rmp"]');

@@ -17,7 +17,7 @@ import {
     onExtensionContextInvalidated,
 } from 'src/fastlane/services/extensionContext';
 import { pingDevAutoReload } from 'src/fastlane/services/runtime';
-import { FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
+import { FastlaneAuditStore, FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
 const support = getSiteSupport(window.location.href);
@@ -59,7 +59,14 @@ function AddAllButtonBootstrap() {
 
 if (support === SiteSupport.COURSE_CATALOG_DETAILS || support === SiteSupport.COURSE_CATALOG_LIST) {
     renderComponent(() => {
-        suspendUntilStoresReady([UserScheduleStore, OptionsStore, FastlaneSettingsStore, FastlanePlanStore]);
+        // the listing toolbar reads the imported IDA; every store a component reads must be loaded first
+        suspendUntilStoresReady([
+            UserScheduleStore,
+            OptionsStore,
+            FastlaneSettingsStore,
+            FastlanePlanStore,
+            FastlaneAuditStore,
+        ]);
 
         return <CourseCatalogMain support={support} />;
     });

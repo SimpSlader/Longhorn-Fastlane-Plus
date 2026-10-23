@@ -18,7 +18,7 @@ import { analyzeRow, sectionFromCourse } from 'src/fastlane/adapters/utrp';
 import { addBackup, addSlot, emptyPlan } from 'src/fastlane/core/plans';
 import { mountRegistrationAssistant } from 'src/fastlane/injected/registration/mount';
 import { defaultRequirement } from 'src/fastlane/services/planService';
-import { FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
+import { FastlaneAuditStore, FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
 import { ADD_DROP_FORM_HTML, courseScheduleTableHtml, DEMO_SEMESTER_CODE } from './fixture';
@@ -109,7 +109,14 @@ $('simClear').addEventListener('click', () => {
 
 // ---- mount the real components ----
 function ListingBootstrap() {
-    suspendUntilStoresReady([UserScheduleStore, OptionsStore, FastlaneSettingsStore, FastlanePlanStore]);
+    // the listing toolbar reads the imported IDA; every store a component reads must be loaded first
+    suspendUntilStoresReady([
+        UserScheduleStore,
+        OptionsStore,
+        FastlaneSettingsStore,
+        FastlanePlanStore,
+        FastlaneAuditStore,
+    ]);
     return <CourseCatalogMain support={SiteSupport.COURSE_CATALOG_LIST} pageUrl={DEMO_URL} disableAutoLoad />;
 }
 

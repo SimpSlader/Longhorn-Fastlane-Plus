@@ -32,6 +32,11 @@ interface Props {
     rowAnalysis: Parameters<typeof sectionFromCourse>[1];
 }
 
+const profName = (name?: string) => {
+    const last = name?.split(',')[0]?.trim() ?? '';
+    return last ? last.charAt(0) + last.slice(1).toLowerCase() : 'Prof';
+};
+
 function GradeChip({ course }: { course: Course }) {
     const threshold = FastlaneSettingsStore.useStore(s => s.gradeThreshold);
     const [raw, setRaw] = useState<Awaited<ReturnType<typeof lookupGrades>> | undefined>(undefined);
@@ -98,8 +103,14 @@ function GradeChip({ course }: { course: Course }) {
         >
             <strong className='text-[12px]'>{formatPercent(stat.result.percent)}</strong>
             <span>{thresholdLabel(stat.result.threshold)}</span>
-            <span className='opacity-70'>· {instructor ? 'Prof' : 'All profs'}</span>
-            {stat.smallSample && <span className='opacity-70'>· n={stat.result.graded}</span>}
+            {/* course-wide numbers are never labeled with a professor's name */}
+            <span className='opacity-70'>
+                · {instructor ? profName(course.instructors[0]?.lastName ?? stat.instructor) : 'All profs'}
+            </span>
+            <span className='opacity-70'>
+                · n={stat.result.graded.toLocaleString()}
+                {stat.smallSample ? ' (small)' : ''}
+            </span>
         </span>
     );
 }
@@ -122,13 +133,17 @@ function RatingChip({ course }: { course: Course }) {
     if (!name?.last || rating === undefined) return null;
     if (!rating || rating.numRatings === 0)
         return (
-            <span
-                className='inline-flex items-center rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 whitespace-nowrap'
-                title='No Rate My Professors match for this professor at UT Austin.'
+            <a
+                href={`https://www.ratemyprofessors.com/search/professors/1255?q=${encodeURIComponent(`${prof?.firstName ?? ''} ${prof?.lastName ?? prof?.fullName ?? ''}`.trim())}`}
+                target='_blank'
+                rel='noreferrer'
+                onClick={e => e.stopPropagation()}
+                className='inline-flex items-center rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 whitespace-nowrap no-underline'
+                title='No single Rate My Professors match at UT Austin. Click to search RMP yourself.'
                 data-fastlane='rmp'
             >
-                RMP –
-            </span>
+                RMP search ↗
+            </a>
         );
     const good = rating.avgRating >= 4 ? '#15803d' : rating.avgRating >= 3 ? '#a16207' : '#b91c1c';
     const again =

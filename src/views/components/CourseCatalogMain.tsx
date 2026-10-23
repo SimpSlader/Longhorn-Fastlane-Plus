@@ -13,6 +13,7 @@ import type { SiteSupportType } from '@views/lib/getSiteSupport';
 import { populateSearchInputs } from '@views/lib/populateSearchInputs';
 import React, { useEffect, useRef, useState } from 'react';
 import { CatalogHeader, useCacheVisibleSections } from 'src/fastlane/injected/CatalogHeader';
+import ListingToolbar from 'src/fastlane/injected/ListingToolbar';
 
 import DialogProvider from './common/DialogProvider/DialogProvider';
 
@@ -82,6 +83,7 @@ export default function CourseCatalogMain({ support, pageUrl, disableAutoLoad }:
         <ExtensionRoot>
             <DialogProvider>
                 <NewSearchLink />
+                <ListingToolbar rows={rows} activeSchedule={activeSchedule} />
                 {/* Fastlane: upstream's Longhorn Developers recruitment banner is not shown in this independent fork */}
                 <TableHead>
                     <CatalogHeader />
