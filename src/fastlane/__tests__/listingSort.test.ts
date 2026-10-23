@@ -72,4 +72,13 @@ describe('UT listing sort and filter', () => {
         const plan = planListing(rows, facts, c({ idaFirst: true }));
         expect(plan.order.slice(0, 2)).toEqual(['H-HIS', 'his-3']);
     });
+
+    it('ranks small samples lower only when the student turns that on', () => {
+        const small = new Map(facts);
+        small.set(2, { ...facts.get(2)!, smallSample: true }); // 95% from a handful of grades
+        const off = planListing(rows, small, c({ sort: 'grade' }));
+        expect(off.order.indexOf('mus-2')).toBeLessThan(off.order.indexOf('mus-1'));
+        const on = planListing(rows, small, c({ sort: 'grade', smallSamplesLast: true }));
+        expect(on.order.indexOf('mus-1')).toBeLessThan(on.order.indexOf('mus-2'));
+    });
 });

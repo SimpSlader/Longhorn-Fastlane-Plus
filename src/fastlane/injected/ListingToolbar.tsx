@@ -72,7 +72,7 @@ export default function ListingToolbar({
     const [version, setVersion] = useState(0);
     const [loading, setLoading] = useState('');
     // grades and ratings loaded on demand (undefined = not loaded yet)
-    const loaded = useRef(new Map<number, Pick<RowFacts, 'grade' | 'rating'>>());
+    const loaded = useRef(new Map<number, Pick<RowFacts, 'grade' | 'smallSample' | 'rating'>>());
     const touched = useRef(false);
     const audit = FastlaneAuditStore.useStore(s => s.audit) as ParsedAudit | null;
     const ratingsOn = FastlaneSettingsStore.useStore(s => s.showProfessorRatings);
@@ -159,6 +159,7 @@ export default function ListingToolbar({
                         if (needGrades && f.grade === undefined) {
                             const stat = gradeStatFrom(course, await lookupGrades(course).catch(() => null), 'A-');
                             f.grade = stat ? stat.result.percent : null;
+                            f.smallSample = stat?.smallSample ?? false;
                         }
                         if (needRatings && f.rating === undefined) {
                             const p = course.instructors[0];
@@ -311,6 +312,19 @@ export default function ListingToolbar({
                 />
                 My IDA requirements first
             </label>
+            {controls.sort === 'grade' && (
+                <label
+                    style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}
+                    title='Off by default. When on, sections whose A/A− rate comes from fewer than 30 historical grades are listed after well-sampled ones.'
+                >
+                    <input
+                        type='checkbox'
+                        checked={controls.smallSamplesLast}
+                        onChange={e => set({ smallSamplesLast: e.target.checked })}
+                    />
+                    Small samples last
+                </label>
+            )}
             <button
                 type='button'
                 style={{ ...chip(false), fontWeight: 600 }}

@@ -15,6 +15,8 @@ export interface ListingControls {
     modes: { async: boolean; live: boolean; inPerson: boolean };
     hideConflicts: boolean;
     idaFirst: boolean;
+    /** optional: in the A/A− sort, sections with fewer than 30 historical grades go after well-sampled ones */
+    smallSamplesLast: boolean;
 }
 
 export const DEFAULT_LISTING_CONTROLS: ListingControls = {
@@ -23,6 +25,7 @@ export const DEFAULT_LISTING_CONTROLS: ListingControls = {
     modes: { async: true, live: true, inPerson: true },
     hideConflicts: false,
     idaFirst: false,
+    smallSamplesLast: false,
 };
 
 export function isDefaultListing(c: ListingControls): boolean {
@@ -43,6 +46,8 @@ export interface RowFacts {
     idaMatch: boolean;
     /** % A− or better; undefined = not loaded yet, null = no data */
     grade?: number | null;
+    /** fewer than 30 letter grades behind `grade` */
+    smallSample?: boolean;
     rating?: { value: number; count: number } | null;
 }
 
@@ -69,7 +74,8 @@ export function passesFilters(f: RowFacts | undefined, c: ListingControls): bool
 /** Sort key: lower sorts first. Missing values sort after every real value. */
 function key(f: RowFacts | undefined, c: ListingControls): number[] {
     const ida = c.idaFirst ? (f?.idaMatch ? 0 : 1) : 0;
-    if (c.sort === 'grade') return [ida, f?.grade == null ? 1 : 0, -(f?.grade ?? 0)];
+    if (c.sort === 'grade')
+        return [ida, f?.grade == null ? 1 : 0, c.smallSamplesLast && f?.smallSample ? 1 : 0, -(f?.grade ?? 0)];
     if (c.sort === 'rating')
         return [ida, f?.rating == null ? 1 : 0, -(f?.rating?.value ?? 0), -(f?.rating?.count ?? 0)];
     return [ida];
