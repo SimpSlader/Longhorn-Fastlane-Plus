@@ -21,6 +21,8 @@ import { defaultReminderConfig } from '../core/reminders';
 export interface FastlaneSettings {
     gradeThreshold: GradeThreshold;
     showInlineGrades: boolean;
+    /** Rate My Professors rating next to the grade chip (sends professor names to RMP) */
+    showProfessorRatings: boolean;
     highlightAsync: boolean;
     showConflictDetails: boolean;
     showAssistant: boolean;
@@ -35,11 +37,14 @@ export interface FastlaneSettings {
     /** "Spring 2027" etc. null = any */
     targetSemester: string | null;
     themePreference: 'system' | 'light' | 'dark';
+    /** set once the student picks a theme; until then the Light default applies */
+    themeChosen: boolean;
 }
 
 export const DEFAULT_SETTINGS: FastlaneSettings = {
     gradeThreshold: DEFAULT_GRADE_THRESHOLD,
     showInlineGrades: true,
+    showProfessorRatings: true,
     highlightAsync: true,
     showConflictDetails: true,
     showAssistant: true,
@@ -50,7 +55,8 @@ export const DEFAULT_SETTINGS: FastlaneSettings = {
     avoidFriday: false,
     dataUpdates: true,
     targetSemester: null,
-    themePreference: 'system',
+    themePreference: 'light',
+    themeChosen: false,
 };
 
 export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('FastlaneSettings', DEFAULT_SETTINGS);

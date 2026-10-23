@@ -28,6 +28,8 @@ const HOST_PERMISSIONS: string[] = [
 
 // Network access is used only by Fastlane's opt-in AI panel; content scripts still run on UT pages only.
 const AI_API_HOST_PERMISSION = 'https://longhorn-fastlane-plus.vercel.app/*';
+// Public professor ratings shown next to grades; only professor names are sent, from the background worker.
+const RMP_HOST_PERMISSION = 'https://www.ratemyprofessors.com/*';
 
 const manifest = defineManifest(async env => {
     const isDev = env.mode === 'development';
@@ -52,8 +54,8 @@ const manifest = defineManifest(async env => {
             ...(isDev ? (['declarativeNetRequest', 'declarativeNetRequestWithHostAccess'] as const) : []),
         ],
         host_permissions: isDev
-            ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, '<all_urls>']
-            : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION],
+            ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION, '<all_urls>']
+            : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION],
         action: {
             default_popup: 'src/pages/popup/index.html',
             default_icon: `icons/icon_${mode}_32.png`,

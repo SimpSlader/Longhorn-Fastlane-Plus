@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { importAuditFile } from '../audit/importFile';
-import { confirmRequirement, correctRequirement, needsReview, outstandingTags } from '../audit/parseAudit';
+import { confirmRequirement, correctRequirement, needsReview } from '../audit/parseAudit';
+import type { DegreeTotals, ProgressSummary } from '../audit/progress';
+import { CARD_GROUPS, degreeTotals, hasMinor, summarizeRequirements } from '../audit/progress';
 import type { AuditRequirement, ParsedAudit, RequirementStatus } from '../audit/types';
-import { describeRequirement } from '../core/requirements';
 import { FastlaneAuditStore } from '../storage/stores';
 import AiAuditReview from './AiAuditReview';
 import { PageHead } from './common';
@@ -25,61 +26,52 @@ function progressText(r: AuditRequirement): string {
 
 function RequirementRow({ r, onChange }: { r: AuditRequirement; onChange: (a: ParsedAudit) => void }) {
     const audit = FastlaneAuditStore.useStore(s => s.audit) as ParsedAudit;
+    // only uncertain rows show correction controls; everything else stays a clean read-only line
     const flagged = r.confidence !== 'high' && !r.reviewed;
     return (
-        <tr style={flagged ? { background: 'var(--warn-soft)' } : undefined}>
+        <tr className={flagged ? 'req-row flagged' : 'req-row'}>
             <td>
                 <span className='req-status' style={{ background: STATUS_COLOR[r.status] }} />
             </td>
             <td>
                 <div>{r.text}</div>
                 <div className='small muted'>
-                    {r.section} · {progressText(r)}
+                    {progressText(r)}
                     {r.courses.length ? ` · ${r.courses.join(', ')}` : ''}
                 </div>
-                {r.tags.length > 0 && (
-                    <div className='row' style={{ marginTop: 3 }}>
-                        {r.tags.map(t => (
-                            <span key={t} className='chip'>
-                                {describeRequirement(t)}
-                            </span>
-                        ))}
-                    </div>
-                )}
                 {flagged && (
-                    <div className='small' style={{ color: 'var(--warn)' }}>
-                        Check this: {r.issues.join('; ')}
+                    <div className='row small' style={{ marginTop: 6 }}>
+                        <span style={{ color: 'var(--warn)' }}>
+                            Check: {r.issues.join('; ') || 'unclear in the IDA'}
+                        </span>
+                        <select
+                            aria-label='Requirement status'
+                            value={r.status}
+                            onChange={e =>
+                                onChange(
+                                    correctRequirement(audit, r.id, { status: e.target.value as RequirementStatus })
+                                )
+                            }
+                        >
+                            {(['completed', 'in-progress', 'not-started'] as const).map(s => (
+                                <option key={s} value={s}>
+                                    {STATUS_LABEL[s]}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type='button'
+                            className='btn sm'
+                            onClick={() => onChange(confirmRequirement(audit, r.id))}
+                        >
+                            Looks right
+                        </button>
                     </div>
-                )}
-            </td>
-            <td>
-                <select
-                    aria-label='Requirement status'
-                    value={r.status}
-                    onChange={e =>
-                        onChange(correctRequirement(audit, r.id, { status: e.target.value as RequirementStatus }))
-                    }
-                >
-                    {(['completed', 'in-progress', 'not-started'] as const).map(s => (
-                        <option key={s} value={s}>
-                            {STATUS_LABEL[s]}
-                        </option>
-                    ))}
-                </select>
-            </td>
-            <td>
-                {flagged ? (
-                    <button type='button' className='btn sm' onClick={() => onChange(confirmRequirement(audit, r.id))}>
-                        Looks right
-                    </button>
-                ) : (
-                    <span className='small muted'>{r.reviewed ? 'Reviewed' : 'Read from audit'}</span>
                 )}
             </td>
         </tr>
     );
 }
-
 export default function AuditTab({
     onNavigate,
 }: {
@@ -89,7 +81,6 @@ export default function AuditTab({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [over, setOver] = useState(false);
-    const [filter, setFilter] = useState<'review' | 'remaining' | 'all'>('remaining');
 
     const save = (a: ParsedAudit | null) => FastlaneAuditStore.set('audit', a as never);
 
@@ -102,7 +93,6 @@ export default function AuditTab({
             if (!parsed.requirements.length && !parsed.courses.length)
                 throw new Error(parsed.warnings.join(' ') || 'Nothing could be read from that file.');
             await save(parsed);
-            setFilter(needsReview(parsed).length ? 'review' : 'remaining');
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -112,152 +102,127 @@ export default function AuditTab({
 
     const review = audit ? needsReview(audit) : [];
     const reqs = audit?.requirements ?? [];
-    const shown =
-        filter === 'review' ? review : filter === 'remaining' ? reqs.filter(r => r.status !== 'completed') : reqs;
-
-    return (
-        <div className='stack'>
-            <PageHead
-                title='Degree audit'
-                subtitle='See your remaining degree requirements. Your IDA is processed locally by default; optional AI review requires consent.'
-                actions={
-                    audit && (
-                        <button type='button' className='btn danger' onClick={() => void save(null)}>
-                            Remove imported audit
-                        </button>
-                    )
-                }
+    const totals = audit ? degreeTotals(audit) : null;
+    const dropzone = (compact: boolean) => (
+        <label
+            className={`dropzone${over ? ' over' : ''}${compact ? ' compact' : ''}`}
+            onDragOver={e => {
+                e.preventDefault();
+                setOver(true);
+            }}
+            onDragLeave={() => setOver(false)}
+            onDrop={e => {
+                e.preventDefault();
+                setOver(false);
+                void onFile(e.dataTransfer.files[0]);
+            }}
+        >
+            <input
+                type='file'
+                accept='.pdf,.html,.htm,application/pdf,text/html'
+                className='sr-only'
+                onChange={e => void onFile(e.target.files?.[0])}
             />
-            <label
-                className={`dropzone ${over ? 'over' : ''}`}
-                onDragOver={e => {
-                    e.preventDefault();
-                    setOver(true);
-                }}
-                onDragLeave={() => setOver(false)}
-                onDrop={e => {
-                    e.preventDefault();
-                    setOver(false);
-                    void onFile(e.dataTransfer.files[0]);
-                }}
-            >
-                <input
-                    type='file'
-                    accept='.pdf,.html,.htm,application/pdf,text/html'
-                    className='sr-only'
-                    onChange={e => void onFile(e.target.files?.[0])}
-                />
-                <b>{busy ? 'Reading audit…' : 'Drop your audit here or click to choose a file'}</b>
+            <b>
+                {busy
+                    ? 'Reading audit…'
+                    : compact
+                      ? 'Update from a newer IDA file'
+                      : 'Drop your audit here or click to choose a file'}
+            </b>
+            {!compact && (
                 <div className='small muted'>
                     While viewing your audit in Chrome, press <b>Command+S</b> (Mac) or <b>Ctrl+S</b> (Windows) and
                     select <i>Webpage, HTML Only</i>. You can also use <i>Print → Save as PDF</i>. On a live IDA results
                     page, click “Add IDA” to import it directly into this browser.
                 </div>
-            </label>
+            )}
+        </label>
+    );
+    return (
+        <div className='stack degree-page'>
+            <PageHead
+                title='Degree progress'
+                subtitle={
+                    audit
+                        ? audit.program && !/navigation|menu/i.test(audit.program)
+                            ? audit.program
+                            : 'From your imported IDA'
+                        : 'Import your IDA to see what is left.'
+                }
+                actions={
+                    audit && (
+                        <button type='button' className='btn sm ghost' onClick={() => void save(null)}>
+                            Remove audit
+                        </button>
+                    )
+                }
+            />
+            {!audit && dropzone(false)}
             {error && (
                 <div className='notice bad' role='alert'>
                     {error}
                 </div>
             )}
-            {audit && (
+            {audit && totals && (
                 <>
-                    {audit.warnings.map(w => (
-                        <div key={w} className='notice warn small'>
-                            {w}
-                        </div>
-                    ))}
-                    <AiAuditReview audit={audit} onChange={save} />
-                    <div className='metrics simple-audit-metrics'>
-                        <div className='metric'>
-                            <b>
-                                {reqs.filter(r => r.status === 'completed').length} / {reqs.length}
-                            </b>
-                            <span>requirements complete</span>
-                        </div>
-                        <div className='metric'>
-                            <b>{reqs.filter(r => r.status !== 'completed').length}</b>
-                            <span>remaining requirements</span>
-                        </div>
-                        <div className='metric'>
-                            <b>{audit.creditHours.remaining ?? '—'}</b>
-                            <span>degree hours remaining</span>
-                        </div>
-                    </div>
-                    {review.length > 0 && (
-                        <div className='notice warn small'>
-                            {review.length} imported requirements need confirmation. Check “Needs review” before relying
-                            on recommendations.
-                        </div>
-                    )}
-                    {audit.transfer.pending.length > 0 && (
-                        <div className='notice warn'>
-                            Pending transfer credit is not treated as awarded:{' '}
-                            {audit.transfer.pending.map(c => `${c.code} (${c.hours} hrs)`).join(', ')}. Requirements
-                            that rely on it stay in progress until UT posts the credit.
-                        </div>
-                    )}
-                    <div className='card stack'>
-                        <div className='row between'>
-                            <fieldset className='tabs' aria-label='Filter requirements'>
-                                <button
-                                    type='button'
-                                    aria-pressed={filter === 'review'}
-                                    onClick={() => setFilter('review')}
-                                >
-                                    Needs review ({review.length})
-                                </button>
-                                <button
-                                    type='button'
-                                    aria-pressed={filter === 'remaining'}
-                                    onClick={() => setFilter('remaining')}
-                                >
-                                    Remaining ({reqs.filter(r => r.status !== 'completed').length})
-                                </button>
-                                <button type='button' aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-                                    All ({reqs.length})
-                                </button>
-                            </fieldset>
-                            <button
-                                type='button'
-                                className='btn primary'
-                                disabled={!outstandingTags(audit).length}
-                                onClick={() => onNavigate('recommend', { req: outstandingTags(audit)[0] ?? '' })}
-                            >
-                                Recommend courses for remaining requirements
-                            </button>
-                        </div>
-                        {shown.length === 0 ? (
-                            <div className='muted small'>
-                                {filter === 'review' ? 'Everything has been reviewed.' : 'Nothing here.'}
+                    <section className='glass-card overall metric' aria-label='Official IDA degree completion'>
+                        <span className='eyebrow'>Official IDA degree completion</span>
+                        <div className='big-figure'>{totals.official !== null ? `${totals.official}%` : '—'}</div>
+                        {totals.official !== null ? (
+                            <div className='thin-bar' aria-hidden='true'>
+                                <span style={{ width: `${totals.official}%` }} />
                             </div>
                         ) : (
-                            <table className='list'>
-                                <thead>
-                                    <tr>
-                                        <th />
-                                        <th>Requirement</th>
-                                        <th>Status</th>
-                                        <th>Review</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {shown.map(r => (
-                                        <RequirementRow key={r.id} r={r} onChange={a => void save(a)} />
-                                    ))}
-                                </tbody>
-                            </table>
+                            <p className='small muted'>
+                                Not shown in the imported file. Open your IDA on UT to see it.
+                            </p>
                         )}
-                    </div>
-                    {audit.restrictions.length > 0 && (
-                        <div className='card'>
-                            <h3>Prerequisites and restrictions mentioned in your audit</h3>
-                            <ul className='small'>
-                                {audit.restrictions.slice(0, 20).map(r => (
-                                    <li key={r}>{r}</li>
-                                ))}
-                            </ul>
-                        </div>
+                        {totals.totalHours && (
+                            <p className='small muted'>
+                                {totals.totalHours.done} of {totals.totalHours.total} degree hours ·{' '}
+                                {totals.totalHours.remaining} remaining
+                            </p>
+                        )}
+                    </section>
+                    {(review.length > 0 || audit.transfer.pending.length > 0) && (
+                        <p className='small muted quiet-note'>
+                            {review.length > 0 && `${review.length} imported items need a quick check (marked below). `}
+                            {audit.transfer.pending.length > 0 &&
+                                `Pending transfer/exam credit is not counted yet: ${audit.transfer.pending.map(c => c.code).join(', ')}.`}
+                        </p>
                     )}
+                    <div className='progress-cards'>
+                        {CARD_GROUPS.filter(g => g.key !== 'minor' || hasMinor(reqs)).map(g => {
+                            const group = reqs.filter(r => g.categories.includes(r.category));
+                            if (!group.length) return null;
+                            return (
+                                <ProgressCard
+                                    key={g.key}
+                                    title={g.title}
+                                    summary={summarizeRequirements(group)}
+                                    onChange={a => void save(a)}
+                                />
+                            );
+                        })}
+                        <TotalsCard
+                            totals={totals}
+                            rules={reqs.filter(r => ['hours', 'gpa', 'other'].includes(r.category))}
+                            onChange={a => void save(a)}
+                        />
+                    </div>
+                    <div className='row'>
+                        <button type='button' className='btn primary' onClick={() => onNavigate('finder')}>
+                            Find classes for what is left
+                        </button>
+                    </div>
+                    <details className='glass-card quiet'>
+                        <summary>Check unclear items with AI (optional)</summary>
+                        <div className='audit-detail'>
+                            <AiAuditReview audit={audit} onChange={save} />
+                        </div>
+                    </details>
+                    {dropzone(true)}
                     <div className='small muted'>
                         Imported {new Date(audit.parsedAt).toLocaleString()} from {audit.fileName ?? 'file'} (
                         {audit.source.toUpperCase()}). {audit.courses.length} courses read.
@@ -265,5 +230,163 @@ export default function AuditTab({
                 </>
             )}
         </div>
+    );
+}
+
+function Chevron() {
+    return (
+        <svg className='chevron' width='16' height='16' viewBox='0 0 16 16' aria-hidden='true'>
+            <path d='M5 6l3 3 3-3' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' />
+        </svg>
+    );
+}
+
+function RequirementList({
+    title,
+    items,
+    onChange,
+}: {
+    title: string;
+    items: AuditRequirement[];
+    onChange: (a: ParsedAudit) => void;
+}) {
+    if (!items.length) return null;
+    return (
+        <div className='req-list'>
+            <h4>
+                {title} <span className='muted'>· {items.length}</span>
+            </h4>
+            <table className='list'>
+                <tbody>
+                    {items.map(r => (
+                        <RequirementRow key={r.id} r={r} onChange={onChange} />
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function ProgressCard({
+    title,
+    summary,
+    onChange,
+}: {
+    title: string;
+    summary: ProgressSummary;
+    onChange: (a: ParsedAudit) => void;
+}) {
+    const f = summary.figure;
+    const pct = f && f.total > 0 ? Math.min(100, Math.round((f.done / f.total) * 100)) : null;
+    return (
+        <details className='glass-card progress-card'>
+            <summary>
+                <div className='card-top'>
+                    <h3>{title}</h3>
+                    <Chevron />
+                </div>
+                {f ? (
+                    <div className='big-figure sm'>
+                        {f.done} <span>/ {f.total}</span>
+                        <small>{f.unit === 'hours' ? ' credit hours completed' : ' requirements complete'}</small>
+                    </div>
+                ) : (
+                    <div className='big-figure sm'>Needs verification</div>
+                )}
+                {pct !== null && (
+                    <div className='thin-bar' aria-hidden='true'>
+                        <span style={{ width: `${pct}%` }} />
+                    </div>
+                )}
+                <p className='small muted'>
+                    {summary.remainingText}
+                    {summary.hoursNeedVerification && ' · hours need verification on your IDA'}
+                </p>
+            </summary>
+            <div className='card-details'>
+                <RequirementList
+                    title='Remaining'
+                    items={summary.items.filter(r => r.status === 'not-started')}
+                    onChange={onChange}
+                />
+                <RequirementList
+                    title='In progress'
+                    items={summary.items.filter(r => r.status === 'in-progress')}
+                    onChange={onChange}
+                />
+                <RequirementList
+                    title='Completed'
+                    items={summary.items.filter(r => r.status === 'completed')}
+                    onChange={onChange}
+                />
+            </div>
+        </details>
+    );
+}
+
+function TotalsCard({
+    totals,
+    rules,
+    onChange,
+}: {
+    totals: DegreeTotals;
+    rules: AuditRequirement[];
+    onChange: (a: ParsedAudit) => void;
+}) {
+    const university = totals.gpa.find(g => g.label === 'University GPA') ?? totals.gpa[0];
+    if (!rules.length && !totals.totalHours && !university) return null;
+    return (
+        <details className='glass-card progress-card compact'>
+            <summary>
+                <div className='card-top'>
+                    <h3>GPA, residency and total hours</h3>
+                    <Chevron />
+                </div>
+                <div className='mini-stats'>
+                    {university && (
+                        <span>
+                            <b>{university.value.toFixed(2)}</b> GPA
+                        </span>
+                    )}
+                    {totals.residence && (
+                        <span>
+                            <b>
+                                {totals.residence.done}/{totals.residence.total}
+                            </b>{' '}
+                            hrs in residence
+                        </span>
+                    )}
+                    {totals.totalHours && (
+                        <span>
+                            <b>
+                                {totals.totalHours.done}/{totals.totalHours.total}
+                            </b>{' '}
+                            total hrs
+                        </span>
+                    )}
+                </div>
+            </summary>
+            <div className='card-details'>
+                {totals.gpa.length > 0 && (
+                    <ul className='small plain'>
+                        {totals.gpa.map(g => (
+                            <li key={g.label}>
+                                {g.label}: {g.value.toFixed(2)} (minimum {g.minimum.toFixed(2)})
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                <RequirementList
+                    title='Remaining'
+                    items={rules.filter(r => r.category !== 'gpa' && r.status !== 'completed')}
+                    onChange={onChange}
+                />
+                <RequirementList
+                    title='Completed'
+                    items={rules.filter(r => r.category !== 'gpa' && r.status === 'completed')}
+                    onChange={onChange}
+                />
+            </div>
+        </details>
     );
 }

@@ -36,6 +36,7 @@ The base features were audited via built-extension inspection and network tests 
 | --- | --- | --- |
 | You open the UT Registration Plus calendar page | `registrar.utexas.edu/schedules` (public UT page) | Lists available semesters for Quick Add (inherited from UT Registration Plus). Fetched by the extension's background worker. |
 | You open the extension's Settings (options) page | `api.github.com` (UT Registration Plus contributor statistics) | Shows the upstream project's contributors (inherited). Cached for a day. |
+| You view UT course listings with “Show Rate My Professors ratings” on (default; turn off in Settings) | `www.ratemyprofessors.com` (public GraphQL search) | Sends only a listed professor's name and UT Austin's public RMP school ID, from the background worker without cookies, to show that professor's public rating. No student data is sent. Results are cached on this device for 7 days. |
 | Optional dataset updates | A static file host configured at build time | **Not active in this build**: no update source is configured, so no request is made. |
 
 **Optional AI analysis (only after you check the consent box and press Get recommendations):**

@@ -14,7 +14,8 @@ export type FastlaneRequest =
     | { fastlane: true; type: 'testNotification' }
     | { fastlane: true; type: 'checkDataUpdates'; force?: boolean }
     | { fastlane: true; type: 'openFastlane'; tab?: string }
-    | { fastlane: true; type: 'devCheckReload' };
+    | { fastlane: true; type: 'devCheckReload' }
+    | { fastlane: true; type: 'professorRating'; first: string; last: string };
 
 export function isFastlaneRequest(msg: unknown): msg is FastlaneRequest {
     return !!msg && typeof msg === 'object' && (msg as { fastlane?: unknown }).fastlane === true;

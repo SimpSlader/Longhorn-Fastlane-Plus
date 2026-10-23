@@ -1,5 +1,6 @@
 import { background } from '@shared/messages';
 import type { Course } from '@shared/types/Course';
+import { parseHtml } from '@shared/util/parseHtml';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import getCourseTableRows from '@views/lib/getCourseTableRows';
 import { SiteSupport } from '@views/lib/getSiteSupport';
@@ -22,7 +23,7 @@ export async function getCourseByURL(link: string): Promise<Course | undefined> 
 
     if (!htmlText) return;
 
-    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const doc = parseHtml(htmlText);
     const scraper = new CourseCatalogScraper(SiteSupport.COURSE_CATALOG_DETAILS, doc, link);
     const tableRows = getCourseTableRows(doc);
     const scrapedCourses = scraper.scrape(tableRows, false);

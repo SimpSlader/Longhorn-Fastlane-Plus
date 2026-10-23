@@ -32,7 +32,9 @@ test.describe('Chrome extension permissions & security', () => {
             'unlimitedStorage',
         ]);
         for (const host of manifest.host_permissions ?? []) {
-            expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app/);
+            expect(host).toMatch(
+                /utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app|www\.ratemyprofessors\.com\/\*$/
+            );
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');
@@ -156,8 +158,24 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
 
         // A- or better percentage with professor attribution next to the graph button
         const music = rowFor(page, '23095');
-        await expect(music.locator('[data-fastlane="grade"]')).toContainText(/\d+\.\d%\s*A-\+\s*·\s*Prof/);
+        // professor-specific data names the professor and the sample size; course-wide data says "All profs"
+        await expect(music.locator('[data-fastlane="grade"]')).toContainText(
+            /\d+\.\d%\s*A-\+\s*·\s*Middleton\s*·\s*n=\d/
+        );
+        await expect(rowFor(page, '55675').locator('[data-fastlane="grade"]')).toContainText(
+            /All profs\s*·\s*n=[\d,]+/
+        );
         const before = await music.locator('[data-fastlane="grade"]').innerText();
+        // professor rating sits right after the A distribution and links to the professor's RMP page
+        const rmp = music.locator('[data-fastlane="rmp"]');
+        await expect(rmp).toContainText('★ 4.4');
+        await expect(rmp).toContainText('RMP · 31');
+        await expect(rmp).toHaveAttribute('href', 'https://www.ratemyprofessors.com/professor/4242');
+        expect(
+            await music
+                .locator('[data-fastlane="row"] > *')
+                .evaluateAll(els => els.map(e => e.getAttribute('data-fastlane')).slice(0, 2))
+        ).toEqual(['grade', 'rmp']);
 
         // changing the threshold globally recalculates from counts
         await page.locator('#ut-registration-plus-table-head select').selectOption('B');
@@ -198,6 +216,24 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
             .locator('section')
             .nth(1)
             .screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
+
+        // green + quick-adds the class to the active schedule, takes the class color, and removes on a second click
+        const quick = live.locator('[data-fastlane="quick-add"]');
+        // it sits immediately to the right of the orange grade-chart button
+        expect(await quick.evaluate(el => el.previousElementSibling?.getAttribute('aria-label') ?? '')).toBe(
+            'Open historical grade distribution graph'
+        );
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
+        expect(await quick.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(22, 163, 74)');
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'true');
+        // the button fades from green to the color UTRP gave the class
+        await page.waitForTimeout(400);
+        const added = await quick.evaluate(el => getComputedStyle(el).backgroundColor);
+        expect(added).not.toBe('rgb(22, 163, 74)');
+        await quick.locator('xpath=..').screenshot({ path: `${SHOTS}/1b-quick-add-added.png` });
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
     });
 
     test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({
@@ -386,10 +422,11 @@ test.describe('network activity matches the privacy policy', () => {
             await page.waitForTimeout(800);
         }
         // Disclosed in the privacy policy: UTRP's Settings page lists contributors from GitHub's public API, and
-        // the calendar's Quick Add loads UT's public semester index page (no student data is sent).
+        // the calendar's Quick Add loads UT's public semester index page, and course listings look up professors'
+        // public Rate My Professors ratings by name (no student data is sent; stubbed in tests).
         await page.goto(`chrome-extension://${extensionId}/options.html`);
         await page.waitForTimeout(1500);
-        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu']);
+        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu', 'www.ratemyprofessors.com']);
         const unexpected = [...hosts].filter(h => !disclosed.has(h));
         expect(unexpected, `unexpected hosts: ${unexpected.join(', ')}`).toEqual([]);
     });
@@ -402,13 +439,15 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await page
             .locator('input[type=file]')
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
-        await expect(page.getByText('requirements complete', { exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Needs review/ })).toBeVisible();
-        await page.getByRole('button', { name: /^All \(/ }).click();
+        // UT's own completion number (68%), not the expected-pace marker or a count of checks
+        const official = page.locator('.metric').filter({ hasText: 'Official IDA degree completion' });
+        await expect(official).toContainText('68%');
+        // cards are collapsed; expanding shows remaining, in-progress and completed requirements separately
+        await page.locator('summary').filter({ hasText: 'Core Curriculum' }).click();
         await expect(page.getByText('CORE (090)').first()).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/4-degree-audit-review.png`, fullPage: false });
         await page.reload();
-        await expect(page.getByText('requirements complete', { exact: true })).toBeVisible(); // persisted
+        await expect(official).toContainText('68%'); // persisted
     });
 
     test('recommends only cached, requirement-matching sections with honest availability', async ({
@@ -418,6 +457,11 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         const page = await context.newPage();
         await openDemo(page, extensionId);
         await page.waitForTimeout(2500); // listing is cached in the background (debounced)
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         const recs = page.locator('.rec');
         await expect(recs.first()).toBeVisible();
@@ -472,6 +516,9 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await expect(nav.getByText('History & undo')).toHaveCount(0);
 
         await nav.getByRole('button', { name: 'Find classes' }).click();
+        // the AI chat is the default; advanced browsing is one click away
+        await expect(page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' })).toBeVisible();
+        await page.getByText('Browse courses and adjust advanced filters').click();
         await page.getByRole('button', { name: 'Browse all classes' }).click();
         await expect(page.getByRole('combobox', { name: 'Subject' })).toBeVisible();
         await expect(page.getByRole('group', { name: 'Allowed class days' })).toBeVisible();
@@ -492,6 +539,11 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
         await page.reload();
         await expect(rowFor(page, '23095').locator('[data-fastlane="grade"]')).toContainText('%');
         await expect(rowFor(page, '20001').locator('[data-fastlane="conflict"]')).toBeVisible();
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         // (Playwright's offline emulation does not change navigator.onLine on extension pages, so the
         // offline badge is covered by manual testing; here we verify the features work without network.)
@@ -577,6 +629,7 @@ test.describe('AI access remembered after first successful request', () => {
         await page
             .locator('input[type=file]')
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page.getByText('Check unclear items with AI (optional)').click();
         await page.getByRole('button', { name: 'Review with AI' }).click();
         await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
         await page.getByRole('checkbox').last().check();
@@ -589,11 +642,9 @@ test.describe('AI access remembered after first successful request', () => {
         expect(saved).toBe('test-invite-code-local-only');
 
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
-        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
         await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
         await page.reload();
-        await page.getByRole('button', { name: 'Try AI recommendations' }).click();
         await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
         await page.getByRole('button', { name: 'Forget code' }).click();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toBeVisible();

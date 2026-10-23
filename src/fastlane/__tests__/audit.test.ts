@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+    classifyCategory,
     confirmRequirement,
     correctRequirement,
     needsReview,
@@ -53,6 +54,11 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
     const doc = fixture('dap-audit-results-real.html');
     const audit = parseAuditHtml(doc);
 
+    it('reads the actual official completion percentage, not expected pace', () => {
+        // Real IDA fixture: progress_number is 68%; time marker says expected 62%.
+        expect(audit.officialProgress).toEqual({ percent: 68, source: 'ida-html' });
+    });
+
     it('parses every rule row with its markup status', () => {
         const rules = [...doc.querySelectorAll('#requirements tbody.section > tr.rule')].filter(
             r => r.querySelectorAll(':scope > td').length >= 6
@@ -101,6 +107,18 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
         const outstanding = outstandingTags(audit);
         expect(outstanding).not.toContain('CORE 090');
         expect(takenCourseCodes(audit)).toContain('C S 314');
+    });
+});
+
+describe('degree completion metrics and categories', () => {
+    it('does not convert rule counts into an official completion percentage', () => {
+        const basic = parseAuditHtml(fixture('dap-audit-results.html'));
+        expect(basic.officialProgress).toBeUndefined();
+    });
+    it('recognizes minor and general-education sections separately from major', () => {
+        expect(classifyCategory('Minor Requirements', 'Complete three hours', [])).toBe('minor');
+        expect(classifyCategory('General Education', 'A writing flag required', [])).toBe('general');
+        expect(classifyCategory('Major Requirements', 'Complete course', [])).toBe('major');
     });
 });
 

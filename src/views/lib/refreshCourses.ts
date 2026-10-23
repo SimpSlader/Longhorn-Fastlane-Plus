@@ -3,6 +3,7 @@ import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import type { Course } from '@shared/types/Course';
 import type { UserSchedule } from '@shared/types/UserSchedule';
 import { validateLoginStatus } from '@shared/util/checkLoginStatus';
+import { parseHtml } from '@shared/util/parseHtml';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import getCourseTableRows from '@views/lib/getCourseTableRows';
 import { SiteSupport } from '@views/lib/getSiteSupport';
@@ -11,7 +12,7 @@ import { SiteSupport } from '@views/lib/getSiteSupport';
  * Scrapes a single course page and returns the parsed Course, or null on failure.
  */
 function scrapeCourseFromHTML(htmlText: string, url: string): Course | null {
-    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const doc = parseHtml(htmlText);
     const scraper = new CourseCatalogScraper(SiteSupport.COURSE_CATALOG_DETAILS, doc, url);
     const tableRows = getCourseTableRows(doc);
     const scrapedCourses = scraper.scrape(tableRows, false);

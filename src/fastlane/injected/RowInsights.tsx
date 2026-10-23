@@ -3,10 +3,13 @@
  *   72.4% A-+ · Prof   |  ASYNC  |  Conflicts: C S 314 (52345)  |  + Backup
  * Rendered inside UTRP's shadow-root portal for the row.
  */
+import { background } from '@shared/messages';
 import type { Course } from '@shared/types/Course';
 import type { UserSchedule } from '@shared/types/UserSchedule';
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
+import CheckIcon from '~icons/ph/check-bold';
+import PlusIcon from '~icons/ph/plus-bold';
 
 import { gradeStatFrom, lookupGrades, sectionFromCourse } from '../adapters/utrp';
 import type { GradeStat } from '../core/grades';
@@ -15,7 +18,10 @@ import type { ConflictResult } from '../core/meetings';
 import { conflictingSections, formatMeeting } from '../core/meetings';
 import type { ModalityResult } from '../core/modality';
 import { DuplicateSectionError, findSection } from '../core/plans';
+import type { RmpRating } from '../core/rmp';
+import { rmpProfessorUrl, splitProfessorName } from '../core/rmp';
 import { addBackupFor, loadPlan } from '../services/planService';
+import { sendFastlane } from '../services/runtime';
 import { FastlanePlanStore, FastlaneSettingsStore } from '../storage/stores';
 
 interface Props {
@@ -25,6 +31,11 @@ interface Props {
     activeSchedule?: UserSchedule;
     rowAnalysis: Parameters<typeof sectionFromCourse>[1];
 }
+
+const profName = (name?: string) => {
+    const last = name?.split(',')[0]?.trim() ?? '';
+    return last ? last.charAt(0) + last.slice(1).toLowerCase() : 'Prof';
+};
 
 function GradeChip({ course }: { course: Course }) {
     const threshold = FastlaneSettingsStore.useStore(s => s.gradeThreshold);
@@ -92,9 +103,129 @@ function GradeChip({ course }: { course: Course }) {
         >
             <strong className='text-[12px]'>{formatPercent(stat.result.percent)}</strong>
             <span>{thresholdLabel(stat.result.threshold)}</span>
-            <span className='opacity-70'>· {instructor ? 'Prof' : 'All profs'}</span>
-            {stat.smallSample && <span className='opacity-70'>· n={stat.result.graded}</span>}
+            {/* course-wide numbers are never labeled with a professor's name */}
+            <span className='opacity-70'>
+                · {instructor ? profName(course.instructors[0]?.lastName ?? stat.instructor) : 'All profs'}
+            </span>
+            <span className='opacity-70'>
+                · n={stat.result.graded.toLocaleString()}
+                {stat.smallSample ? ' (small)' : ''}
+            </span>
         </span>
+    );
+}
+
+/** Rate My Professors rating for the section's first listed professor (only exact, unique matches). */
+function RatingChip({ course }: { course: Course }) {
+    const prof = course.instructors[0];
+    const name = prof ? splitProfessorName(prof.firstName, prof.lastName, prof.fullName ?? '') : null;
+    const [rating, setRating] = useState<RmpRating | null | undefined>(undefined);
+    useEffect(() => {
+        if (!name?.last) return;
+        let alive = true;
+        sendFastlane<RmpRating | null>({ type: 'professorRating', first: name.first, last: name.last })
+            .then(r => alive && setRating(r))
+            .catch(() => alive && setRating(null));
+        return () => {
+            alive = false;
+        };
+    }, [name?.first, name?.last]);
+    if (!name?.last || rating === undefined) return null;
+    if (!rating || rating.numRatings === 0)
+        return (
+            <a
+                href={`https://www.ratemyprofessors.com/search/professors/1255?q=${encodeURIComponent(`${prof?.firstName ?? ''} ${prof?.lastName ?? prof?.fullName ?? ''}`.trim())}`}
+                target='_blank'
+                rel='noreferrer'
+                onClick={e => e.stopPropagation()}
+                className='inline-flex items-center rounded border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 whitespace-nowrap no-underline'
+                title='No single Rate My Professors match at UT Austin. Click to search RMP yourself.'
+                data-fastlane='rmp'
+            >
+                RMP search ↗
+            </a>
+        );
+    const good = rating.avgRating >= 4 ? '#15803d' : rating.avgRating >= 3 ? '#a16207' : '#b91c1c';
+    const again =
+        rating.wouldTakeAgainPercent >= 0 ? ` · ${Math.round(rating.wouldTakeAgainPercent)}% would take again` : '';
+    return (
+        <a
+            href={rmpProfessorUrl(rating.legacyId)}
+            target='_blank'
+            rel='noreferrer'
+            onClick={e => e.stopPropagation()}
+            className='inline-flex items-baseline gap-1 whitespace-nowrap text-[11px] leading-tight no-underline'
+            style={{
+                background: 'rgba(255,255,255,.8)',
+                backdropFilter: 'blur(14px) saturate(140%)',
+                border: '1px solid rgba(51,63,72,.15)',
+                borderRadius: 9,
+                padding: '5px 8px',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), 0 2px 7px rgba(30,40,50,.06)',
+                color: '#333f48',
+            }}
+            title={`Rate My Professors: ${rating.name} (${rating.department})\n${rating.avgRating.toFixed(1)}/5 quality · ${rating.avgDifficulty.toFixed(1)}/5 difficulty · ${rating.numRatings} ratings${again}`}
+            data-fastlane='rmp'
+        >
+            <strong className='text-[12px]' style={{ color: good }}>
+                ★ {rating.avgRating.toFixed(1)}
+            </strong>
+            <span className='opacity-70'>RMP · {rating.numRatings}</span>
+        </a>
+    );
+}
+
+/** One-click add to the active schedule (UTRP picks the class color); turns into the class color once added. */
+export function QuickAddButton({ course, activeSchedule }: Pick<Props, 'course' | 'activeSchedule'>) {
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState<string | null>(null);
+    if (!activeSchedule) return null;
+    const saved = activeSchedule.courses.find(c => c.uniqueId === course.uniqueId);
+    const otherSemester = activeSchedule.courses.some(
+        c => c.semester.year !== course.semester.year || c.semester.season !== course.semester.season
+    );
+    const label = saved
+        ? `Remove ${course.department} ${course.number} from ${activeSchedule.name}`
+        : `Add ${course.department} ${course.number} to ${activeSchedule.name}`;
+    const toggle = async () => {
+        if (busy) return;
+        if (!saved && otherSemester) {
+            setNote(`${activeSchedule.name} has classes from another semester`);
+            return;
+        }
+        setBusy(true);
+        setNote(null);
+        try {
+            if (saved) await background.removeCourse({ course, scheduleId: activeSchedule.id });
+            else await background.addCourse({ course, scheduleId: activeSchedule.id });
+        } catch {
+            setNote('Could not update your schedule');
+        } finally {
+            setBusy(false);
+        }
+    };
+    const color = saved?.colors?.primaryColor ?? '#16a34a';
+    return (
+        <button
+            type='button'
+            className='inline-flex h-[24px] w-[24px] min-w-[24px] shrink-0 items-center justify-center rounded-full border-none p-0 text-white'
+            style={{
+                background: color,
+                boxShadow: '0 2px 6px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.35)',
+                transition: 'background 200ms ease, transform 120ms ease',
+                cursor: busy ? 'progress' : 'pointer',
+            }}
+            aria-label={label}
+            aria-pressed={!!saved}
+            title={note ?? (saved ? `Added to ${activeSchedule.name} · click to remove` : label)}
+            onClick={e => {
+                e.stopPropagation();
+                void toggle();
+            }}
+            data-fastlane='quick-add'
+        >
+            {saved ? <CheckIcon className='h-3.5 w-3.5' /> : <PlusIcon className='h-3.5 w-3.5' />}
+        </button>
     );
 }
 
@@ -247,6 +378,7 @@ export default function RowInsights({ course, modality, conflict, activeSchedule
     return (
         <span className='inline-flex flex-wrap items-center gap-1 py-0.5' data-fastlane='row'>
             {settings.showInlineGrades && <GradeChip course={course} />}
+            {settings.showProfessorRatings && <RatingChip course={course} />}
             {settings.highlightAsync && <ModalityChip modality={modality} />}
             {settings.showConflictDetails && conflict && <ConflictChip conflict={conflict} />}
             <BackupButton course={course} activeSchedule={activeSchedule} rowAnalysis={rowAnalysis} />

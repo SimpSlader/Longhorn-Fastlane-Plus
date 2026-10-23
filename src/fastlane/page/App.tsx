@@ -20,7 +20,7 @@ import {
 } from '../storage/stores';
 import AiRecommendations from './AiRecommendations';
 import AuditTab from './AuditTab';
-import { InventoryPanel, InventoryProvider } from './CourseInventory';
+import { InventoryPanel, InventoryProvider, useInventory } from './CourseInventory';
 import { useHashRoute, useOnline } from './hooks';
 import { FinderTab, HomeTab } from './PlanningTools';
 import PlanTab from './PlanTab';
@@ -35,48 +35,76 @@ const TABS = [
     ['audit', 'Degree progress', ListChecksIcon],
 ] as const;
 
-function FindClasses({
-    initialRequirement,
-    forceRecommended = false,
-}: {
-    initialRequirement?: string | null;
-    forceRecommended?: boolean;
-}) {
-    const audit = FastlaneAuditStore.useStore(s => s.audit);
-    const [mode, setMode] = useState<'recommended' | 'all'>(audit || forceRecommended ? 'recommended' : 'all');
-    const [subject, setSubject] = useState('');
+function FindClasses({ initialRequirement }: { initialRequirement?: string | null }) {
     return (
         <InventoryProvider>
-            <div className='stack'>
-                <div className='simple-heading'>
-                    <div>
-                        <span className='eyebrow'>YOUR COURSE SEARCH</span>
-                        <h1>Find classes</h1>
-                        <p>Find sections that fit your degree, week and grade preferences.</p>
-                    </div>
-                </div>
-                <InventoryPanel />
-                <AiRecommendations subject={subject} />
-                <fieldset className='mode-toggle' aria-label='Class finder view'>
-                    <button type='button' aria-pressed={mode === 'recommended'} onClick={() => setMode('recommended')}>
-                        For my degree
-                    </button>
-                    <button type='button' aria-pressed={mode === 'all'} onClick={() => setMode('all')}>
-                        Browse all classes
-                    </button>
-                </fieldset>
-                {mode === 'recommended' ? (
-                    <RecommendTab
-                        initialRequirement={initialRequirement}
-                        embedded
-                        subject={subject}
-                        onSubjectChange={setSubject}
-                    />
-                ) : (
-                    <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
-                )}
-            </div>
+            <FindClassesBody initialRequirement={initialRequirement} />
         </InventoryProvider>
+    );
+}
+
+function FindClassesBody({ initialRequirement }: { initialRequirement?: string | null }) {
+    const audit = FastlaneAuditStore.useStore(s => s.audit);
+    const inventory = useInventory();
+    const [subject, setSubject] = useState('');
+    // degree view needs either an IDA or a requirement link (e.g. "Find classes for Core 050")
+    const canDegree = Boolean(audit || initialRequirement);
+    const [view, setView] = useState<'degree' | 'all'>(canDegree ? 'degree' : 'all');
+    // where the import panel sits is decided once per visit, so it stays put (with its result) after an import
+    const [needsCourseList, setNeedsCourseList] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (inventory.loaded && needsCourseList === null) setNeedsCourseList(inventory.metas.length === 0);
+    }, [inventory.loaded, inventory.metas.length, needsCourseList]);
+    const [advancedOpen, setAdvancedOpen] = useState(Boolean(initialRequirement));
+    return (
+        <div className='stack'>
+            <div className='simple-heading'>
+                <div>
+                    <span className='eyebrow'>YOUR COURSE PLANNER</span>
+                    <h1>Find classes</h1>
+                    <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
+                </div>
+            </div>
+            {/* the planner needs UT's course list; keep the import in view until one exists */}
+            {needsCourseList && <InventoryPanel />}
+            <AiRecommendations subject={subject} />
+            <details
+                className='card planner-advanced'
+                open={advancedOpen}
+                onToggle={e => setAdvancedOpen(e.currentTarget.open)}
+            >
+                <summary>Browse courses and adjust advanced filters</summary>
+                {/* rendered only when opened: the browser and rankings are heavy with a full course list */}
+                {advancedOpen && (
+                    <div className='stack'>
+                        {needsCourseList === false && <InventoryPanel />}
+                        <fieldset className='mode-toggle' aria-label='Advanced class view'>
+                            <button
+                                type='button'
+                                aria-pressed={view === 'degree'}
+                                disabled={!canDegree}
+                                onClick={() => setView('degree')}
+                            >
+                                For my degree
+                            </button>
+                            <button type='button' aria-pressed={view === 'all'} onClick={() => setView('all')}>
+                                Browse all classes
+                            </button>
+                        </fieldset>
+                        {view === 'degree' && canDegree ? (
+                            <RecommendTab
+                                initialRequirement={initialRequirement}
+                                embedded
+                                subject={subject}
+                                onSubjectChange={setSubject}
+                            />
+                        ) : (
+                            <FinderTab embedded subject={subject} onSubjectChange={setSubject} />
+                        )}
+                    </div>
+                )}
+            </details>
+        </div>
     );
 }
 
@@ -115,14 +143,21 @@ function Workspace() {
               } as Record<string, string>
           )[tab] ?? 'home');
     const theme = FastlaneSettingsStore.useStore(s => s.themePreference);
+    const themeChosen = FastlaneSettingsStore.useStore(s => s.themeChosen);
     const online = useOnline();
     const schedules = useAllSchedules();
     const active = useActiveSchedule();
 
     useEffect(() => {
+        // Light is the default; a profile still on the old automatic "System" default moves to Light once.
+        // Any theme the student picks from now on (including System) is kept.
+        if (!themeChosen && theme === 'system') {
+            void FastlaneSettingsStore.set('themePreference', 'light');
+            return;
+        }
         if (theme === 'system') document.documentElement.removeAttribute('data-theme');
-        else document.documentElement.setAttribute('data-theme', theme);
-    }, [theme]);
+        else document.documentElement.setAttribute('data-theme', theme ?? 'light');
+    }, [theme, themeChosen]);
 
     useEffect(() => {
         document.title = `${TABS.find(t => t[0] === current)?.[1] ?? 'Fastlane'} · Fastlane Course Planner`;
@@ -181,7 +216,7 @@ function Workspace() {
                     </button>
                     <a
                         className='utility-link'
-                        href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                        href='https://registrar.utexas.edu/schedules'
                         target='_blank'
                         rel='noopener noreferrer'
                     >
@@ -196,6 +231,23 @@ function Workspace() {
                         Open my IDA ↗
                     </a>
                 </div>
+                <label className='side-theme'>
+                    <span>Appearance</span>
+                    <select
+                        aria-label='Appearance theme'
+                        value={theme}
+                        onChange={e =>
+                            void FastlaneSettingsStore.set({
+                                themePreference: e.target.value as 'system' | 'light' | 'dark',
+                                themeChosen: true,
+                            } as never)
+                        }
+                    >
+                        <option value='system'>System</option>
+                        <option value='light'>Light</option>
+                        <option value='dark'>Dark</option>
+                    </select>
+                </label>
                 <div className='side-foot'>
                     <span>{online ? 'Online' : 'Offline — cached data only'} · local-only, no tracking</span>
                     <span>Independent student project. Not affiliated with UT Austin.</span>
@@ -215,9 +267,7 @@ function Workspace() {
             </aside>
             <main className='main'>
                 {current === 'home' && <HomeTab go={go} />}
-                {current === 'finder' && (
-                    <FindClasses initialRequirement={params.get('req')} forceRecommended={tab === 'recommend'} />
-                )}
+                {current === 'finder' && <FindClasses initialRequirement={params.get('req')} />}
                 {current === 'plan' && <PlanTab onNavigate={go} />}
                 {current === 'audit' && <AuditTab onNavigate={go} />}
                 {current === 'register' && <RegisterTab />}

@@ -1,3 +1,4 @@
+import { parseHtml } from '@shared/util/parseHtml';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import getCourseTableRows from '@views/lib/getCourseTableRows';
 import { SiteSupport } from '@views/lib/getSiteSupport';
@@ -24,7 +25,7 @@ export const courseMigration = async (links: string[]) => {
     for (const link of links) {
         const response = await fetch(link);
         const text = await response.text();
-        const doc = new DOMParser().parseFromString(text, 'text/html');
+        const doc = parseHtml(text);
 
         // Scrape the course
         const scraper = new CourseCatalogScraper(SiteSupport.COURSE_CATALOG_DETAILS, doc, link);

@@ -1,6 +1,8 @@
 /**
  * Reads a saved IDA file locally. Nothing is uploaded: PDF.js (bundled, Apache-2.0) runs in this page.
  */
+
+import { parseHtml } from '@shared/util/parseHtml';
 import { parseAuditHtml, parseAuditText } from './parseAudit';
 import type { ParsedAudit } from './types';
 
@@ -57,7 +59,7 @@ export async function importAuditFile(file: File): Promise<ParsedAudit> {
     if (/\.(html?|mhtml?)$/i.test(file.name) || file.type.includes('html')) {
         const text = await file.text();
         // DOMParser does not execute scripts or load resources from the saved page
-        const doc = new DOMParser().parseFromString(text, 'text/html');
+        const doc = parseHtml(text);
         return parseAuditHtml(doc, file.name);
     }
     throw new Error('Choose the audit saved as a PDF or as an HTML page (.html).');

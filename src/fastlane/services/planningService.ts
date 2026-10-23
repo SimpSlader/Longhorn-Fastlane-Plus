@@ -3,6 +3,7 @@ import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import { Course } from '@shared/types/Course';
 import { DAY_MAP } from '@shared/types/CourseMeeting';
 import { UserSchedule } from '@shared/types/UserSchedule';
+import { getUnusedColor } from '@shared/util/colors';
 import { sectionFromCourse } from '../adapters/utrp';
 import { DAY_ORDER } from '../core/meetings';
 import type { PlanMeta } from '../core/plans';
@@ -133,8 +134,19 @@ export function courseFromSection(s: SectionRecord): Course {
         url: '',
     } as unknown as Serialized<Course>);
 }
+/** A new color for each added class, chosen the way UT Registration Plus does (unused, spread across hues). */
+function withNewColor(course: Course, courses: Course[]): Course {
+    try {
+        course.colors = getUnusedColor(JSON.parse(JSON.stringify({ courses })), course);
+    } catch {
+        // keep the course's existing color if UTRP cannot pick one
+    }
+    return course;
+}
+
 export async function createPlanningSchedule(name: string, sections: SectionRecord[], plan?: PlanMeta) {
-    const courses = sections.map(courseFromSection);
+    const courses: Course[] = [];
+    for (const section of sections) courses.push(withNewColor(courseFromSection(section), courses));
     const schedule = new UserSchedule({
         id: crypto.randomUUID(),
         name: name.trim() || 'New schedule',
@@ -171,7 +183,16 @@ export async function addOrSwap(scheduleId: string, section: SectionRecord, oldU
         const courses = s.courses.filter(c => c.uniqueId !== oldUnique);
         if (courses.some(c => c.uniqueId === section.uniqueId))
             throw new Error('This section is already in the schedule.');
-        courses.push(JSON.parse(JSON.stringify(courseFromSection(section))));
+        // a swapped section keeps the color of the one it replaces
+        const replaced = s.courses.find(c => c.uniqueId === oldUnique)?.colors;
+        const added = courseFromSection(section);
+        if (replaced) added.colors = replaced;
+        else
+            withNewColor(
+                added,
+                courses.map(c => new Course(c as Serialized<Course>))
+            );
+        courses.push(JSON.parse(JSON.stringify(added)));
         return { ...s, courses, hours: courses.reduce((n, c) => n + c.creditHours, 0), updatedAt: Date.now() };
     });
     await UserScheduleStore.set('schedules', updated);

@@ -72,7 +72,9 @@ function spread(list: AiCandidate[], limit: number, perCourse: number): AiCandid
         if (n >= perCourse) continue;
         perCourseCount.set(code, n + 1);
         const subject = subjectOf(c.section.courseCode);
-        bySubject.set(subject, [...(bySubject.get(subject) ?? []), c]);
+        const group = bySubject.get(subject);
+        if (group) group.push(c);
+        else bySubject.set(subject, [c]);
     }
     const out: AiCandidate[] = [];
     for (let round = 0; out.length < limit; round++) {
@@ -89,24 +91,115 @@ function spread(list: AiCandidate[], limit: number, perCourse: number): AiCandid
     return out;
 }
 
-/** First pass without grades: the shortlist that gets historical-grade lookups. */
-export function shortlistAiCandidates(input: AiCandidateInput, limit = 120): AiCandidate[] {
+const NO_PREREQUISITE: PrerequisiteCheck = { status: 'none', groups: [], missing: [], notes: [] };
+/** Sections that get the (more expensive) prerequisite check; the rest cannot reach the shortlist anyway. */
+const PREREQUISITE_POOL = 400;
+
+/** Yields to the browser so typing, scrolling and painting stay responsive during long work. */
+const yieldToBrowser = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+export class SelectionCancelled extends Error {
+    constructor() {
+        super('Cancelled');
+        this.name = 'SelectionCancelled';
+    }
+}
+
+interface Steps {
+    signal?: AbortSignal;
+    onProgress?: (message: string) => void;
+}
+
+/**
+ * Cheap pass over the whole inventory (filters, requirement matching, conflicts), then prerequisites only for
+ * the best PREREQUISITE_POOL. A generator, so the async caller can yield to the browser between chunks.
+ */
+function* rank(input: AiCandidateInput, limit: number): Generator<number, AiCandidate[]> {
     const taken = new Set([...input.taken].map(normalizeCourseCode));
+    const subject = input.subject?.toUpperCase();
     const pool: AiCandidate[] = [];
+    let i = 0;
     for (const section of input.sections) {
+        if (++i % 1500 === 0) yield i;
         if (section.status?.value === 'CANCELLED' || !section.course) continue;
         if (input.term && semesterKey(section.semester) !== input.term) continue;
-        if (input.subject && subjectOf(section.courseCode) !== input.subject.toUpperCase()) continue;
+        if (subject && subjectOf(section.courseCode) !== subject) continue;
         if (taken.has(normalizeCourseCode(section.courseCode))) continue;
         pool.push({
             section,
             applies: input.outstanding.filter(r => sectionMatchesRequirement(section, r)),
-            prerequisite: checkPrerequisites(section.prerequisites, taken, input.subjectIndex),
+            prerequisite: NO_PREREQUISITE,
             conflict: detectConflicts(toSectionTimes(section), input.active).status as AiCandidate['conflict'],
         });
     }
     pool.sort((a, b) => compare(baseKey(a, input), baseKey(b, input)));
-    return spread(pool, limit, 3);
+    yield i;
+    const top = spread(pool, PREREQUISITE_POOL, 3);
+    for (const c of top) c.prerequisite = checkPrerequisites(c.section.prerequisites, taken, input.subjectIndex);
+    top.sort((a, b) => compare(baseKey(a, input), baseKey(b, input)));
+    return spread(top, limit, 3);
+}
+
+/** First pass without grades: the shortlist that gets historical-grade lookups. */
+export function shortlistAiCandidates(input: AiCandidateInput, limit = 120): AiCandidate[] {
+    const steps = rank(input, limit);
+    for (let step = steps.next(); ; step = steps.next()) if (step.done) return step.value;
+}
+
+/**
+ * The whole selection for one AI request, run when the student presses Ask: yields to the browser between
+ * chunks, reports progress, looks up historical grades only for the shortlist, and can be cancelled.
+ */
+export async function chooseAiCandidates(
+    input: AiCandidateInput,
+    gradeLookup: (s: SectionRecord) => Promise<GradeStat | null>,
+    options: Steps & { limit?: number; asyncShare?: number } = {}
+): Promise<{ chosen: AiCandidate[]; grades: Map<number, GradeStat | null>; compared: number }> {
+    const check = () => {
+        if (options.signal?.aborted) throw new SelectionCancelled();
+    };
+    options.onProgress?.(`Comparing ${input.sections.length.toLocaleString()} UT sections…`);
+    const steps = rank(input, 120);
+    let step = steps.next();
+    while (!step.done) {
+        check();
+        await yieldToBrowser();
+        step = steps.next();
+    }
+    const shortlist = step.value;
+    check();
+    const grades = new Map<number, GradeStat | null>();
+    for (const [n, c] of shortlist.entries()) {
+        if (n % 8 === 0) {
+            options.onProgress?.(`Checking historical grades (${n} of ${shortlist.length})…`);
+            await yieldToBrowser();
+            check();
+        }
+        grades.set(c.section.uniqueId, await gradeLookup(c.section).catch(() => null));
+    }
+    const gradeFor = (s: SectionRecord) => grades.get(s.uniqueId);
+    const limit = options.limit ?? 38;
+    let chosen: AiCandidate[];
+    if (input.preferAsync) {
+        // asked for online classes: keep a share of asynchronous options among the candidates
+        const online = finalizeAiCandidates(
+            shortlist.filter(c => c.section.modality === 'async-online'),
+            input,
+            gradeFor,
+            options.asyncShare ?? 12
+        );
+        const ids = new Set(online.map(c => c.section.uniqueId));
+        chosen = [
+            ...online,
+            ...finalizeAiCandidates(
+                shortlist.filter(c => !ids.has(c.section.uniqueId)),
+                input,
+                gradeFor,
+                limit - online.length
+            ),
+        ];
+    } else chosen = finalizeAiCandidates(shortlist, input, gradeFor, limit);
+    return { chosen, grades, compared: input.sections.length };
 }
 
 /** Final ordering with grades; returns the candidates actually sent. */

@@ -80,6 +80,10 @@ export default function SettingsTab() {
                     </label>
                     <Toggle k='showInlineGrades' label='Show grade percentages beside the grade graph button' />
                     <Toggle
+                        k='showProfessorRatings'
+                        label='Show Rate My Professors ratings (sends only professor names to ratemyprofessors.com)'
+                    />
+                    <Toggle
                         k='highlightAsync'
                         label='Color online course text blue'
                         help='Both live and asynchronous online course rows use blue text; asynchronous sections also have a light blue background.'
@@ -89,7 +93,12 @@ export default function SettingsTab() {
                         Appearance
                         <select
                             value={settings.themePreference}
-                            onChange={e => void FastlaneSettingsStore.set('themePreference', e.target.value as never)}
+                            onChange={e =>
+                                void FastlaneSettingsStore.set({
+                                    themePreference: e.target.value as never,
+                                    themeChosen: true,
+                                } as never)
+                            }
                         >
                             <option value='system'>Match system</option>
                             <option value='light'>Light</option>
