@@ -25,17 +25,44 @@ const NICKNAMES: Array<[RegExp, string]> = [
 function daysIn(fragment: string): DayCode[] {
     const found = DAYS.filter(([, pattern]) => pattern.test(fragment)).map(([day]) => day);
     if (/\bmwf\b|\bm\s*\/\s*w\s*\/\s*f\b/.test(fragment)) found.push('M', 'W', 'F');
-    if (/\btth\b|\bt\s*\/\s*th\b/.test(fragment)) found.push('T', 'TH');
+    if (/\bmw\b|\bm\s*\/\s*w\b/.test(fragment)) found.push('M', 'W');
+    if (/\btth\b|\btt\b|\bt\s*\/\s*th\b|\btu\s*\/\s*th\b/.test(fragment)) found.push('T', 'TH');
     return [...new Set(found)];
+}
+
+const WEEK: DayCode[] = ['M', 'T', 'W', 'TH', 'F', 'S', 'SU'];
+
+/**
+ * Days the student limits classes to: "classes only on Tuesdays and Thursdays", "Tuesdays and Thursdays only",
+ * "only T/Th", "TTh only". Returns null when the message sets no such limit.
+ */
+export function requestedOnlyDays(request: string): DayCode[] | null {
+    const text = request.toLowerCase();
+    const patterns = [
+        /\bonly\s+(?:on\s+|have\s+|take\s+|want\s+)?((?:(?:mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|mon|tues?|wed|thu(?:rs)?|fri|mwf|tth|t\/th|m\/w\/f|m\/w|mw|and|or|&|,|\/|\s)+))/,
+        /\b((?:(?:mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|mwf|tth|t\/th|m\/w\/f|mw|and|or|&|,|\/|\s)+))\s+only\b/,
+    ];
+    for (const re of patterns) {
+        const m = text.match(re);
+        const days = m ? daysIn(m[1] ?? '') : [];
+        if (days.length) return days;
+    }
+    return null;
 }
 
 /** Only exclusion wording counts: mentioning Tuesday alone does not mean avoid Tuesday. */
 export function requestedDaysOff(request: string): DayCode[] {
     const text = request.toLowerCase();
     const out = new Set<DayCode>();
+    const only = requestedOnlyDays(request);
+    if (only) for (const d of WEEK) if (!only.includes(d)) out.add(d);
     const re =
         /(?:no\s+class(?:es)?(?:\s+on)?|avoid(?:ing)?|not\s+on|free\s+on|nothing\s+on|off\s+on|without)\s*([^.;!?]{1,110})/g;
     for (let m = re.exec(text); m; m = re.exec(text)) for (const d of daysIn(m[1] ?? '')) out.add(d);
+    // "no MWF", "no Fridays"
+    const bare =
+        /\bno\s+((?:mwf|m\/w\/f|mw|tth|t\/th|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|mon|tues?|wed|thu(?:rs)?|fri|and|or|&|\/|\s)+)/g;
+    for (let m = bare.exec(text); m; m = bare.exec(text)) for (const d of daysIn(m[1] ?? '')) out.add(d);
     return [...out];
 }
 
@@ -61,6 +88,18 @@ export interface PlanningPreferences {
     plannedElsewhere: Array<{ code: string; where: string }>;
     /** courses the student asked not to see */
     excludedCourses: string[];
+    /** requested credit hours, e.g. "12–13 credit hours"; null = default 12–15 (never fewer than 12) */
+    credits: { min: number; max: number } | null;
+    /** subject codes the student excluded ("no history classes" → HIS, plus subjects named History) */
+    excludedSubjects: string[];
+    /** words that exclude courses by title ("no history classes" also leaves out courses titled History) */
+    excludedTitleWords: string[];
+    /** "back to back", "no gaps": cluster classes with little time between them */
+    backToBack: boolean;
+    /** "core complete": unfinished Core Curriculum requirements come first */
+    coreFocus: boolean;
+    /** the student plans some courses at ACC without naming them (never counted as credit) */
+    accPlanned: boolean;
 }
 
 export const EMPTY_PREFERENCES: PlanningPreferences = {
@@ -71,7 +110,61 @@ export const EMPTY_PREFERENCES: PlanningPreferences = {
     timeOfDay: 'any',
     plannedElsewhere: [],
     excludedCourses: [],
+    credits: null,
+    excludedSubjects: [],
+    excludedTitleWords: [],
+    backToBack: false,
+    coreFocus: false,
+    accPlanned: false,
 };
+
+/** Credit-hour range in a message: "12–13 credit hours", "12 to 15 hours", "15 credits", "at least 12 credits". */
+export function requestedCredits(message: string): { min: number; max: number } | null {
+    const t = message.toLowerCase();
+    const range = t.match(/\b(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs|sch)\b/);
+    if (range) {
+        const a = Number(range[1]);
+        const b = Number(range[2]);
+        return { min: Math.min(a, b), max: Math.max(a, b) };
+    }
+    const atLeast = t.match(/\b(?:at least|minimum of|min(?:imum)?)\s*(\d{1,2})\s*(?:credit|credits|hours|hrs)\b/);
+    if (atLeast) return { min: Number(atLeast[1]), max: Math.max(Number(atLeast[1]), 16) };
+    const single = t.match(/\b(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs)\b/);
+    // a lone small number ("3 hours") is about a class, not the semester load
+    if (single && Number(single[1]) >= 6) return { min: Number(single[1]), max: Number(single[1]) };
+    return null;
+}
+
+/** Subjects named in "no history classes", "no ECO", "skip math courses", "nothing in economics". */
+export function requestedSubjectExclusions(
+    message: string,
+    subjects: Array<{ code: string; name: string }>
+): { codes: string[]; words: string[] } {
+    const t = ` ${message.toLowerCase()} `;
+    const codes = new Set<string>();
+    const words = new Set<string>();
+    const re =
+        /\b(?:no|not|skip|avoid|without|exclude|nothing in)\s+(?:any\s+)?([a-z][a-z ,&/-]{1,50}?)\s+(?:classes|courses|class|course)\b/g;
+    for (let m = re.exec(t); m; m = re.exec(t)) {
+        const phrase = (m[1] ?? '').trim();
+        for (const part of phrase.split(/\s*(?:,|\/|\bor\b|\band\b|&)\s*/)) {
+            const word = part.trim();
+            if (word.length < 2) continue;
+            const byCode = subjects.find(s => s.code.toLowerCase() === word);
+            if (byCode) {
+                codes.add(byCode.code);
+                continue;
+            }
+            const named = subjects.filter(s =>
+                new RegExp(`\\b${word.replace(/[^a-z ]/g, '')}\\b`).test(s.name.toLowerCase())
+            );
+            if (!named.length) continue;
+            for (const s of named) codes.add(s.code);
+            words.add(word);
+        }
+    }
+    return { codes: [...codes], words: [...words] };
+}
 
 const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, a: 1, an: 1 };
 
@@ -95,7 +188,8 @@ export function courseCodesIn(text: string, subjects: Set<string>): string[] {
 export function applyPlanningMessage(
     previous: PlanningPreferences,
     message: string,
-    subjects: Set<string>
+    subjects: Set<string>,
+    subjectNames: Array<{ code: string; name: string }> = []
 ): PlanningPreferences {
     const text = message.toLowerCase();
     const allowed = requestedDaysAllowed(message);
@@ -112,6 +206,13 @@ export function applyPlanningMessage(
         asyncCount = { min: Math.min(lo, hi), max: Math.max(lo, hi) };
     }
     if (/\bno\s+(?:async(?:hronous)?|online)\b|\bin[- ]person only\b/.test(text)) asyncCount = { min: 0, max: 0 };
+    // "give me 1 more online class"
+    const more = text.match(/\b(\d|one|two|an?)\s+more\s+(?:fully\s+)?(?:async(?:hronous)?|online)\b/);
+    if (more) {
+        const n = Number(more[1]) || NUMBER_WORDS[more[1] ?? ''] || 1;
+        const base = asyncCount?.min ?? 0;
+        asyncCount = { min: base + n, max: Math.max(asyncCount?.max ?? 0, base + n) };
+    }
 
     const wants = (period: string) => new RegExp(`\\b(?:only|prefer|like|want)\\b[^.]*\\b${period}s?\\b`).test(text);
     const timeOfDay = wants('morning')
@@ -140,13 +241,38 @@ export function applyPlanningMessage(
             if (!excludedCourses.includes(code) && !plannedElsewhere.some(p => p.code === code))
                 excludedCourses.push(code);
 
+    const exclusions = requestedSubjectExclusions(message, subjectNames);
+    const allowedAgain = /\b(?:history|[a-z]+) (?:classes|courses) are (?:fine|ok(?:ay)?)\b/.exec(text);
+    const excludedSubjects = [...new Set([...previous.excludedSubjects, ...exclusions.codes])];
+    const excludedTitleWords = [...new Set([...previous.excludedTitleWords, ...exclusions.words])];
+    if (allowedAgain) {
+        const word = allowedAgain[0].split(' ')[0] ?? '';
+        const lifted = requestedSubjectExclusions(`no ${word} classes`, subjectNames);
+        for (const c of lifted.codes) excludedSubjects.splice(excludedSubjects.indexOf(c), 1);
+        for (const w of lifted.words) excludedTitleWords.splice(excludedTitleWords.indexOf(w), 1);
+    }
     return {
+        credits: requestedCredits(message) ?? previous.credits,
+        excludedSubjects: excludedSubjects.filter(Boolean),
+        excludedTitleWords: excludedTitleWords.filter(Boolean),
+        backToBack:
+            previous.backToBack ||
+            /\bback[- ]to[- ]back\b|\bno (?:awkward )?gaps\b|\bcompact\b|\bminimi[sz]e (?:the )?gaps\b|\bclustered\b/.test(
+                text
+            ),
+        coreFocus:
+            previous.coreFocus || /\bcore[- ]complete\b|\bcore (?:curriculum|requirements?|classes)\b/.test(text),
+        accPlanned:
+            previous.accPlanned ||
+            /\b(?:through|at|via)\s+(?:acc|austin community college|a community college)\b/.test(text),
         avoidDays: [...avoid],
         asyncCount,
         preferAsync: (asyncCount?.min ?? 0) > 0 || (previous.preferAsync && asyncCount?.max !== 0),
         easyGrades:
             previous.easyGrades ||
-            /\beasy\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad/.test(text),
+            /\beasy\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad|\bhigh a\b|\bhigh (?:a|a's) (?:grades?|rates?)\b|\bprotect (?:my )?gpa\b|\blots of a'?s\b/.test(
+                text
+            ),
         timeOfDay,
         plannedElsewhere,
         excludedCourses,
@@ -154,8 +280,15 @@ export function applyPlanningMessage(
 }
 
 /** Preferences after a whole conversation (oldest message first). */
-export function planningPreferences(messages: string[], subjects: Set<string>): PlanningPreferences {
-    return messages.reduce((prefs, message) => applyPlanningMessage(prefs, message, subjects), EMPTY_PREFERENCES);
+export function planningPreferences(
+    messages: string[],
+    subjects: Set<string>,
+    subjectNames: Array<{ code: string; name: string }> = []
+): PlanningPreferences {
+    return messages.reduce(
+        (prefs, message) => applyPlanningMessage(prefs, message, subjects, subjectNames),
+        EMPTY_PREFERENCES
+    );
 }
 
 /** Plain-language summary of what Fastlane understood, shown before the student sends. */
@@ -176,5 +309,17 @@ export function describePreferences(p: PlanningPreferences, dayNames: Record<Day
             `Leaving out ${c.code}: you plan to take it at ${c.where} (not counted as UT credit until it is awarded)`
         );
     if (p.excludedCourses.length) out.push(`Leaving out ${p.excludedCourses.join(', ')}`);
+    if (p.credits)
+        out.push(
+            `${p.credits.min === p.credits.max ? p.credits.min : `${p.credits.min}–${p.credits.max}`} credit hours`
+        );
+    if (p.excludedSubjects.length)
+        out.push(
+            `No ${p.excludedTitleWords.length ? `${p.excludedTitleWords.join(', ')} classes (` : ''}${p.excludedSubjects.join(', ')}${p.excludedTitleWords.length ? ' and courses titled that way)' : ' classes'}`
+        );
+    if (p.coreFocus) out.push('Unfinished Core Curriculum requirements first');
+    if (p.backToBack) out.push('Back-to-back classes with as few gaps as possible');
+    if (p.accPlanned && !p.plannedElsewhere.length)
+        out.push('Some classes planned at ACC (not counted as UT credit until it is awarded)');
     return out;
 }

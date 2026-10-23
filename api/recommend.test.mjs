@@ -235,3 +235,64 @@ describe('Fastlane recommend API conversation preferences', () => {
         );
     });
 });
+
+describe('Fastlane recommend API master scheduling instructions', () => {
+    it('sends the master rules and the structured schedule constraints to the model', async () => {
+        process.env.GROQ_API_KEY = 'test-key';
+        process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';
+        const fakeFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: JSON.stringify({ summary: 'ok', recommendations: [] }) } }],
+            }),
+        });
+        vi.stubGlobal('fetch', fakeFetch);
+        const { req, res } = request(
+            {
+                ...body,
+                preferences: {
+                    ...body.preferences,
+                    credits: { min: 12, max: 13 },
+                    excludedSubjects: ['HIS'],
+                    avoidDays: ['M', 'W', 'F'],
+                    backToBack: true,
+                    coreFocus: true,
+                    accPlanned: true,
+                },
+            },
+            '198.51.100.121'
+        );
+        await handler(req, res);
+        expect(res.statusCode).toBe(200);
+        const sent = JSON.parse(fakeFetch.mock.calls[0][1].body);
+        const [system, user] = sent.messages;
+        expect(system.content).toContain('MASTER SCHEDULING INSTRUCTIONS');
+        expect(system.content).toContain('Minimum 12 credits');
+        expect(system.content).toContain('Never treat a hard constraint as optional');
+        const data = JSON.parse(user.content);
+        expect(data.preferences.credits).toEqual({ min: 12, max: 13 });
+        expect(data.preferences.excludedSubjects).toEqual(['HIS']);
+        expect(data.preferences.backToBack).toBe(true);
+        expect(data.preferences.coreFocus).toBe(true);
+        expect(data.preferences.accPlanned).toBe(true);
+    });
+
+    it('never lets a client lower the 12-credit minimum', async () => {
+        process.env.GROQ_API_KEY = 'test-key';
+        process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';
+        const fakeFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                choices: [{ message: { content: JSON.stringify({ summary: 'ok', recommendations: [] }) } }],
+            }),
+        });
+        vi.stubGlobal('fetch', fakeFetch);
+        const { req, res } = request(
+            { ...body, preferences: { ...body.preferences, credits: { min: 6, max: 9 } } },
+            '198.51.100.122'
+        );
+        await handler(req, res);
+        const data = JSON.parse(JSON.parse(fakeFetch.mock.calls[0][1].body).messages[1].content);
+        expect(data.preferences.credits).toEqual({ min: 12, max: 12 });
+    });
+});

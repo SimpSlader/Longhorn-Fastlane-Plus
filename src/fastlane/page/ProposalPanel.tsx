@@ -9,6 +9,7 @@ import type { GradeStat } from '../core/grades';
 import { formatMeeting } from '../core/meetings';
 import type { ProposalVersion } from '../core/proposal';
 import { totalHours } from '../core/proposal';
+import type { ScheduleValidation } from '../core/scheduleSolver';
 import type { SectionRecord } from '../core/sections';
 import { ClassCard } from './ClassCard';
 import WeekGrid from './WeekGrid';
@@ -22,6 +23,11 @@ export interface AiPick {
 }
 
 interface Props {
+    /** every rule checked against the shown version; errors mean it is a draft, not a valid schedule */
+    validation: ScheduleValidation | null;
+    minCredits: number;
+    onFill: () => void;
+    canFill: boolean;
     version: ProposalVersion;
     index: number;
     count: number;
@@ -49,12 +55,16 @@ export default function ProposalPanel(props: Props) {
     const changed = new Set(index > 0 ? version.added : []);
     const removed = version.removed.map(id => sectionsById.get(id)).filter(Boolean) as SectionRecord[];
     const added = version.added.map(id => sectionsById.get(id)).filter(Boolean) as SectionRecord[];
+    const valid = props.validation?.ok ?? false;
+    const short = (props.validation?.credits ?? 0) < props.minCredits;
 
     return (
         <section className='glass-card proposal' aria-label='Proposed schedule'>
             <div className='proposal-head'>
                 <div>
-                    <span className='eyebrow'>PROPOSED SCHEDULE</span>
+                    <span className={`eyebrow ${valid ? '' : 'invalid'}`}>
+                        {valid ? 'PROPOSED SCHEDULE · ALL RULES MET' : 'DRAFT · NOT A COMPLETE SCHEDULE YET'}
+                    </span>
                     <h3>
                         {version.sections.length} {version.sections.length === 1 ? 'class' : 'classes'} ·{' '}
                         {totalHours(version.sections)} credits
@@ -83,6 +93,32 @@ export default function ProposalPanel(props: Props) {
                 </fieldset>
             </div>
             {version.note && <p className='proposal-note small'>{version.note}</p>}
+            {props.validation && props.validation.errors.length > 0 && (
+                <div className='proposal-errors' role='alert'>
+                    <ul className='small'>
+                        {props.validation.errors.map(e => (
+                            <li key={e}>{e}</li>
+                        ))}
+                    </ul>
+                    {short && (
+                        <button
+                            type='button'
+                            className='btn primary sm'
+                            disabled={props.busy || !props.canFill}
+                            onClick={props.onFill}
+                        >
+                            Fill to {props.minCredits}+ credits
+                        </button>
+                    )}
+                </div>
+            )}
+            {props.validation && props.validation.warnings.length > 0 && (
+                <ul className='proposal-warnings small'>
+                    {props.validation.warnings.map(w => (
+                        <li key={w}>{w}</li>
+                    ))}
+                </ul>
+            )}
             {index > 0 && (added.length > 0 || removed.length > 0) && (
                 <p className='proposal-diff small' title='Changes in this version'>
                     {added.map(s => (
@@ -130,12 +166,14 @@ export default function ProposalPanel(props: Props) {
                 <button
                     type='button'
                     className='btn primary'
-                    disabled={!version.sections.length || props.busy}
+                    disabled={!version.sections.length || props.busy || !valid}
                     onClick={props.onSave}
                 >
                     Save as a new schedule
                 </button>
-                <span className='small muted'>Your existing schedules are not changed.</span>
+                <span className='small muted'>
+                    {valid ? 'Your existing schedules are not changed.' : 'Fix the problems above before saving.'}
+                </span>
             </div>
             {props.saveNote && (
                 <p role='status' className='notice small'>

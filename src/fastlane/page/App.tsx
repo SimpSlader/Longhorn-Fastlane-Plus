@@ -216,7 +216,7 @@ function Workspace() {
                     </button>
                     <a
                         className='utility-link'
-                        href='https://utdirect.utexas.edu/apps/registrar/course_schedule/'
+                        href='https://registrar.utexas.edu/schedules'
                         target='_blank'
                         rel='noopener noreferrer'
                     >

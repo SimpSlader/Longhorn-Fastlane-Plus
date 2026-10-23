@@ -2,20 +2,18 @@ import type { Serialized } from '@chrome-extension-toolkit';
 import { Course } from '@shared/types/Course';
 import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { gradeStatFrom, lookupGrades, scheduleTimes } from '../adapters/utrp';
+import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
-import { safeAiScheduleDraft } from '../core/aiSchedule';
+import type { PlanningPreferences } from '../core/chatPreferences';
 import { describePreferences, planningPreferences } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
 import { DAY_NAMES, detectConflicts } from '../core/meetings';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
 import {
-    breaksPreferences,
     diffSections,
-    fillSlots,
     fitsWith,
     isTargetedChange,
     refineIntent,
@@ -23,11 +21,24 @@ import {
     resolveTarget,
 } from '../core/proposal';
 import { normalizeCourseCode } from '../core/requirements';
+import type { NoScheduleReport, ScheduleConstraints, SolveResult, SolverCandidate } from '../core/scheduleSolver';
+import {
+    DEFAULT_MAX_CREDITS,
+    hardFilterCounts,
+    hardReason,
+    isAsync,
+    MIN_CREDITS,
+    scoreSection,
+    solveSchedule,
+    validateSchedule,
+} from '../core/scheduleSolver';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf, toSectionTimes } from '../core/sections';
-import { subjectForCode, utSubjectScheduleUrl } from '../data/subjects';
+import { subjectForCode, UT_SUBJECTS, utSubjectScheduleUrl } from '../data/subjects';
 import { addOrSwap, createPlanningSchedule } from '../services/planningService';
 import { FastlaneAiAccessStore, FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
 import { ClassCard } from './ClassCard';
+import type { PlannerOverrides } from './ConstraintsBar';
+import ConstraintsBar from './ConstraintsBar';
 import { inventorySubjects, useInventory } from './CourseInventory';
 import type { AiPick } from './ProposalPanel';
 import ProposalPanel from './ProposalPanel';
@@ -68,6 +79,17 @@ interface AiResponse {
 
 const pad = (n: number) => String(n).padStart(5, '0');
 
+interface PoolEntry {
+    section: SectionRecord;
+    applies: string[];
+    prerequisite: SolverCandidate['prerequisite'];
+    gradePercent: number | null;
+    gradeSample: number;
+    aiPicked: boolean;
+    /** AI said it may count toward a Core requirement (not verified) */
+    possibleCore: boolean;
+}
+
 interface ChatTurn {
     id: number;
     /** what the student typed */
@@ -104,7 +126,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         () => [...history.map(h => h.context), request.trim()].filter(Boolean),
         [history, request]
     );
-    const prefs = useMemo(() => planningPreferences(conversation, subjectCodes), [conversation, subjectCodes]);
+    const prefs = useMemo(
+        () => planningPreferences(conversation, subjectCodes, UT_SUBJECTS),
+        [conversation, subjectCodes]
+    );
     const understood = describePreferences(prefs, DAY_NAMES);
     const avoidDays = prefs.avoidDays;
     const timeOfDay = timeChoice !== 'any' ? timeChoice : prefs.timeOfDay;
@@ -126,16 +151,20 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         picks: Map<number, AiPick>;
     }>({ sections: new Map(), facts: new Map(), grades: new Map(), picks: new Map() });
     const [savedId, setSavedId] = useState<number | null>(null);
+    // real sections compared so far (with grades and IDA facts): what the solver chooses from
+    const [pool, setPool] = useState<Map<number, PoolEntry>>(new Map());
+    const [overrides, setOverrides] = useState<PlannerOverrides>({});
+    const [noSchedule, setNoSchedule] = useState<NoScheduleReport | null>(null);
 
     const taken = useMemo(
         () =>
             new Set([
+                // only what the IDA says is done or in progress; a mock schedule is a plan, not credit
                 ...(audit?.courses
                     .filter(c => c.status === 'completed' || c.status === 'in-progress')
                     .map(c => normalizeCourseCode(c.code)) ?? []),
-                ...(schedule?.courses.map(c => normalizeCourseCode(`${c.department} ${c.number}`)) ?? []),
             ]),
-        [audit, schedule]
+        [audit]
     );
 
     const listedTerm = useMemo(
@@ -177,6 +206,108 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setSaveNote('');
     };
 
+    /** The rules every schedule must follow: the conversation's preferences, then any edits in the summary. */
+    const constraintsFor = (p: PlanningPreferences, extraExcluded: string[] = []): ScheduleConstraints => {
+        const requested = p.credits;
+        const minCredits = Math.max(MIN_CREDITS, overrides.minCredits ?? requested?.min ?? MIN_CREDITS);
+        const maxCredits = Math.max(
+            minCredits,
+            overrides.maxCredits ?? (requested ? Math.max(requested.max, MIN_CREDITS) : DEFAULT_MAX_CREDITS)
+        );
+        const excludedSubjects = overrides.excludedSubjects ?? p.excludedSubjects;
+        const time = timeChoice !== 'any' ? timeChoice : p.timeOfDay;
+        return {
+            minCredits,
+            maxCredits,
+            creditsRequested: !!requested || overrides.minCredits != null || overrides.maxCredits != null,
+            avoidDays: overrides.avoidDays ?? [
+                ...new Set([...p.avoidDays, ...(settings.avoidFriday ? (['F'] as const) : [])]),
+            ],
+            excludedSubjects,
+            // title words follow their subjects ("history" goes away when HIS is allowed again)
+            excludedTitleWords: p.excludedTitleWords.filter(w =>
+                excludedSubjects.some(code => new RegExp(`\\b${w}\\b`, 'i').test(subjectForCode(code)?.name ?? ''))
+            ),
+            excludedCourses: [
+                ...new Set(
+                    [...p.excludedCourses, ...p.plannedElsewhere.map(x => x.code), ...extraExcluded].map(
+                        normalizeCourseCode
+                    )
+                ),
+            ],
+            term: actualTerm,
+            online: overrides.online !== undefined ? overrides.online : p.asyncCount,
+            backToBack: overrides.backToBack ?? p.backToBack,
+            timeWindow:
+                time === 'morning'
+                    ? { from: 0, to: 12 * 60 }
+                    : time === 'afternoon'
+                      ? { from: 12 * 60, to: 17 * 60 }
+                      : time === 'evening'
+                        ? { from: 17 * 60, to: 24 * 60 }
+                        : null,
+        };
+    };
+    const constraints = constraintsFor(prefs);
+    const easyGrades = overrides.easyGrades ?? prefs.easyGrades;
+    const coreFocus = overrides.coreFocus ?? prefs.coreFocus;
+    const factsById = useMemo(
+        () =>
+            new Map(
+                [...pool.values()].map(p => [p.section.uniqueId, { applies: p.applies, prerequisite: p.prerequisite }])
+            ),
+        [pool]
+    );
+    const solverCandidates = (entries: Iterable<PoolEntry>, flags = { easyGrades, coreFocus }): SolverCandidate[] =>
+        [...entries].map(p => ({
+            section: p.section,
+            applies: p.applies,
+            prerequisite: p.prerequisite,
+            score: scoreSection({
+                applies: p.applies,
+                coreFocus: flags.coreFocus,
+                gradePercent: p.gradePercent,
+                gradeSample: p.gradeSample,
+                easyGrades: flags.easyGrades,
+                aiPicked: p.aiPicked,
+                possibleCore: p.possibleCore,
+                creditHours: p.section.creditHours,
+                courseCode: p.section.courseCode,
+                prerequisite: p.prerequisite,
+            }),
+        }));
+    const validation = proposal ? validateSchedule(proposal.sections, constraints, factsById) : null;
+
+    /** Puts a solver result on screen: a new version when valid, otherwise the "no complete schedule" report. */
+    const showResult = (
+        result: SolveResult,
+        before: SectionRecord[] | null,
+        why: string,
+        rules: ScheduleConstraints = constraints
+    ): string => {
+        if (!result.best) {
+            setNoSchedule(result.report);
+            return `No complete schedule found. ${result.report?.reasons[0] ?? ''}`;
+        }
+        const check = validateSchedule(result.best.sections, rules, factsById);
+        setNoSchedule(null);
+        const diff = diffSections(before ?? [], result.best.sections);
+        const label = (id: number) => known.sections.get(id)?.courseCode ?? pool.get(id)?.section.courseCode ?? pad(id);
+        const changes = before
+            ? [
+                  diff.removed.length ? `removed ${diff.removed.map(label).join(', ')}` : '',
+                  diff.added.length
+                      ? `added ${diff.added.map(id => result.best!.sections.find(s => s.uniqueId === id)?.courseCode).join(', ')}`
+                      : '',
+              ]
+                  .filter(Boolean)
+                  .join('; ') || 'no class needed to change'
+            : '';
+        const note = `${why}${changes ? ` ${changes[0]?.toUpperCase()}${changes.slice(1)}.` : ''} ${result.best.credits} credits, ${result.best.asyncCount} async online, ${Math.round(result.best.gapMinutes)} min of gaps. Checked against every rule${check.ok ? '' : ' (see warnings)'}.`;
+        pushVersion(result.best.sections, note.trim());
+        return note.trim();
+    };
+
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
     const run = async () => {
         if (!consent || busy) return;
@@ -211,54 +342,31 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             );
             return;
         }
-        const extraLeftOut = new Set<string>();
-        let kept: SectionRecord[] = [];
-        let slots = 0;
+        const nowPrefs = planningPreferences([...history.map(h => h.context), message], subjectCodes, UT_SUBJECTS);
         let context = message;
         let dropped = droppedTags;
+        const extraExcluded: string[] = [];
         if (proposal && targeted && target) {
-            kept = proposal.sections.filter(s => s.uniqueId !== target.uniqueId);
-            slots = intent.removeOnly ? 0 : 1;
             context = `${message} (about ${target.courseCode}, unique ${pad(target.uniqueId)})`;
             if (intent.elsewhere) {
-                extraLeftOut.add(normalizeCourseCode(target.courseCode));
+                extraExcluded.push(target.courseCode);
                 context = `${message} I plan to take ${target.courseCode} through ACC.`;
             }
             if (intent.dropRequirement) {
                 dropped = [...new Set([...droppedTags, ...(known.facts.get(target.uniqueId)?.applies ?? [])])];
                 setDroppedTags(dropped);
             }
-        } else if (proposal) {
-            const conversationPrefs = planningPreferences([...history.map(h => h.context), message], subjectCodes);
-            const out = new Set(
-                [...conversationPrefs.excludedCourses, ...conversationPrefs.plannedElsewhere.map(p => p.code)].map(
-                    normalizeCourseCode
-                )
-            );
-            kept = proposal.sections.filter(
-                s =>
-                    !breaksPreferences(s, {
-                        avoidDays: conversationPrefs.avoidDays,
-                        timeOfDay: timeChoice !== 'any' ? timeChoice : conversationPrefs.timeOfDay,
-                        leftOut: out,
-                        noOnline: conversationPrefs.asyncCount?.max === 0,
-                    })
-            );
-            slots = proposal.sections.length - kept.length;
-            if (!slots && /\b(?:add|another|more|extra)\b/i.test(message)) slots = 1;
-            // nothing to keep or change locally: plan again from scratch as a new version
-            if (!slots) kept = [];
         }
-        const refining = !!proposal && (targeted || slots > 0 || kept.length > 0);
+        const c = constraintsFor(nowPrefs, extraExcluded);
 
-        if (refining && slots === 0) {
-            // removing a class needs no AI call
-            pushVersion(kept, `Removed ${target?.courseCode}. Everything else is unchanged.`);
+        if (proposal && targeted && target && intent.removeOnly) {
+            // removing needs no AI call, but the rest is still checked: below the minimum is flagged, not hidden
+            const kept = proposal.sections.filter(s => s.uniqueId !== target.uniqueId);
+            const check = validateSchedule(kept, c, factsById);
+            const note = `Removed ${target.courseCode}.${check.credits < c.minCredits ? ` Now ${check.credits} credits, below ${c.minCredits}: use "Fill to ${c.minCredits}+ credits" to add a class.` : ''}`;
+            pushVersion(kept, note);
             setHistory(previous =>
-                [
-                    ...previous,
-                    { id: Date.now(), request: message, context, summary: `Removed ${target?.courseCode}.` },
-                ].slice(-6)
+                [...previous, { id: Date.now(), request: message, context, summary: note }].slice(-6)
             );
             setRequest('');
             setFocusId(null);
@@ -272,31 +380,22 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setProgress('Reading your request…');
         setSavedId(null);
         try {
-            // hard constraints from the whole conversation are applied before candidates are chosen
-            const eligible = catalog.filter(section => {
-                const sectionCode = normalizeCourseCode(section.courseCode);
-                if (leftOut.has(sectionCode) || extraLeftOut.has(sectionCode)) return false;
-                if (prefs.asyncCount?.max === 0 && section.modality === 'async-online') return false;
-                if (avoidDays.some(day => section.meetings.some(m => m.days.includes(day)))) return false;
-                if (timeOfDay !== 'any' && section.modality !== 'async-online') {
-                    if (!section.meetings.length) return false; // unknown meeting times aren't safe matches
-                    if (timeOfDay === 'morning' && section.meetings.some(m => m.start >= 12 * 60)) return false;
-                    if (timeOfDay === 'afternoon' && section.meetings.some(m => m.start < 12 * 60 || m.end > 17 * 60))
-                        return false;
-                    if (timeOfDay === 'evening' && section.meetings.some(m => m.start < 17 * 60)) return false;
-                }
-                if (refining) {
-                    // a replacement keeps every other proposed class: no time conflict, no second section
-                    if (!fitsWith(section, kept)) return false;
-                    if (
-                        target &&
-                        targeted &&
-                        !replacementFits(section, target, { ...intent, easier: false }, () => null)
-                    )
-                        return false;
-                }
-                return true;
-            });
+            // hard rules are applied to the whole catalog before anything is ranked
+            const removedBy = hardFilterCounts(catalog, c);
+            // replacing one class: the other proposed courses stay as they are (they're already in the pool)
+            const keptCodes = new Set(
+                proposal && targeted && target
+                    ? proposal.sections
+                          .filter(x => x.uniqueId !== target.uniqueId)
+                          .map(x => normalizeCourseCode(x.courseCode))
+                    : []
+            );
+            const eligible = catalog.filter(
+                section =>
+                    !hardReason(section, c) &&
+                    !(c.online?.max === 0 && isAsync(section)) &&
+                    !keptCodes.has(normalizeCourseCode(section.courseCode))
+            );
             const allOutstanding = outstandingTags(audit).filter(t => !dropped.includes(t));
             const targetTags =
                 target && targeted && !intent.dropRequirement ? (known.facts.get(target.uniqueId)?.applies ?? []) : [];
@@ -307,53 +406,47 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 // a replacement first looks for the same requirement as the class it replaces
                 outstanding: targetTags.length ? targetTags : allOutstanding,
                 subject,
-                active: refining ? kept.map(toSectionTimes) : scheduleTimes(schedule),
-                avoidFriday: settings.avoidFriday,
-                preferAsync: prefs.preferAsync || settings.preferAsync || (targeted && intent.online),
+                // a proposal is its own semester plan: the current mock schedule neither blocks nor ranks it
+                active: [],
+                avoidFriday: false,
+                preferAsync: (c.online?.min ?? 0) > 0 || settings.preferAsync || (targeted && intent.online),
                 subjectIndex,
             };
-            let picked = await chooseAiCandidates(input, gradeForSection, {
+            const options = {
                 signal: controller.signal,
                 onProgress: setProgress,
-            });
-            if (targetTags.length && !picked.chosen.some(c => c.applies.length))
-                picked = await chooseAiCandidates({ ...input, outstanding: allOutstanding }, gradeForSection, {
-                    signal: controller.signal,
-                    onProgress: setProgress,
-                });
+                limit: 90,
+                // enough online options to choose from, without crowding out classes on the allowed days
+                asyncShare: Math.max(6, (c.online?.max ?? 2) * 5),
+            };
+            let picked = await chooseAiCandidates(input, gradeForSection, options);
+            if (targetTags.length && !picked.chosen.some(x => x.applies.length))
+                picked = await chooseAiCandidates({ ...input, outstanding: allOutstanding }, gradeForSection, options);
             const { chosen, grades } = picked;
-            const gradeOf = (s: SectionRecord) =>
-                (grades.get(s.uniqueId) ?? known.grades.get(s.uniqueId))?.result.percent ?? null;
-            const usable = chosen.filter(c => {
-                const grade = grades.get(c.section.uniqueId)?.result;
+            const usable = chosen.filter(x => {
+                const grade = grades.get(x.section.uniqueId)?.result;
                 if (minGrade > 0 && (!grade || grade.percent < minGrade)) return false;
-                if (refining && c.conflict !== 'clear') return false;
-                if (targeted && target && intent.easier && !replacementFits(c.section, target, intent, gradeOf))
-                    return false;
-                return true;
+                return x.prerequisite.status !== 'unmet';
             });
             setCompared({
                 sections: eligible.length,
-                subjects: new Set(usable.map(c => subjectOf(c.section.courseCode))).size,
+                subjects: new Set(usable.map(x => subjectOf(x.section.courseCode))).size,
             });
             if (!usable.length) {
                 setError(
-                    targeted && target
-                        ? `No listed UT section fits as a replacement for ${target.courseCode} without breaking the rest of your proposed week. Try a different reason, or remove it instead.`
-                        : "No listed UT sections match these preferences. Widen the days, time or grade preference, or import UT's course list for the semester. AI never suggests classes that are not listed."
+                    "No listed UT sections fit these rules. Widen the days, credits or grade preference, or import UT's course list for the semester. AI never suggests classes that are not listed."
                 );
                 return;
             }
-            setProgress(`Asking Fastlane AI about ${usable.length} real UT sections…`);
-            const facts = new Map(usable.map(c => [c.section.uniqueId, c]));
+            const forAi = usable.slice(0, 38);
+            setProgress(`Asking Fastlane AI about ${forAi.length} real UT sections…`);
+            const facts = new Map(usable.map(x => [x.section.uniqueId, x]));
             const planningRequest =
-                refining && proposal
-                    ? `${message}\n\nCurrent proposed schedule: ${proposal.sections.map(s => `${s.courseCode} (${pad(s.uniqueId)})`).join(', ')}. ${
-                          targeted && target
-                              ? `Replace only ${target.courseCode} (${pad(target.uniqueId)}); keep the other classes.`
-                              : `Keep ${kept.map(s => s.courseCode).join(', ') || 'nothing'}; suggest ${slots} class${slots === 1 ? '' : 'es'} to fill the open place${slots === 1 ? '' : 's'}.`
-                      } Every candidate already fits the kept classes.`
-                    : message;
+                proposal && targeted && target
+                    ? `${message}\n\nCurrent proposed schedule: ${proposal.sections.map(s => `${s.courseCode} (${pad(s.uniqueId)})`).join(', ')}. Replace only ${target.courseCode} (${pad(target.uniqueId)}); keep the other classes.`
+                    : proposal
+                      ? `${message}\n\nCurrent proposed schedule: ${proposal.sections.map(s => `${s.courseCode} (${pad(s.uniqueId)})`).join(', ')}. Keep classes that still fit.`
+                      : message;
             const response = await fetch(ENDPOINT, {
                 method: 'POST',
                 signal: controller.signal,
@@ -365,19 +458,19 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         .slice(0, 35)
                         .map(r => ({ text: r.text.slice(0, 220), tags: r.tags, status: r.status })),
                     completed: [...taken].slice(0, 70),
-                    candidates: usable.map(({ section: c }) => ({
-                        ...aiFacts(facts.get(c.uniqueId)),
-                        id: c.uniqueId,
-                        code: c.courseCode,
-                        title: c.title,
-                        semester: semesterKey(c.semester),
-                        hours: c.creditHours,
-                        professor: c.instructors.join(', ').slice(0, 80),
-                        days: [...new Set(c.meetings.flatMap(m => m.days))],
-                        mode: c.modality,
-                        tags: c.requirementTags,
-                        gradePercent: grades.get(c.uniqueId)?.result.percent ?? null,
-                        gradeSample: grades.get(c.uniqueId)?.result.graded ?? null,
+                    candidates: forAi.map(({ section: s }) => ({
+                        ...aiFacts(facts.get(s.uniqueId)),
+                        id: s.uniqueId,
+                        code: s.courseCode,
+                        title: s.title,
+                        semester: semesterKey(s.semester),
+                        hours: s.creditHours,
+                        professor: s.instructors.join(', ').slice(0, 80),
+                        days: [...new Set(s.meetings.flatMap(m => m.days))],
+                        mode: s.modality,
+                        tags: s.requirementTags,
+                        gradePercent: grades.get(s.uniqueId)?.result.percent ?? null,
+                        gradeSample: grades.get(s.uniqueId)?.result.graded ?? null,
                     })),
                     planningRequest,
                     chatHistory: history.slice(-4).map(h => ({ request: h.context, summary: h.summary })),
@@ -387,11 +480,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         preferAsync: settings.preferAsync,
                         minGrade,
                         timeOfDay,
-                        avoidDays,
-                        asyncCount: prefs.asyncCount,
-                        easyGrades: prefs.easyGrades || (targeted && intent.easier),
-                        plannedElsewhere: prefs.plannedElsewhere,
-                        excludedCourses: prefs.excludedCourses,
+                        avoidDays: c.avoidDays,
+                        asyncCount: c.online,
+                        easyGrades: easyGrades || (targeted && intent.easier),
+                        plannedElsewhere: nowPrefs.plannedElsewhere,
+                        excludedCourses: c.excludedCourses,
+                        credits: { min: c.minCredits, max: c.maxCredits },
+                        excludedSubjects: c.excludedSubjects,
+                        backToBack: c.backToBack,
+                        coreFocus,
+                        accPlanned: nowPrefs.accPlanned,
                     },
                 }),
             });
@@ -402,13 +500,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             if (!response.ok) throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            const sections = new Map(usable.map(c => [c.section.uniqueId, c.section]));
+            const sections = new Map(usable.map(x => [x.section.uniqueId, x.section]));
             const recs = (payload.recommendations ?? []).filter(r => sections.has(r.id));
-            const allSections = new Map([...known.sections, ...sections]);
-            const allFacts = new Map([...known.facts, ...facts]);
+            const picks = new Set(recs.map(r => r.id));
             setKnown({
-                sections: allSections,
-                facts: allFacts,
+                sections: new Map([...known.sections, ...sections]),
+                facts: new Map([...known.facts, ...facts]),
                 grades: new Map([...known.grades, ...grades]),
                 picks: new Map([
                     ...known.picks,
@@ -419,50 +516,95 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             });
             setRecommendations(recs);
 
-            let summary = payload.summary ?? '';
-            if (refining && proposal) {
-                const next = fillSlots(
-                    kept,
-                    recs.map(r => r.id),
-                    sections,
-                    slots
-                );
-                const newcomers = next.slice(kept.length);
-                if (targeted && target && !newcomers.length && !intent.elsewhere && !intent.dropRequirement) {
-                    summary = `AI found no listed section that fits as a replacement for ${target.courseCode}, so it stays. ${summary}`;
-                } else {
-                    const why = newcomers.map(s => recs.find(r => r.id === s.uniqueId)?.reason).filter(Boolean)[0];
-                    const note =
-                        targeted && target
-                            ? newcomers.length
-                                ? `Replaced ${target.courseCode} with ${newcomers.map(s => s.courseCode).join(', ')}${why ? `: ${why}` : '.'} Everything else is unchanged.`
-                                : `Removed ${target.courseCode}; no listed section fit in its place.`
-                            : `Kept ${kept.length} class${kept.length === 1 ? '' : 'es'}; ${newcomers.length ? `added ${newcomers.map(s => s.courseCode).join(', ')}` : 'nothing fit the open places'}.`;
-                    pushVersion(next, note);
-                    summary = `${note} ${summary}`.trim();
-                }
-            } else {
-                // first proposal: a draft of nonconflicting, verified picks (unmet printed prerequisites stay out)
-                const draft = safeAiScheduleDraft(
-                    recs.map(r => r.id),
-                    [...sections.values()].filter(c => facts.get(c.uniqueId)?.prerequisite.status !== 'unmet'),
-                    16,
-                    settings.avoidFriday
-                );
-                if (draft.length)
-                    pushVersion(
-                        draft,
-                        proposal
-                            ? 'A new plan for your updated request (Undo brings back the previous one).'
-                            : `A first draft from AI's picks: no time conflicts, at most 16 credits. Click a class to change it.`
-                    );
+            // every real section compared so far, so the solver can consider alternatives, not just AI's picks
+            const nextPool = new Map(pool);
+            for (const x of usable) {
+                const g = grades.get(x.section.uniqueId)?.result;
+                nextPool.set(x.section.uniqueId, {
+                    section: x.section,
+                    applies: x.applies,
+                    prerequisite: x.prerequisite.status,
+                    gradePercent: g?.percent ?? null,
+                    gradeSample: g?.graded ?? 0,
+                    aiPicked: picks.has(x.section.uniqueId),
+                    possibleCore: recs.some(r => r.id === x.section.uniqueId && /\bcore\b/i.test(r.requirement)),
+                });
             }
+            setPool(nextPool);
+            const gradeOf = (s: SectionRecord) => nextPool.get(s.uniqueId)?.gradePercent ?? null;
+            const flags = { easyGrades: easyGrades || (targeted && intent.easier), coreFocus };
+            setProgress('Building a schedule that follows every rule…');
+            let result: SolveResult;
+            let why: string;
+            if (proposal && targeted && target) {
+                const stable = new Set(
+                    proposal.sections.filter(s => s.uniqueId !== target.uniqueId).map(s => s.uniqueId)
+                );
+                result = await solveSchedule(
+                    solverCandidates(
+                        [...nextPool.values()].filter(p => p.section.uniqueId !== target.uniqueId),
+                        flags
+                    ),
+                    c,
+                    {
+                        stable,
+                        allowNew: s => replacementFits(s, target, intent, gradeOf),
+                        signal: controller.signal,
+                        removedBy,
+                    }
+                );
+                why = `Replacing ${target.courseCode}.`;
+            } else if (proposal) {
+                result = await solveSchedule(solverCandidates(nextPool.values(), flags), c, {
+                    stable: new Set(proposal.sections.map(s => s.uniqueId)),
+                    signal: controller.signal,
+                    removedBy,
+                });
+                why = 'Updated for your message, keeping classes that still fit.';
+            } else {
+                result = await solveSchedule(solverCandidates(nextPool.values(), flags), c, {
+                    signal: controller.signal,
+                    removedBy,
+                });
+                why = `Built from ${nextPool.size} real UT sections that follow your rules.`;
+            }
+            const summary = `${showResult(result, proposal?.sections ?? null, why, c)} ${payload.summary ?? ''}`.trim();
             setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-6));
             setRequest('');
             setFocusId(null);
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
             else setError(failure instanceof Error ? failure.message : 'AI recommendations are unavailable.');
+        } finally {
+            if (abortRef.current === controller) abortRef.current = null;
+            setBusy(false);
+            setProgress('');
+        }
+    };
+
+    /** Local re-plan from sections already compared (no AI call): after editing the rules, or to fill up. */
+    const solveLocally = async (mode: 'rebuild' | 'fill') => {
+        if (!pool.size || busy) return;
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setBusy(true);
+        setError('');
+        setProgress(mode === 'fill' ? 'Finding a class to reach your minimum…' : 'Rebuilding with your rules…');
+        try {
+            const current = proposal?.sections ?? [];
+            const result = await solveSchedule(solverCandidates(pool.values()), constraints, {
+                ...(mode === 'fill' ? { fixed: current } : { stable: new Set(current.map(s => s.uniqueId)) }),
+                signal: controller.signal,
+                removedBy: hardFilterCounts(catalog, constraints),
+            });
+            showResult(
+                result,
+                proposal?.sections ?? null,
+                mode === 'fill' ? 'Added classes to reach your credit minimum.' : 'Rebuilt with your edited rules.'
+            );
+        } catch (failure) {
+            if (!controller.signal.aborted)
+                setError(failure instanceof Error ? failure.message : 'Could not rebuild the schedule.');
         } finally {
             if (abortRef.current === controller) abortRef.current = null;
             setBusy(false);
@@ -695,8 +837,65 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         {error}
                     </p>
                 )}
+                {(proposal || noSchedule || pool.size > 0 || understood.length > 0) && (
+                    <ConstraintsBar
+                        constraints={constraints}
+                        easyGrades={easyGrades}
+                        coreFocus={coreFocus}
+                        accPlanned={prefs.accPlanned}
+                        edited={Object.keys(overrides).length > 0}
+                        canRebuild={pool.size > 0}
+                        busy={busy}
+                        onChange={patch => setOverrides(o => ({ ...o, ...patch }))}
+                        onRebuild={() => void solveLocally('rebuild')}
+                        onReset={() => setOverrides({})}
+                    />
+                )}
+                {noSchedule && (
+                    <section className='glass-card no-schedule' role='alert' aria-label='No complete schedule found'>
+                        <h3>No complete schedule found</h3>
+                        <p className='small'>Fastlane will not show a schedule that breaks one of your rules.</p>
+                        <ul className='small'>
+                            {noSchedule.reasons.map(r => (
+                                <li key={r}>{r}</li>
+                            ))}
+                        </ul>
+                        <div className='row'>
+                            {noSchedule.suggestions.map(sug => (
+                                <button
+                                    key={sug.text}
+                                    type='button'
+                                    className='btn sm'
+                                    disabled={busy || !pool.size}
+                                    onClick={() => {
+                                        const patch = sug.patch;
+                                        setOverrides(o => ({
+                                            ...o,
+                                            ...(patch.avoidDays ? { avoidDays: patch.avoidDays } : {}),
+                                            ...(patch.maxCredits ? { maxCredits: patch.maxCredits } : {}),
+                                            ...(patch.online !== undefined ? { online: patch.online } : {}),
+                                            ...(patch.excludedSubjects
+                                                ? { excludedSubjects: patch.excludedSubjects }
+                                                : {}),
+                                        }));
+                                        setNoSchedule(null);
+                                    }}
+                                >
+                                    {sug.text}
+                                </button>
+                            ))}
+                        </div>
+                        <p className='small muted'>
+                            Pick a change, then “Rebuild schedule with these rules”, or tell Fastlane what to relax.
+                        </p>
+                    </section>
+                )}
                 {proposal && (
                     <ProposalPanel
+                        validation={validation}
+                        minCredits={constraints.minCredits}
+                        onFill={() => void solveLocally('fill')}
+                        canFill={pool.size > 0}
                         version={proposal}
                         index={versionIndex}
                         count={versions.length}

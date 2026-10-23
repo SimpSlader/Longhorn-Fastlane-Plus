@@ -218,9 +218,28 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
         expect(await card.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgba(255, 255, 255, 0.7)');
     }
 
-    // the AI's picks appear as a proposed week right away
+    // the demo catalog cannot reach 12 credits without Monday/Wednesday/Friday: Fastlane explains instead of
+    // presenting a short schedule, and offers concrete changes
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
+    const none = page.getByRole('alert', { name: 'No complete schedule found' });
+    await expect(none).toContainText('short of 12');
+    await expect(none.getByRole('button', { name: 'Allow classes on Wednesday' })).toBeVisible();
+    await expect(proposal).toHaveCount(0);
+    const rules = page.getByRole('region', { name: 'What Fastlane will follow' });
+    await expect(rules.getByRole('button', { name: 'W allowed' })).toHaveAttribute('aria-pressed', 'false');
+
+    // a follow-up lifts the day limit and keeps the earlier preferences (ACC plan, online count)
+    await box.fill('Actually Mondays, Wednesdays and Fridays are fine.');
+    await page.getByRole('button', { name: 'Ask Fastlane' }).click();
+    await expect.poll(() => sent.length).toBe(2);
+    const second = sent[1] as { chatHistory: Array<{ request: string }>; preferences: { avoidDays: string[] } };
+    expect(second.chatHistory[0]?.request).toContain('Macro through ACC');
+    expect(second.preferences.avoidDays).toEqual([]);
+
+    // now a complete schedule exists, checked against every rule
+
     await expect(proposal).toBeVisible();
+    await expect(proposal).toContainText('ALL RULES MET');
     await expect(proposal.getByRole('region', { name: 'Proposed weekly calendar' })).toBeVisible();
     await expect(proposal).toContainText('Version 1 of 1');
     const blocks = proposal.locator('.week-block, .course-pill');
@@ -237,6 +256,11 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await detail.getByRole('button', { name: 'Remove' }).click();
     await expect(proposal).toContainText('Version 2 of 2');
     await expect(proposal.locator('.diff-remove')).toHaveCount(1);
+    // dropping below 12 credits is flagged, saving is blocked, and a refill is offered
+    await expect(proposal).toContainText('DRAFT · NOT A COMPLETE SCHEDULE YET');
+    await expect(proposal.getByRole('alert')).toContainText('below the 12-credit minimum');
+    await expect(proposal.getByRole('button', { name: /Fill to 12\+ credits/ })).toBeVisible();
+    await expect(proposal.getByRole('button', { name: 'Save as a new schedule' })).toBeDisabled();
     await proposal.getByRole('button', { name: 'Undo' }).click();
     await expect(proposal).toContainText('Version 1 of 2');
 
@@ -248,8 +272,8 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await expect(page.locator('.focus-chip')).toContainText(`Replacing ${targetCode}`);
     await box.fill('Keep everything else, but replace this one course');
     await page.getByRole('button', { name: 'Update plan' }).click();
-    await expect.poll(() => sent.length).toBe(2);
-    const replace = sent[1] as { planningRequest: string; candidates: Array<{ code: string }> };
+    await expect.poll(() => sent.length).toBe(3);
+    const replace = sent[2] as { planningRequest: string; candidates: Array<{ code: string }> };
     expect(replace.planningRequest).toContain(`Replace only ${targetCode}`);
     // a replacement never brings back another section of a class that is kept
     const keptCodes = new Set(kept.map(t => t.split(' – ')[0]!.trim()).filter(c => c !== targetCode));
@@ -257,16 +281,6 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await expect(page.locator('.focus-chip')).toBeHidden();
     const outcome = page.locator('.proposal-diff, [role=alert], .chat-answer');
     await expect(outcome.last()).toBeVisible();
-
-    // a whole-plan follow-up keeps earlier preferences
-    await box.fill('Actually Fridays are fine.');
-    await expect(understood).toContainText('No classes on Monday, Wednesday');
-    await expect(understood).not.toContainText('Friday');
-    await page.getByRole('button', { name: 'Update plan' }).click();
-    await expect.poll(() => sent.length).toBe(3);
-    const third = sent[2] as { chatHistory: Array<{ request: string }>; preferences: { avoidDays: string[] } };
-    expect(third.chatHistory[0]?.request).toContain('Macro through ACC');
-    expect(third.preferences.avoidDays.sort()).toEqual(['M', 'W']);
 
     // a class can still go straight into the active schedule, with its own color
     const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);

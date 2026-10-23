@@ -2064,3 +2064,130 @@ button.course-pill {
 .ai-results-head {
     margin: 16px 0 8px;
 }
+
+/* Planner rules summary and validation */
+.constraints {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    margin: 12px 0;
+}
+.constraints-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+}
+.constraints-row:last-of-type {
+    justify-content: flex-start;
+}
+.constraints-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 22px;
+    align-items: flex-end;
+    font-size: 13px;
+}
+.constraints-grid > label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.constraints-inline {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+.constraints-inline input {
+    width: 54px;
+}
+.constraints-days {
+    display: flex;
+    gap: 4px;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    align-items: center;
+}
+.constraints-days legend {
+    font-size: 13px;
+    margin-bottom: 4px;
+    float: left;
+    width: 100%;
+}
+.day-chip {
+    min-width: 32px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: line-through;
+}
+.day-chip.on {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+.constraints-toggles {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.subject-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--bad) 10%, transparent);
+    color: var(--bad);
+}
+.subject-chip.muted {
+    padding-right: 10px;
+    background: color-mix(in srgb, var(--muted) 12%, transparent);
+    color: var(--muted);
+}
+.subject-chip button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+.subject-add {
+    width: 130px;
+    font-size: 12px;
+}
+.no-schedule {
+    border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+    margin: 12px 0;
+}
+.no-schedule h3 {
+    margin: 0 0 4px;
+    color: var(--bad);
+}
+.eyebrow.invalid {
+    color: var(--bad);
+}
+.proposal-errors {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bad) 9%, transparent);
+    color: var(--bad);
+}
+.proposal-errors ul,
+.proposal-warnings {
+    margin: 0 0 6px;
+    padding-left: 18px;
+}
+.proposal-warnings {
+    color: #a16207;
+}
