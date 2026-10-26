@@ -785,7 +785,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 />
             </label>
             <details className='more-filters'>
-                <summary className='small muted'>More filters</summary>
+                <summary className='small muted'>Time and grade filters</summary>
                 <div className='ai-quick-filters'>
                     <label>
                         Preferred class time

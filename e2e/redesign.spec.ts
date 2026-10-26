@@ -173,7 +173,12 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
     await page.getByRole('checkbox', { name: /I agree to send/ }).check();
     await page.getByRole('button', { name: 'Ask Fastlane' }).click();
-    await expect(page.getByRole('log', { name: 'Planning conversation' })).toContainText('listed sections');
+    // the reply is a conversation: it explains the result and offers quick follow-ups
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    await expect(log).toContainText("couldn't build a complete schedule");
+    await expect(
+        page.getByRole('group', { name: 'Quick replies' }).getByRole('button', { name: 'Wednesdays are fine' })
+    ).toBeVisible();
     const first = sent[0] as {
         planningRequest: string;
         completed: string[];
@@ -201,6 +206,8 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     expect(first.completed.every(c => fromIda.has(c) || scheduleCodes.includes(c))).toBe(true);
     expect(first.candidates.every(c => !c.days.some(d => ['M', 'W', 'F'].includes(d)))).toBe(true);
 
+    // AI suggestions that are not in a schedule are tucked away under "Other options"
+    await page.locator('details.other-options summary').click();
     // results show real UT sections with unique number, professor, schedule, grades and degree relevance
     const cards = page.locator('.ai-result');
     await expect(cards.first()).toBeVisible();
@@ -240,6 +247,15 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
 
     await expect(proposal).toBeVisible();
     await expect(proposal).toContainText('ALL RULES MET');
+    // the reply lists the schedule, and the class list below is exactly the schedule's classes
+    await expect(log).toContainText(/Here's a \d+-credit plan/);
+    const calendarClasses = await proposal
+        .locator('.week-block b, .course-pill')
+        .evaluateAll(els => [...new Set(els.map(e => (e.textContent ?? '').split(' – ')[0]!.trim()))].sort());
+    const listed = await page
+        .locator('.ai-result .class-card.in-plan .class-code')
+        .evaluateAll(els => els.map(e => (e.textContent ?? '').split('·')[0]!.trim()).sort());
+    expect(listed).toEqual(calendarClasses);
     await expect(proposal.getByRole('region', { name: 'Proposed weekly calendar' })).toBeVisible();
     await expect(proposal).toContainText('Version 1 of 1');
     const blocks = proposal.locator('.week-block, .course-pill');

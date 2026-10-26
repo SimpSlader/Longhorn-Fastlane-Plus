@@ -78,10 +78,23 @@ describe('ACC suggestions', () => {
         expect(codes[0]).toBe('ECO 304K'); // 41% A/A- at UT: the hardest
         expect(codes).toContain('PSY 301');
         expect(codes).not.toContain('ECO 420K'); // must be completed in residence (and has no TCCN equivalent)
-        expect(codes).not.toContain('M 408Q'); // must be taken in residence for the Economics BA
-        expect(out.blocked).toContain('M 408Q');
+        expect(codes).not.toContain('M 408Q'); // must be taken in residence (and UT lists no ACC equivalent)
         expect(out.suggestions[0]!.tccn).toBe('ECON 2302');
         expect(out.suggestions[0]!.cautions.join(' ')).toMatch(/18 ECO hours/);
+    });
+
+    it('keeps a course at UT when the IDA says it must be taken in residence', () => {
+        const audit = econAudit();
+        audit.requirements.push({
+            ...audit.requirements[0]!,
+            text: 'PSY 301 must be taken in residence',
+            status: 'not-started',
+            tags: [],
+            courses: [],
+        });
+        const out = accSuggestions({ audit, planned: [], gradeOf: grades });
+        expect(out.suggestions.map(s => s.ut)).not.toContain('PSY 301');
+        expect(out.blocked).toContain('PSY 301');
     });
 
     it('stays within the hours the residence rules leave', () => {
