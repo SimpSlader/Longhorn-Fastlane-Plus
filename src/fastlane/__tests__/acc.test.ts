@@ -161,4 +161,31 @@ describe('chat replies describe the schedule that is shown', () => {
         expect(text).toMatch(/allow classes on wednesday/);
         expect(quickReplies(false, false)[0]).toBe('Wednesdays are fine');
     });
+
+    it('fills open Core areas with standard Texas core courses, and follows UT’s government rule', () => {
+        // the real test IDA still needs Core 060 (U.S. history, HIS 315L done) and Core 070 (GOV 312L done)
+        const out = accSuggestions({ audit: realAudit(), planned: [], gradeOf: () => null });
+        const history = out.suggestions.find(s => s.requirement.startsWith('Core 060'));
+        expect(history?.tccn).toBe('HIST 1301'); // HIST 1302 = HIS 315L is already done
+        expect(history?.ut).toBe('HIS 315K');
+        expect(history?.cautions.join(' ')).toMatch(/core-transfer rule/);
+        // GOVT 2305/2306 don't combine with GOV 312L, so none is suggested for Core 070
+        expect(out.suggestions.some(s => s.ut.startsWith('GOV '))).toBe(false);
+        expect(out.notes.join(' ')).toMatch(/don’t combine with GOV 312L/);
+        // writing-flag requirements can't come from ACC
+        expect(out.suggestions.some(s => s.requirement.startsWith('Core 010'))).toBe(false);
+    });
+});
+
+describe('credit wording', () => {
+    it('"a minimum of 12–13" is a floor, "12–13" is a range', async () => {
+        const { requestedCredits } = await import('../core/chatPreferences');
+        expect(requestedCredits('Can you build me a schedule with a minimum of 12-13 credit hours')).toEqual({
+            min: 12,
+            max: 16,
+            floor: true,
+        });
+        expect(requestedCredits('12–13 credit hours')).toEqual({ min: 12, max: 13 });
+        expect(requestedCredits('at least 12 credits')).toEqual({ min: 12, max: 16, floor: true });
+    });
 });

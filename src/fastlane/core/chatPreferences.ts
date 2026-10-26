@@ -89,7 +89,7 @@ export interface PlanningPreferences {
     /** courses the student asked not to see */
     excludedCourses: string[];
     /** requested credit hours, e.g. "12–13 credit hours"; null = default 12–15 (never fewer than 12) */
-    credits: { min: number; max: number } | null;
+    credits: { min: number; max: number; floor?: boolean } | null;
     /** subject codes the student excluded ("no history classes" → HIS, plus subjects named History) */
     excludedSubjects: string[];
     /** words that exclude courses by title ("no history classes" also leaves out courses titled History) */
@@ -122,16 +122,22 @@ export const EMPTY_PREFERENCES: PlanningPreferences = {
 };
 
 /** Credit-hour range in a message: "12–13 credit hours", "12 to 15 hours", "15 credits", "at least 12 credits". */
-export function requestedCredits(message: string): { min: number; max: number } | null {
+export function requestedCredits(message: string): { min: number; max: number; floor?: boolean } | null {
     const t = message.toLowerCase();
-    const range = t.match(/\b(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs|sch)\b/);
+    const range = t.match(
+        /\b(?:(minimum of|minimum|min(?:imum)? of|at least|no less than)\s+)?(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs|sch)\b/
+    );
     if (range) {
-        const a = Number(range[1]);
-        const b = Number(range[2]);
+        const a = Number(range[2]);
+        const b = Number(range[3]);
+        // "a minimum of 12–13 credits" sets a floor, not a ceiling: more is fine up to the usual maximum
+        if (range[1]) return { min: Math.min(a, b), max: Math.max(a, b, 16), floor: true };
         return { min: Math.min(a, b), max: Math.max(a, b) };
     }
-    const atLeast = t.match(/\b(?:at least|minimum of|min(?:imum)?)\s*(\d{1,2})\s*(?:credit|credits|hours|hrs)\b/);
-    if (atLeast) return { min: Number(atLeast[1]), max: Math.max(Number(atLeast[1]), 16) };
+    const atLeast = t.match(
+        /\b(?:at least|minimum of|min(?:imum)?|no less than)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs)\b/
+    );
+    if (atLeast) return { min: Number(atLeast[1]), max: Math.max(Number(atLeast[1]), 16), floor: true };
     const single = t.match(/\b(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs)\b/);
     // a lone small number ("3 hours") is about a class, not the semester load
     if (single && Number(single[1]) >= 6) return { min: Number(single[1]), max: Number(single[1]) };
@@ -320,7 +326,9 @@ export function describePreferences(p: PlanningPreferences, dayNames: Record<Day
     if (p.excludedCourses.length) out.push(`Leaving out ${p.excludedCourses.join(', ')}`);
     if (p.credits)
         out.push(
-            `${p.credits.min === p.credits.max ? p.credits.min : `${p.credits.min}–${p.credits.max}`} credit hours`
+            p.credits.floor
+                ? `At least ${p.credits.min} credit hours (more is fine if the classes are worth it)`
+                : `${p.credits.min === p.credits.max ? p.credits.min : `${p.credits.min}–${p.credits.max}`} credit hours`
         );
     if (p.excludedSubjects.length)
         out.push(

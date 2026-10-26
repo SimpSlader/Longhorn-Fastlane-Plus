@@ -26,7 +26,13 @@ export interface ReplyInput {
     before: SectionRecord[] | null;
     report: NoScheduleReport | null;
     avoidDays: DayCode[];
-    acc?: { suggestions: AccSuggestion[]; room: AccRoom; residencyNote?: string; blocked: string[] } | null;
+    acc?: {
+        suggestions: AccSuggestion[];
+        room: AccRoom;
+        residencyNote?: string;
+        blocked: string[];
+        notes?: string[];
+    } | null;
     /** set when the student asked for ACC ideas, so an empty result is explained */
     accAsked?: boolean;
 }
@@ -63,16 +69,20 @@ export function composeReply(input: ReplyInput): string {
     }
     const acc = input.acc;
     if (acc?.suggestions.length) {
-        lines.push('To get ahead at ACC (check ACC’s schedule for online sections):');
+        lines.push(
+            input.accAsked
+                ? 'To get ahead at ACC (check ACC’s schedule for online sections):'
+                : 'If you want to get ahead, you could take these at ACC instead (online sections are common):'
+        );
         for (const s of acc.suggestions)
             lines.push(
-                `• ${s.tccn} → transfers as ${s.ut}${s.utARate != null ? ` (only ${Math.round(s.utARate)}% A/A− at UT)` : ''}`
+                `• ${s.tccn} → transfers as ${s.ut}, for ${s.requirement}${s.utARate != null ? ` (only ${Math.round(s.utARate)}% A/A− at UT)` : ''}`
             );
         lines.push(
-            'Those are left out of your UT schedule so you don’t take them twice. ACC credit counts only after UT evaluates your transcript.'
+            input.accAsked
+                ? 'Those are left out of your UT schedule so you don’t take them twice. ACC credit counts only after UT evaluates your transcript.'
+                : 'ACC credit counts only after UT evaluates your transcript. Say “take those at ACC” and I’ll keep them out of your UT schedule.'
         );
-        const cautions = [...new Set(acc.suggestions.flatMap(s => s.cautions))];
-        for (const c of cautions) lines.push(`Note: ${c}`);
     } else if (input.accAsked) {
         if (acc?.room.room === 0)
             lines.push(
@@ -80,9 +90,10 @@ export function composeReply(input: ReplyInput): string {
             );
         else
             lines.push(
-                'I didn’t find a course your IDA still needs that has an official ACC (TCCN) equivalent and may be taken outside UT.'
+                'I didn’t find a remaining requirement on your IDA that an ACC course can fill under UT’s transfer table.'
             );
     }
+    for (const n of acc?.notes ?? []) lines.push(`Note: ${n}`);
     if (acc?.blocked.length)
         lines.push(
             `Keep ${acc.blocked.join(', ')} at UT: your program requires ${acc.blocked.length === 1 ? 'it' : 'them'} in residence.`
