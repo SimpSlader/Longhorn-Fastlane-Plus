@@ -144,32 +144,35 @@ export function requestedCredits(message: string): { min: number; max: number; f
     return null;
 }
 
-/** Subjects named in "no history classes", "no ECO", "skip math courses", "nothing in economics". */
+/** Subjects named in "no history classes", "remove history", "drop the econ class", "nothing in economics". */
 export function requestedSubjectExclusions(
     message: string,
     subjects: Array<{ code: string; name: string }>
 ): { codes: string[]; words: string[] } {
-    const t = ` ${message.toLowerCase()} `;
+    const t = ` ${message.toLowerCase().replace(/[.!?;]/g, ' . ')} `;
     const codes = new Set<string>();
     const words = new Set<string>();
+    const subjectFor = (word: string) => {
+        const byCode = subjects.find(s => s.code.toLowerCase() === word);
+        if (byCode) return { codes: [byCode.code], word: '' };
+        const clean = word.replace(/[^a-z ]/g, '').trim();
+        if (clean.length < 3) return null;
+        const named = subjects.filter(s => new RegExp(`\\b${clean}\\b`).test(s.name.toLowerCase()));
+        return named.length ? { codes: named.map(s => s.code), word: clean } : null;
+    };
+    // the class noun is optional ("remove history"), so a phrase ends at punctuation or a joining word
     const re =
-        /\b(?:no|not|skip|avoid|without|exclude|nothing in)\s+(?:any\s+)?([a-z][a-z ,&/-]{1,50}?)\s+(?:classes|courses|class|course)\b/g;
+        /\b(?:no more|no|not|skip|avoid|without|exclude|nothing in|remove|drop|delete|take out|get rid of|don'?t want|do not want)\s+(?:any|the|my|all|those|that|these|this)?\s*([a-z][a-z ,&/-]{1,50}?)\s*(?:\b(?:classes|courses|class|course)\b|[.,]|\b(?:but|please|so|because|from|and keep|then|instead)\b|$)/g;
     for (let m = re.exec(t); m; m = re.exec(t)) {
         const phrase = (m[1] ?? '').trim();
         for (const part of phrase.split(/\s*(?:,|\/|\bor\b|\band\b|&)\s*/)) {
             const word = part.trim();
             if (word.length < 2) continue;
-            const byCode = subjects.find(s => s.code.toLowerCase() === word);
-            if (byCode) {
-                codes.add(byCode.code);
-                continue;
-            }
-            const named = subjects.filter(s =>
-                new RegExp(`\\b${word.replace(/[^a-z ]/g, '')}\\b`).test(s.name.toLowerCase())
-            );
-            if (!named.length) continue;
-            for (const s of named) codes.add(s.code);
-            words.add(word);
+            // the whole phrase first ("computer science"), then its first word ("history stuff")
+            const found = subjectFor(word) ?? subjectFor(word.split(' ')[0] ?? '');
+            if (!found) continue;
+            for (const c of found.codes) codes.add(c);
+            if (found.word) words.add(found.word);
         }
     }
     return { codes: [...codes], words: [...words] };
@@ -244,21 +247,25 @@ export function applyPlanningMessage(
     // "not ECO 304L", "skip HIS 315K", "already took GOV 310L", "exclude …"
     const excludedCourses = [...previous.excludedCourses];
     const exclude =
-        /\b(?:not|skip|exclude|without|already (?:took|taken|have)|don'?t (?:want|need))\s+([^.;!?]{1,80})/g;
+        /\b(?:not|skip|exclude|without|remove|drop|delete|take out|get rid of|already (?:took|taken|have)|don'?t (?:want|need))\s+([^.;!?]{1,80})/g;
     for (let m = exclude.exec(text); m; m = exclude.exec(text))
         for (const code of courseCodesIn(m[1] ?? '', subjects))
             if (!excludedCourses.includes(code) && !plannedElsewhere.some(p => p.code === code))
                 excludedCourses.push(code);
 
     const exclusions = requestedSubjectExclusions(message, subjectNames);
-    const allowedAgain = /\b(?:history|[a-z]+) (?:classes|courses) are (?:fine|ok(?:ay)?)\b/.exec(text);
+    const allowedAgain =
+        /\b([a-z]+) (?:classes |courses )?(?:are|is) (?:fine|ok(?:ay)?)\b/.exec(text) ??
+        /\b(?:add|bring|put) ([a-z]+) (?:classes |courses )?back\b/.exec(text);
     const excludedSubjects = [...new Set([...previous.excludedSubjects, ...exclusions.codes])];
     const excludedTitleWords = [...new Set([...previous.excludedTitleWords, ...exclusions.words])];
     if (allowedAgain) {
-        const word = allowedAgain[0].split(' ')[0] ?? '';
+        const word = allowedAgain[1] ?? '';
         const lifted = requestedSubjectExclusions(`no ${word} classes`, subjectNames);
-        for (const c of lifted.codes) excludedSubjects.splice(excludedSubjects.indexOf(c), 1);
-        for (const w of lifted.words) excludedTitleWords.splice(excludedTitleWords.indexOf(w), 1);
+        for (const c of lifted.codes)
+            if (excludedSubjects.includes(c)) excludedSubjects.splice(excludedSubjects.indexOf(c), 1);
+        for (const w of lifted.words)
+            if (excludedTitleWords.includes(w)) excludedTitleWords.splice(excludedTitleWords.indexOf(w), 1);
     }
     return {
         credits: requestedCredits(message) ?? previous.credits,

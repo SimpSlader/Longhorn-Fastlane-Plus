@@ -96,21 +96,13 @@ test('the exact request builds a valid Tue/Thu, 12–13 credit, no-history sched
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
     const box = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
     await box.fill(EXAMPLE);
-    // the interpreted rules are shown before anything is sent
-    const rules = page.getByRole('region', { name: 'What Fastlane will follow' });
-    await expect(rules.getByRole('spinbutton', { name: 'Minimum credits' })).toHaveValue('12');
-    await expect(rules.getByRole('spinbutton', { name: 'Maximum credits' })).toHaveValue('13');
-    for (const d of ['M', 'W', 'F'])
-        await expect(rules.getByRole('button', { name: `${d} allowed` })).toHaveAttribute('aria-pressed', 'false');
-    await expect(rules.getByRole('button', { name: 'Th allowed' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(rules).toContainText('HIS');
     await page.getByPlaceholder('Enter once to enable AI').fill('real-catalog-test');
     await page.getByRole('checkbox', { name: /I agree to send/ }).check();
-    await page.getByRole('button', { name: 'Ask Fastlane' }).click();
+    await page.getByRole('button', { name: 'Send message' }).click();
 
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
     await expect(proposal).toBeVisible({ timeout: 180_000 });
-    await expect(proposal).toContainText('ALL RULES MET');
+    await expect(proposal).toContainText('All rules met');
     // nothing sent to AI breaks a hard rule either
     expect(sent[0]!.candidates.every(c => !c.code.startsWith('HIS '))).toBe(true);
     expect(sent[0]!.candidates.every(c => c.days.every(d => d === 'T' || d === 'TH'))).toBe(true);
@@ -125,11 +117,11 @@ test('the exact request builds a valid Tue/Thu, 12–13 credit, no-history sched
     );
     expect(blocks.every(b => b.day === 'Tue' || b.day === 'Thu')).toBe(true);
     expect(blocks.some(b => b.text.startsWith('HIS '))).toBe(false);
-    const heading = await proposal.locator('h3').first().textContent();
+    const heading = await proposal.locator('.fl-plan-total').textContent();
     const credits = Number(heading?.match(/(\d+) credits/)?.[1]);
     expect(credits).toBeGreaterThanOrEqual(12);
     expect(credits).toBeLessThanOrEqual(13);
-    console.info('PROPOSAL', heading, JSON.stringify(blocks), await proposal.locator('.proposal-note').textContent());
+    console.info('PROPOSAL', heading, JSON.stringify(blocks), await page.locator('.bubble.bot').last().textContent());
     console.info('ASYNC', await proposal.locator('.course-pill').allTextContents());
-    await page.locator('.ai-advisor').screenshot({ path: 'test-results/redesign/real-exact-request.png' });
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/real-exact-request.png' });
 });

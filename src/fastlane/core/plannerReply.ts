@@ -7,7 +7,7 @@ import type { AccRoom, AccSuggestion } from './acc';
 import type { DayCode } from './meetings';
 import { formatMinutes } from './meetings';
 import type { NoScheduleReport } from './scheduleSolver';
-import { gapMinutes, isAsync } from './scheduleSolver';
+import { isAsync } from './scheduleSolver';
 import type { SectionRecord } from './sections';
 
 const DAY: Record<DayCode, string> = { M: 'Mon', T: 'Tue', W: 'Wed', TH: 'Thu', F: 'Fri', S: 'Sat', SU: 'Sun' };
@@ -19,6 +19,12 @@ function when(s: SectionRecord): string {
     const days = m.days.map(d => DAY[d]).join('/');
     const online = s.modality === 'live-online' ? ' (live online)' : '';
     return `${days} ${formatMinutes(m.start)}–${formatMinutes(m.end)}${online}`;
+}
+
+/** A requirement name short enough for one chat line. */
+function short(text: string): string {
+    const t = text.replace(/\s+/g, ' ').trim();
+    return t.length > 48 ? `${t.slice(0, 45).trimEnd()}…` : t;
 }
 
 export interface ReplyInput {
@@ -50,7 +56,6 @@ export function composeReply(input: ReplyInput): string {
         const facts = [
             `${input.sections.length} class${input.sections.length === 1 ? '' : 'es'}`,
             days.length ? `nothing on ${days.map(d => DAY[d]).join('/')}` : '',
-            `${Math.round(gapMinutes(input.sections))} min of gaps`,
         ].filter(Boolean);
         lines.push(`Here's a ${credits}-credit plan (${facts.join(', ')}):`);
         for (const s of input.sections) lines.push(`• ${s.courseCode} — ${when(s)}`);
@@ -69,19 +74,15 @@ export function composeReply(input: ReplyInput): string {
     }
     const acc = input.acc;
     if (acc?.suggestions.length) {
-        lines.push(
-            input.accAsked
-                ? 'To get ahead at ACC (check ACC’s schedule for online sections):'
-                : 'If you want to get ahead, you could take these at ACC instead (online sections are common):'
-        );
+        lines.push(input.accAsked ? 'Take these at ACC to get ahead:' : 'You could also get ahead at ACC:');
         for (const s of acc.suggestions)
             lines.push(
-                `• ${s.tccn} → transfers as ${s.ut}, for ${s.requirement}${s.utARate != null ? ` (only ${Math.round(s.utARate)}% A/A− at UT)` : ''}`
+                `• ${s.tccn} → UT ${s.ut} (${short(s.requirement)})${s.utARate != null ? `, only ${Math.round(s.utARate)}% A's at UT` : ''}`
             );
         lines.push(
             input.accAsked
-                ? 'Those are left out of your UT schedule so you don’t take them twice. ACC credit counts only after UT evaluates your transcript.'
-                : 'ACC credit counts only after UT evaluates your transcript. Say “take those at ACC” and I’ll keep them out of your UT schedule.'
+                ? 'I left those out of your UT schedule. ACC credit counts once UT evaluates your transcript.'
+                : 'Say “take those at ACC” and I’ll leave them out of your UT schedule.'
         );
     } else if (input.accAsked) {
         if (acc?.room.room === 0)
@@ -98,11 +99,7 @@ export function composeReply(input: ReplyInput): string {
         lines.push(
             `Keep ${acc.blocked.join(', ')} at UT: your program requires ${acc.blocked.length === 1 ? 'it' : 'them'} in residence.`
         );
-    lines.push(
-        input.sections
-            ? 'Want to change anything? Ask for easier classes, a different day, one more online class, or click a class to replace it.'
-            : 'Tell me which rule to relax, or click one of the options below.'
-    );
+    lines.push(input.sections ? 'Want any changes? Just tell me.' : 'Tell me what to relax, or tap an option below.');
     return lines.join('\n');
 }
 
