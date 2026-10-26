@@ -156,3 +156,47 @@ describe('adding a class from the chat', () => {
             expect(requestedAddition(m, subjects, names)).toBeNull();
     });
 });
+
+describe('Test C: a follow-up changes only the rule it mentions', () => {
+    const subjects = new Set(['ECO', 'GOV']);
+    it('"Friday mornings are fine" allows Friday before noon and keeps the 15 credits', async () => {
+        const { hardReason } = await import('../core/scheduleSolver');
+        const { sectionFixture } = await import('./factories');
+        const p = planningPreferences(
+            [
+                'Build a 15-credit schedule with no Friday classes, 1-2 online classes',
+                'Actually, Friday mornings are fine',
+            ],
+            subjects
+        );
+        expect(p.avoidDays).not.toContain('F');
+        expect(p.dayLimits.F).toEqual({ to: 12 * 60 });
+        expect(p.credits).toEqual({ min: 15, max: 15 });
+        expect(p.asyncCount).toEqual({ min: 1, max: 2 });
+        const rules = {
+            minCredits: 15,
+            maxCredits: 15,
+            creditsRequested: true,
+            avoidDays: p.avoidDays,
+            excludedSubjects: [],
+            excludedTitleWords: [],
+            excludedCourses: [],
+            term: '',
+            online: null,
+            backToBack: false,
+            dayLimits: p.dayLimits,
+        };
+        const morning = { ...sectionFixture(1, 'ECO 304K', { times: [['MWF', '9:00 a.m.-10:00 a.m.']] }), course: {} };
+        const afternoon = { ...sectionFixture(2, 'GOV 310L', { times: [['MWF', '2:00 p.m.-3:00 p.m.']] }), course: {} };
+        expect(hardReason(morning, rules)).toBeNull();
+        expect(hardReason(afternoon, rules)).toBe('time-window');
+    });
+
+    it('"as long as I\'m done before 1pm" and a later "Fridays are fine" lift the limit step by step', () => {
+        const before = planningPreferences(['No Fridays', "ok with Friday as long as I'm done before 1pm"], subjects);
+        expect(before.dayLimits.F).toEqual({ to: 13 * 60 });
+        const lifted = planningPreferences(['No Fridays', 'Friday mornings are fine', 'Fridays are fine'], subjects);
+        expect(lifted.dayLimits.F).toBeUndefined();
+        expect(lifted.avoidDays).not.toContain('F');
+    });
+});

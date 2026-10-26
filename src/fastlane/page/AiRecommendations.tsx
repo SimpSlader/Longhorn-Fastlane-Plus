@@ -1,18 +1,35 @@
 import type { Serialized } from '@chrome-extension-toolkit';
 import { Course } from '@shared/types/Course';
+import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
+import { academicSummary } from '../core/academic';
 import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
 import { accCandidateUtCodes, accSuggestions, programResidency, TCCN_SOURCE } from '../core/acc';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
-import { planningPreferences, requestedAddition } from '../core/chatPreferences';
+import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
-import { gradFacts, isAdviceQuestion } from '../core/gradPlan';
+import { gradFacts } from '../core/gradPlan';
+import { classifyIntent } from '../core/intent';
+import {
+    completedAnswer,
+    correctionAnswer,
+    currentClassesAnswer,
+    easiestAnswer,
+    gpaAnswer,
+    inProgressAnswer,
+    remainingAnswer,
+    sectionsAnswer,
+    totalAnswer,
+} from '../core/localAnswers';
 import type { DayCode } from '../core/meetings';
+import { formatMeeting } from '../core/meetings';
 import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/memory';
 import { composeReply, quickReplies } from '../core/plannerReply';
 import { subjectNameIndex } from '../core/prerequisites';
@@ -39,11 +56,13 @@ import {
 } from '../core/scheduleSolver';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
+import { aiErrorMessage, postAi, recordUsage } from '../services/aiClient';
 import { createPlanningSchedule } from '../services/planningService';
 import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
     FastlaneChatStore,
+    FastlaneFactsStore,
     FastlaneMemoryStore,
     FastlaneSettingsStore,
 } from '../storage/stores';
@@ -71,8 +90,6 @@ async function gradeForSection(section: SectionRecord): Promise<GradeStat | null
     return gradeStatFrom(course, await lookupGrades(course), 'A-');
 }
 
-const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
-const ADVISE_ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/advise';
 interface AiSelection {
     id: number;
     reason: string;
@@ -84,6 +101,7 @@ interface AiResponse {
     recommendations?: AiSelection[];
     summary?: string;
     error?: string;
+    retryAfterSeconds?: number;
 }
 
 const pad = (n: number) => String(n).padStart(5, '0');
@@ -136,6 +154,10 @@ interface ChatTurn {
     /** the request plus the class it was about, so preferences such as "through ACC" carry over */
     context: string;
     summary: string;
+    /** what kind of answer this was, so links and chips fit it */
+    kind?: 'schedule' | 'advice' | 'local' | 'chat';
+    /** the answer suggested ACC courses (show the source table link) */
+    acc?: boolean;
 }
 
 export default function AiRecommendations({ subject = '' }: { subject?: string }) {
@@ -205,6 +227,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     } | null>(null);
 
     // the conversation and its schedule survive leaving Find classes (restored once, then saved as it changes)
+    const activeSchedule = useActiveSchedule();
+    const reportedCompleted = FastlaneFactsStore.useStore(s => s.completedHours);
     const [restored, setRestored] = useState(false);
     useEffect(() => {
         let live = true;
@@ -344,6 +368,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 ...new Set([...p.avoidDays, ...(settings.avoidFriday ? (['F'] as const) : [])]),
             ],
             excludedSubjects,
+            dayLimits: p.dayLimits ?? {},
             // title words follow their subjects ("history" goes away when HIS is allowed again)
             excludedTitleWords: p.excludedTitleWords.filter(w =>
                 excludedSubjects.some(code => new RegExp(`\\b${w}\\b`, 'i').test(subjectForCode(code)?.name ?? ''))
@@ -496,8 +521,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
-    const say = (request: string, summary: string, context = request) => {
-        setHistory(previous => [...previous, { id: Date.now(), request, context, summary }].slice(-12));
+    const say = (request: string, summary: string, context = request, kind: ChatTurn['kind'] = 'local') => {
+        setHistory(previous => [...previous, { id: Date.now(), request, context, summary, kind }].slice(-20));
         setRequest('');
         setError('');
     };
@@ -561,11 +586,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setProgress('Checking UT’s official ACC transfer table…');
             const acc = await accForAudit(proposal?.sections.map(s => normalizeCourseCode(s.courseCode)) ?? []);
             setProgress('Thinking about your plan…');
-            const response = await fetch(ADVISE_ENDPOINT, {
-                method: 'POST',
-                signal: controller.signal,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const { response, payload } = await postAi<{ answer?: string; error?: string; retryAfterSeconds?: number }>(
+                'advise',
+                'advise',
+                {
                     accessCode: code,
                     question: message,
                     memory,
@@ -577,6 +601,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         program: facts.program,
                         hoursRequired: facts.hoursRequired,
                         hoursApplied: facts.hoursApplied,
+                        hoursCompleted: facts.hoursCompleted,
                         hoursRemaining: facts.hoursRemaining,
                         inProgressHours: facts.inProgressHours,
                         residenceRemaining: facts.residenceRemaining,
@@ -610,17 +635,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                               }
                             : null,
                     },
-                }),
-            });
-            const payload = (await response.json()) as { answer?: string; error?: string };
+                },
+                controller.signal
+            );
             if (response.status === 401 && savedCode) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInviteCode('');
             }
-            if (!response.ok || !payload.answer)
-                throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
+            if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            say(message, payload.answer);
+            say(message, payload.answer, message, 'advice');
             setLastKind('advice');
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
@@ -632,9 +656,179 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         }
     };
 
+    const localEvent = (task: string) =>
+        void recordUsage({
+            at: Date.now(),
+            task,
+            ok: true,
+            provider: null,
+            model: null,
+            cached: false,
+            fallback: false,
+            latencyMs: 0,
+            local: true,
+        });
+
+    /** Questions about the student's own records are answered here from the IDA and course data: no AI call,
+     *  nothing sent, no schedule built. Returns true when the message was answered. */
+    const answerLocally = async (message: string, intent: ReturnType<typeof classifyIntent>): Promise<boolean> => {
+        const summary = academicSummary(audit, reportedCompleted ? { completedHours: reportedCompleted } : {});
+        const simple: Partial<Record<typeof intent.kind, (s: typeof summary) => string>> = {
+            'completed-hours': completedAnswer,
+            'in-progress-hours': inProgressAnswer,
+            'total-hours': totalAnswer,
+            'remaining-hours': remainingAnswer,
+            gpa: gpaAnswer,
+            'current-classes': currentClassesAnswer,
+        };
+        const answer = simple[intent.kind];
+        if (answer) {
+            say(message, answer(summary), '');
+            localEvent(intent.kind);
+            return true;
+        }
+        if (intent.kind === 'correction' && intent.completedHours != null) {
+            const value = { value: intent.completedHours, at: Date.now() };
+            await FastlaneFactsStore.set('completedHours', value);
+            say(
+                message,
+                correctionAnswer(intent.completedHours, academicSummary(audit, { completedHours: value })),
+                ''
+            );
+            localEvent('correction');
+            return true;
+        }
+        if (intent.kind === 'course-sections') {
+            const sections = catalog
+                .filter(x => normalizeCourseCode(x.courseCode) === intent.course)
+                .sort((a, b) => a.uniqueId - b.uniqueId);
+            setBusy(true);
+            setProgress(`Looking up ${intent.course}…`);
+            try {
+                const grades = new Map(
+                    await Promise.all(
+                        sections
+                            .slice(0, 12)
+                            .map(async x => [x.uniqueId, (await gradeForSection(x))?.result.percent ?? null] as const)
+                    )
+                );
+                say(
+                    message,
+                    sectionsAnswer(intent.course, sections, x => grades.get(x.uniqueId) ?? null),
+                    ''
+                );
+            } finally {
+                setBusy(false);
+                setProgress('');
+            }
+            localEvent('course-sections');
+            return true;
+        }
+        if (intent.kind === 'easiest-class') {
+            setBusy(true);
+            setProgress('Comparing past grades…');
+            try {
+                let classes: Array<{ code: string; grade: number | null; sample: number }> = [];
+                if (proposal) {
+                    classes = await Promise.all(
+                        proposal.sections.map(async x => {
+                            const g = (await gradeForSection(x))?.result;
+                            return { code: x.courseCode, grade: g?.percent ?? null, sample: g?.graded ?? 0 };
+                        })
+                    );
+                } else if (activeSchedule?.courses.length) {
+                    classes = await Promise.all(
+                        activeSchedule.courses.map(async raw => {
+                            const c = new Course(raw as unknown as Serialized<Course>);
+                            const g = gradeStatFrom(c, await lookupGrades(c), 'A-')?.result;
+                            return {
+                                code: `${c.department} ${c.number}`,
+                                grade: g?.percent ?? null,
+                                sample: g?.graded ?? 0,
+                            };
+                        })
+                    );
+                }
+                say(message, easiestAnswer(classes), '');
+            } finally {
+                setBusy(false);
+                setProgress('');
+            }
+            localEvent('easiest-class');
+            return true;
+        }
+        return false;
+    };
+
+    /** General conversation: explanations and follow-ups, with only the context the question needs. */
+    const converse = async (message: string, code: string) => {
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setBusy(true);
+        setError('');
+        setProgress('Thinking…');
+        try {
+            // academic numbers go along only when the question is about the degree or credits
+            const needsAcademic = /\b(?:hours?|credits?|degree|graduat|semester|progress|transfer)\b/i.test(message);
+            const summary = academicSummary(audit);
+            const { response, payload } = await postAi<{ answer?: string; error?: string; retryAfterSeconds?: number }>(
+                'chat',
+                'chat',
+                {
+                    accessCode: code,
+                    message,
+                    memory,
+                    history: history.slice(-4).flatMap(h => [
+                        { role: 'student', text: h.request },
+                        { role: 'assistant', text: h.summary },
+                    ]),
+                    context: {
+                        academic:
+                            needsAcademic && summary.source
+                                ? {
+                                      hoursCompleted: summary.completedHours,
+                                      hoursInProgress: summary.inProgressHours,
+                                      hoursPlanned: summary.plannedHours,
+                                      program: audit?.program ?? '',
+                                  }
+                                : null,
+                        plan: proposal?.sections.map(x => ({
+                            code: x.courseCode,
+                            title: x.title,
+                            when: x.meetings.length ? x.meetings.map(formatMeeting).join('; ') : 'online, no set times',
+                            professor: x.instructors.join(', '),
+                            aRate: known.grades.get(x.uniqueId)?.result.percent ?? null,
+                            reason: known.picks.get(x.uniqueId)?.reason ?? '',
+                        })),
+                    },
+                },
+                controller.signal
+            );
+            if (response.status === 401 && savedCode) {
+                await FastlaneAiAccessStore.set('accessCode', '');
+                setInviteCode('');
+            }
+            if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
+            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            say(message, payload.answer, '', 'chat');
+        } catch (failure) {
+            if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
+            else setError(failure instanceof Error ? failure.message : 'Fastlane AI is unavailable right now.');
+        } finally {
+            if (abortRef.current === controller) abortRef.current = null;
+            setBusy(false);
+            setProgress('');
+        }
+    };
+
     const run = async (override?: string) => {
         if (busy) return;
         if (await handleMemory((override ?? request).trim())) return;
+        const asked = (override ?? request).trim();
+        const kind = asked
+            ? classifyIntent(asked, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal })
+            : null;
+        if (kind && !focus && (await answerLocally(asked, kind))) return;
         if (!consent) {
             setError('Check “I agree to send…” below first; Fastlane only contacts its AI after you agree.');
             return;
@@ -653,11 +847,15 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setError('Enter the beta invite code once. Fastlane will remember it on this device.');
             return;
         }
+        if (!focus && kind?.kind === 'chat') {
+            await converse(message, code);
+            return;
+        }
         if (!audit) {
             setError('Import your IDA on Degree progress before asking AI to plan your degree.');
             return;
         }
-        if (!focus && isAdviceQuestion(message)) {
+        if (!focus && kind?.kind === 'degree-planning') {
             await advise(message, code);
             return;
         }
@@ -751,7 +949,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                                 ? `\n${best.s.courseCode} historically gives ${Math.round(best.grade)}% A/A−.`
                                 : ''
                         }${credits > c.maxCredits ? `\nThat makes ${credits} credits, above your earlier max of ${c.maxCredits}.` : ''}`,
-                        `${message} Keep ${best.s.courseCode}.`
+                        `${message} Keep ${best.s.courseCode}.`,
+                        'schedule'
                     );
                 }
             } finally {
@@ -887,11 +1086,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     : proposal
                       ? `${message}\n\nCurrent proposed schedule: ${proposal.sections.map(s => `${s.courseCode} (${pad(s.uniqueId)})`).join(', ')}. Keep classes that still fit.`
                       : message;
-            const response = await fetch(ENDPOINT, {
-                method: 'POST',
-                signal: controller.signal,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const { response, payload } = await postAi<AiResponse>(
+                'recommend',
+                'recommend',
+                {
                     accessCode: code,
                     requirements: audit.requirements
                         .filter(r => r.status !== 'completed' && !r.tags.every(t => dropped.includes(t)))
@@ -932,14 +1130,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         coreFocus,
                         accPlanned: nowPrefs.accPlanned,
                     },
-                }),
-            });
-            const payload = (await response.json()) as AiResponse;
+                },
+                controller.signal
+            );
             if (response.status === 401 && savedCode) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInviteCode('');
             }
-            if (!response.ok) throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
+            if (!response.ok) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             const sections = new Map(usable.map(x => [x.section.uniqueId, x.section]));
             const recs = (payload.recommendations ?? []).filter(r => sections.has(r.id));
@@ -1029,7 +1227,19 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             setAccPlan(acc);
             const summary = showResult(result, proposal?.sections ?? null, why, rules, acc, nowPrefs.accSuggest);
-            setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-20));
+            setHistory(previous =>
+                [
+                    ...previous,
+                    {
+                        id: Date.now(),
+                        request: message,
+                        context,
+                        summary,
+                        kind: 'schedule' as const,
+                        acc: !!acc?.suggestions.length,
+                    },
+                ].slice(-20)
+            );
             setRequest('');
             setFocusId(null);
         } catch (failure) {
@@ -1122,11 +1332,25 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             ? `No ${subjectForCode(subject)?.name ?? subject} sections are listed for ${actualTerm || 'this semester'}.`
             : '';
     const needsSetup = !savedCode || !consent;
-    // "remember …" / "forget …" never contacts the AI, so it works before setup
+    // memory commands and questions about the student's own records never contact the AI, so they work before setup
+    const localOnly = (text: string) => {
+        if (memoryCommand(text)) return true;
+        const k = classifyIntent(text, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal }).kind;
+        return [
+            'completed-hours',
+            'in-progress-hours',
+            'total-hours',
+            'remaining-hours',
+            'gpa',
+            'current-classes',
+            'correction',
+            'course-sections',
+            'easiest-class',
+        ].includes(k);
+    };
     const canSend =
         !!request.trim() &&
-        (!!memoryCommand(request) ||
-            (consent && !!audit && catalog.length > 0 && (!!savedCode || !!inviteCode.trim())));
+        (localOnly(request) || (consent && !!audit && catalog.length > 0 && (!!savedCode || !!inviteCode.trim())));
     const chips: Array<{ text: string; onClick: () => void }> = busy
         ? []
         : noSchedule
@@ -1254,14 +1478,25 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 {history.map((turn, i) => (
                     <div key={turn.id} className='fl-turn'>
                         <p className='bubble me'>{turn.request}</p>
-                        <p className='bubble bot'>
-                            {turn.summary || 'Your schedule is below.'}
-                            {i === history.length - 1 && accPlan && accPlan.suggestions.length > 0 && (
+                        <div className='bubble bot md'>
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                    a: ({ href, children }) => (
+                                        <a href={href} target='_blank' rel='noopener noreferrer'>
+                                            {children}
+                                        </a>
+                                    ),
+                                }}
+                            >
+                                {turn.summary || 'Your schedule is below.'}
+                            </ReactMarkdown>
+                            {i === history.length - 1 && turn.acc && (
                                 <a className='bubble-link' href={TCCN_SOURCE} target='_blank' rel='noopener noreferrer'>
                                     UT’s official ACC transfer table ↗
                                 </a>
                             )}
-                        </p>
+                        </div>
                     </div>
                 ))}
                 {proposal && (

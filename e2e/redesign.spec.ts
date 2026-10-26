@@ -454,6 +454,135 @@ test('the chat fills the page, remembers preferences and answers graduate-early 
     await expect(page.getByRole('button', { name: 'Memory', exact: true })).toBeVisible();
 });
 
+test('questions about your records are answered from the IDA, accurately and without AI', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const aiCalls: string[] = [];
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/**', async route => {
+        aiCalls.push(route.request().url());
+        const url = route.request().url();
+        if (url.endsWith('/chat'))
+            return route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({
+                    answer: 'UGS courses are **signature courses** for first-years.',
+                    meta: {
+                        provider: 'groq',
+                        model: 'groq:openai/gpt-oss-20b',
+                        cached: false,
+                        fallback: false,
+                        latencyMs: 400,
+                    },
+                }),
+            });
+        if (url.endsWith('/ai-status'))
+            return route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({
+                    strictFreeTier: true,
+                    storage: 'memory',
+                    providers: {
+                        groq: { configured: true, eligible: true, reason: '' },
+                        gemini: {
+                            configured: true,
+                            eligible: false,
+                            reason: 'Strict free mode: set GEMINI_BILLING=off …',
+                        },
+                        cloudflare: {
+                            configured: false,
+                            eligible: false,
+                            reason: 'Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in Vercel.',
+                        },
+                        openai: { configured: false, eligible: false, reason: 'Not available' },
+                    },
+                    models: [
+                        {
+                            id: 'groq:openai/gpt-oss-20b',
+                            provider: 'groq',
+                            label: 'GPT-OSS 20B (Groq)',
+                            tier: 'fast',
+                            maxLevel: 3,
+                            limits: { rpd: 1000 },
+                            today: { requests: 3, tokens: 900, neurons: 0 },
+                            stats: { ok: 3, latencyMs: 800, lastOk: Date.now() },
+                            cooldownUntil: 0,
+                            cooldownReason: '',
+                            trainsOnFreeTier: false,
+                        },
+                    ],
+                    decisions: [
+                        {
+                            at: Date.now(),
+                            task: 'chat',
+                            level: 2,
+                            model: 'groq:openai/gpt-oss-20b',
+                            ok: true,
+                            reason: 'best score',
+                        },
+                    ],
+                    totals: { requests: 3, fallbacks: 1 },
+                    openai: { enabled: false, reason: 'Not available: documented for apps that run locally.' },
+                }),
+            });
+        return route.abort();
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const send = page.getByRole('button', { name: 'Send message' });
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    const last = () => log.locator('.bubble.bot').last();
+
+    // a typo-filled question, before any AI setup, gets the exact numbers: completed never includes in-progress
+    await input.fill('hyow many jours do i have compleeted?');
+    await send.click();
+    await expect(last()).toContainText("You've completed 64 credit hours so far");
+    await expect(last()).toContainText('another 12');
+    await expect(last()).toContainText('76 credit hours');
+    await expect(last()).not.toContainText('ACC');
+    await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
+    await expect(last().locator('strong').first()).toHaveText('64 credit hours');
+
+    await input.fill('What classes am I taking this semester?');
+    await send.click();
+    await expect(last().locator('li')).toHaveCount(4);
+    await input.fill("What's my GPA?");
+    await send.click();
+    await expect(last()).not.toContainText('schedule');
+
+    // a correction is acknowledged and kept beside the IDA, not over it
+    await input.fill("That's wrong. I've completed 9 credits, not 64.");
+    await send.click();
+    await expect(last()).toContainText("noted that you've completed 9 credit hours");
+    await expect(last()).toContainText('IDA shows 64');
+    expect(aiCalls).toEqual([]);
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-local-answers.png' });
+
+    // general questions go to the chat endpoint and render as Markdown
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    await input.fill('hi! what can you do?');
+    await send.click();
+    await expect(last().locator('strong')).toHaveText('signature courses');
+    expect(aiCalls.some(u => u.endsWith('/chat'))).toBe(true);
+
+    // Settings shows the AI dashboard: providers, why one is off, OpenAI unavailable, router settings
+    await page.getByRole('button', { name: 'Settings & privacy' }).click();
+    const groq = page.getByRole('region', { name: 'Groq' });
+    await expect(groq).toContainText('Connected');
+    await expect(groq).toContainText('Today 3 / 1000 requests');
+    await expect(page.getByRole('region', { name: 'Google Gemini' })).toContainText('GEMINI_BILLING=off');
+    await expect(page.getByRole('region', { name: 'OpenAI (Sign in with ChatGPT)' })).toContainText('Unavailable');
+    await page.getByRole('combobox', { name: 'How Fastlane chooses a model' }).selectOption('preserve');
+    await groq.getByRole('checkbox', { name: 'Use Groq' }).uncheck();
+    await page.locator('.ai-dashboard').screenshot({ path: 'test-results/redesign/ai-dashboard.png' });
+});
+
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);

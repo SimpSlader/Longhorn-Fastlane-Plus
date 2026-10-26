@@ -12,8 +12,10 @@ import PlusIcon from '~icons/ph/plus';
 import SparkleIcon from '~icons/ph/sparkle';
 import {
     FastlaneAiAccessStore,
+    FastlaneAiUsageStore,
     FastlaneAuditStore,
     FastlaneChatStore,
+    FastlaneFactsStore,
     FastlaneMemoryStore,
     FastlanePlanStore,
     FastlaneQueueStore,
@@ -122,7 +124,9 @@ function Workspace() {
         FastlaneQueueStore,
         FastlaneAuditStore,
         FastlaneAiAccessStore,
+        FastlaneAiUsageStore,
         FastlaneChatStore,
+        FastlaneFactsStore,
         FastlaneMemoryStore,
         FastlaneReminderStore,
     ]);

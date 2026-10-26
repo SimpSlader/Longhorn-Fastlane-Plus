@@ -11,6 +11,7 @@ import { deleteEverything, deleteFastlaneData, exportAll, importAll, validateExp
 import { sendFastlane } from '../services/runtime';
 import type { FastlaneSettings } from '../storage/stores';
 import { FastlaneSettingsStore } from '../storage/stores';
+import AiDashboard from './AiDashboard';
 import { downloadText, PageHead } from './common';
 import { useOnline } from './hooks';
 
@@ -164,6 +165,7 @@ export default function SettingsTab() {
                     )}
                 </div>
             </div>
+            <AiDashboard />
             <div className='card stack'>
                 <h2>Your data</h2>
                 <p className='small muted' style={{ margin: 0 }}>

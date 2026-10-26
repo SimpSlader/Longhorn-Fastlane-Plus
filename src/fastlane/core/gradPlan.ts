@@ -5,6 +5,7 @@
  */
 import type { ParsedAudit } from '../audit/types';
 import mccombs from '../data/mccombs-internal-transfer.json';
+import { academicSummary, realCourses } from './academic';
 import { accRoom } from './acc';
 import { normalizeCourseCode } from './requirements';
 
@@ -21,6 +22,8 @@ export interface GradFacts {
     program: string | null;
     hoursRequired: number | null;
     hoursApplied: number | null;
+    /** earned hours (graded or credit by exam), never including classes in progress */
+    hoursCompleted: number;
     hoursRemaining: number | null;
     /** in-progress UT hours this semester (already counted by UT once graded) */
     inProgressHours: number;
@@ -59,8 +62,9 @@ export function mccombsStatus(audit: ParsedAudit): McCombsStatus {
         return { name: p.name, status };
     });
     const longSemesters = new Set(
-        courses
-            .filter(c => !isTransfer(c.type, c.status) && (c.status === 'completed' || c.status === 'in-progress'))
+        realCourses(audit)
+            .filter(c => !isTransfer(c.type, c.status) && !/exam/i.test(c.type))
+            .filter(c => c.status === 'completed' || c.status === 'in-progress')
             .map(c => c.semester.trim().toLowerCase())
             .filter(s => /fall|spring/.test(s))
     );
@@ -85,16 +89,19 @@ export function gradScenarios(remaining: number, accRoomHours: number): GradScen
 
 export function gradFacts(audit: ParsedAudit, opts: { mccombs: boolean }): GradFacts {
     const room = accRoom(audit);
-    const inProgressHours = audit.courses
-        .filter(c => c.status === 'in-progress')
-        .reduce((n, c) => n + (Number.isFinite(c.hours) ? c.hours : 0), 0);
-    // hours still to earn after this semester's in-progress classes finish
-    const remaining = room.remaining == null ? null : Math.max(0, room.remaining - inProgressHours);
+    const summary = academicSummary(audit);
+    const inProgressHours = summary.inProgressHours;
+    // the IDA's "applied" figure may already include this semester's classes; only subtract them when it doesn't
+    const appliedIncludesCurrent =
+        summary.degree != null && summary.degree.applied >= summary.completedHours + inProgressHours - 1;
+    const remaining =
+        room.remaining == null ? null : Math.max(0, room.remaining - (appliedIncludesCurrent ? 0 : inProgressHours));
     const accRoomHours = room.room == null ? null : Math.min(room.room, remaining ?? room.room);
     return {
         program: audit.program ?? null,
-        hoursRequired: audit.creditHours.required ?? null,
-        hoursApplied: audit.creditHours.applied ?? null,
+        hoursRequired: audit.creditHours.required ?? summary.degree?.required ?? null,
+        hoursApplied: audit.creditHours.applied ?? summary.degree?.applied ?? null,
+        hoursCompleted: summary.completedHours,
         hoursRemaining: remaining,
         inProgressHours,
         residenceRemaining: room.residenceRemaining,

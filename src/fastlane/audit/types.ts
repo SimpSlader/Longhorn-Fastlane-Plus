@@ -39,6 +39,10 @@ export interface AuditCourse {
     hours: number;
     semester: string;
     status: AuditCourseStatus;
+    /** an equivalent or cross-listed course the IDA shows under a real enrollment (unique 00000); never extra hours */
+    equivalent?: boolean;
+    /** shown with a dash ("- 3"): excluded from the degree's hours */
+    excluded?: boolean;
 }
 
 export interface ParsedAudit {
@@ -53,6 +57,8 @@ export interface ParsedAudit {
     transfer: { accepted: AuditCourse[]; pending: AuditCourse[] };
     /** total degree hours if a rule states them */
     creditHours: { required?: number; applied?: number; remaining?: number; confidence: Confidence };
+    /** totals the IDA prints under its course list ("Total Hours Taken" includes planned courses) */
+    hourTotals?: { taken?: number; excluded?: number };
     /** prerequisite / restriction sentences found in the audit */
     restrictions: string[];
     warnings: string[];

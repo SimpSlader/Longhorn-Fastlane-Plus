@@ -41,6 +41,8 @@ export interface ScheduleConstraints {
     backToBack: boolean;
     /** latest start / earliest end limits from "morning only" style preferences (hard), minutes */
     timeWindow?: { from: number; to: number } | null;
+    /** one day allowed only part of the time ("Friday mornings are fine"), minutes */
+    dayLimits?: Partial<Record<DayCode, { from?: number; to?: number }>>;
 }
 
 export interface SolverCandidate {
@@ -107,6 +109,16 @@ export function hardReason(
         if (!s.meetings.length) return 'times-unknown';
         if (s.meetings.some(m => m.days.some(d => c.avoidDays.includes(d)))) return 'day';
         if (c.timeWindow && s.meetings.some(m => m.start < c.timeWindow!.from || m.end > c.timeWindow!.to))
+            return 'time-window';
+        const limits = c.dayLimits ?? {};
+        if (
+            s.meetings.some(m =>
+                m.days.some(d => {
+                    const l = limits[d];
+                    return !!l && ((l.to != null && m.end > l.to) || (l.from != null && m.start < l.from));
+                })
+            )
+        )
             return 'time-window';
     }
     if (prerequisite === 'unmet') return 'prerequisite';

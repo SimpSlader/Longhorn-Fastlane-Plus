@@ -39,6 +39,12 @@ export interface FastlaneSettings {
     themePreference: 'system' | 'light' | 'dark';
     /** set once the student picks a theme; until then the Light default applies */
     themeChosen: boolean;
+    /** how the AI router chooses a model: automatic, fastest, best quality, save free quota, or one model (testing) */
+    aiRouting: 'auto' | 'fastest' | 'quality' | 'preserve' | 'manual';
+    /** model id for manual routing, e.g. "groq:openai/gpt-oss-120b" */
+    aiManualModel: string;
+    /** providers the student turned off */
+    aiDisabledProviders: string[];
 }
 
 export const DEFAULT_SETTINGS: FastlaneSettings = {
@@ -57,6 +63,9 @@ export const DEFAULT_SETTINGS: FastlaneSettings = {
     targetSemester: null,
     themePreference: 'light',
     themeChosen: false,
+    aiRouting: 'auto',
+    aiManualModel: '',
+    aiDisabledProviders: [],
 };
 
 export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('FastlaneSettings', DEFAULT_SETTINGS);
@@ -72,6 +81,27 @@ export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { acce
 /** The planner chat and its proposed schedule, so leaving Find classes and coming back keeps the conversation.
  * Only in this Chrome profile; "New chat" clears it. */
 export const FastlaneChatStore = createLocalStore<{ session: unknown }>('FastlaneChat', { session: null });
+
+/** Facts the student reported themselves ("I've completed 9 credits"), kept beside, never over, the IDA. */
+export const FastlaneFactsStore = createLocalStore<{ completedHours: { value: number; at: number } | null }>(
+    'FastlaneFacts',
+    { completedHours: null }
+);
+
+/** The last AI requests' routing results (provider, model, cache, fallback) for the AI dashboard. No content. */
+export interface AiUsageEvent {
+    at: number;
+    task: string;
+    ok: boolean;
+    provider: string | null;
+    model: string | null;
+    cached: boolean;
+    fallback: boolean;
+    latencyMs: number;
+    /** answered in the browser without an AI call */
+    local?: boolean;
+}
+export const FastlaneAiUsageStore = createLocalStore<{ events: AiUsageEvent[] }>('FastlaneAiUsage', { events: [] });
 
 export const FastlaneMemoryStore = createLocalStore<{ items: string[] }>('FastlaneMemory', { items: [] });
 
