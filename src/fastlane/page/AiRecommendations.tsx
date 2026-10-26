@@ -4,12 +4,15 @@ import { useActiveSchedule } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
+import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
+import { accSuggestions, TCCN_SOURCE, tccnFor } from '../core/acc';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { describePreferences, planningPreferences } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
 import { DAY_NAMES, detectConflicts } from '../core/meetings';
+import { composeReply, quickReplies } from '../core/plannerReply';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
 import {
@@ -155,6 +158,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [pool, setPool] = useState<Map<number, PoolEntry>>(new Map());
     const [overrides, setOverrides] = useState<PlannerOverrides>({});
     const [noSchedule, setNoSchedule] = useState<NoScheduleReport | null>(null);
+    const [accPlan, setAccPlan] = useState<{
+        suggestions: AccSuggestion[];
+        room: AccRoom;
+        residency: ProgramResidency | null;
+        blocked: string[];
+    } | null>(null);
 
     const taken = useMemo(
         () =>
@@ -278,40 +287,41 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         }));
     const validation = proposal ? validateSchedule(proposal.sections, constraints, factsById) : null;
 
-    /** Puts a solver result on screen: a new version when valid, otherwise the "no complete schedule" report. */
+    /** Puts a solver result on screen (a new version when valid, otherwise the "no complete schedule" report)
+     *  and returns the chat reply, which always describes the schedule that is shown. */
     const showResult = (
         result: SolveResult,
         before: SectionRecord[] | null,
         why: string,
-        rules: ScheduleConstraints = constraints
+        rules: ScheduleConstraints = constraints,
+        acc: typeof accPlan = accPlan,
+        accAsked = false
     ): string => {
+        const reply = composeReply({
+            sections: result.best?.sections ?? null,
+            before,
+            report: result.report,
+            avoidDays: rules.avoidDays,
+            acc,
+            accAsked,
+        });
         if (!result.best) {
             setNoSchedule(result.report);
-            return `No complete schedule found. ${result.report?.reasons[0] ?? ''}`;
+            return reply;
         }
-        const check = validateSchedule(result.best.sections, rules, factsById);
         setNoSchedule(null);
-        const diff = diffSections(before ?? [], result.best.sections);
-        const label = (id: number) => known.sections.get(id)?.courseCode ?? pool.get(id)?.section.courseCode ?? pad(id);
-        const changes = before
-            ? [
-                  diff.removed.length ? `removed ${diff.removed.map(label).join(', ')}` : '',
-                  diff.added.length
-                      ? `added ${diff.added.map(id => result.best!.sections.find(s => s.uniqueId === id)?.courseCode).join(', ')}`
-                      : '',
-              ]
-                  .filter(Boolean)
-                  .join('; ') || 'no class needed to change'
-            : '';
-        const note = `${why}${changes ? ` ${changes[0]?.toUpperCase()}${changes.slice(1)}.` : ''} ${result.best.credits} credits, ${result.best.asyncCount} async online, ${Math.round(result.best.gapMinutes)} min of gaps. Checked against every rule${check.ok ? '' : ' (see warnings)'}.`;
-        pushVersion(result.best.sections, note.trim());
-        return note.trim();
+        const check = validateSchedule(result.best.sections, rules, factsById);
+        pushVersion(
+            result.best.sections,
+            `${why} ${result.best.credits} credits, ${result.best.asyncCount} async online, ${Math.round(result.best.gapMinutes)} min of gaps. Checked against every rule${check.ok ? '' : ' (see warnings)'}.`
+        );
+        return reply;
     };
 
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
-    const run = async () => {
+    const run = async (override?: string) => {
         if (!consent || busy) return;
-        const message = request.trim();
+        const message = (override ?? request).trim();
         if (!message) {
             setError(
                 focus
@@ -342,6 +352,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             );
             return;
         }
+        const prefsBefore = planningPreferences(
+            history.map(h => h.context),
+            subjectCodes,
+            UT_SUBJECTS
+        );
         const nowPrefs = planningPreferences([...history.map(h => h.context), message], subjectCodes, UT_SUBJECTS);
         let context = message;
         let dropped = droppedTags;
@@ -380,8 +395,38 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setProgress('Reading your request…');
         setSavedId(null);
         try {
+            // ACC ideas come first (from UT's official TCCN table), so the UT schedule doesn't duplicate them
+            let acc: typeof accPlan = null;
+            if (nowPrefs.accSuggest || nowPrefs.accPlanned) {
+                setProgress('Checking UT’s official ACC transfer table…');
+                const firstSection = new Map<string, SectionRecord>();
+                for (const sec of catalog) {
+                    const key = normalizeCourseCode(sec.courseCode);
+                    if (sec.course && !firstSection.has(key)) firstSection.set(key, sec);
+                }
+                const needed = [
+                    ...new Set(
+                        outstandingTags(audit)
+                            .map(t => t.match(/^COURSE (.+)$/i)?.[1])
+                            .filter((x): x is string => !!x && tccnFor(x).length > 0)
+                            .map(normalizeCourseCode)
+                    ),
+                ];
+                const utGrades = new Map<string, { percent: number; sample: number }>();
+                for (const code of needed) {
+                    const sec = firstSection.get(code);
+                    const stat = sec ? await gradeForSection(sec) : null;
+                    if (stat) utGrades.set(code, { percent: stat.result.percent, sample: stat.result.graded });
+                }
+                acc = accSuggestions({ audit, planned: [], gradeOf: code => utGrades.get(code) ?? null });
+                if (!nowPrefs.accSuggest) acc = { ...acc, suggestions: [] };
+            }
+            setAccPlan(acc);
+            const rules = acc?.suggestions.length
+                ? constraintsFor(nowPrefs, [...extraExcluded, ...acc.suggestions.map(x => x.ut)])
+                : c;
             // hard rules are applied to the whole catalog before anything is ranked
-            const removedBy = hardFilterCounts(catalog, c);
+            const removedBy = hardFilterCounts(catalog, rules);
             // replacing one class: the other proposed courses stay as they are (they're already in the pool)
             const keptCodes = new Set(
                 proposal && targeted && target
@@ -392,8 +437,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             );
             const eligible = catalog.filter(
                 section =>
-                    !hardReason(section, c) &&
-                    !(c.online?.max === 0 && isAsync(section)) &&
+                    !hardReason(section, rules) &&
+                    !(rules.online?.max === 0 && isAsync(section)) &&
                     !keptCodes.has(normalizeCourseCode(section.courseCode))
             );
             const allOutstanding = outstandingTags(audit).filter(t => !dropped.includes(t));
@@ -409,7 +454,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 // a proposal is its own semester plan: the current mock schedule neither blocks nor ranks it
                 active: [],
                 avoidFriday: false,
-                preferAsync: (c.online?.min ?? 0) > 0 || settings.preferAsync || (targeted && intent.online),
+                preferAsync: (rules.online?.min ?? 0) > 0 || settings.preferAsync || (targeted && intent.online),
                 subjectIndex,
             };
             const options = {
@@ -417,7 +462,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 onProgress: setProgress,
                 limit: 90,
                 // enough online options to choose from, without crowding out classes on the allowed days
-                asyncShare: Math.max(6, (c.online?.max ?? 2) * 5),
+                asyncShare: Math.max(6, (rules.online?.max ?? 2) * 5),
             };
             let picked = await chooseAiCandidates(input, gradeForSection, options);
             if (targetTags.length && !picked.chosen.some(x => x.applies.length))
@@ -480,14 +525,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         preferAsync: settings.preferAsync,
                         minGrade,
                         timeOfDay,
-                        avoidDays: c.avoidDays,
-                        asyncCount: c.online,
+                        avoidDays: rules.avoidDays,
+                        asyncCount: rules.online,
                         easyGrades: easyGrades || (targeted && intent.easier),
                         plannedElsewhere: nowPrefs.plannedElsewhere,
-                        excludedCourses: c.excludedCourses,
-                        credits: { min: c.minCredits, max: c.maxCredits },
-                        excludedSubjects: c.excludedSubjects,
-                        backToBack: c.backToBack,
+                        excludedCourses: rules.excludedCourses,
+                        credits: { min: rules.minCredits, max: rules.maxCredits },
+                        excludedSubjects: rules.excludedSubjects,
+                        backToBack: rules.backToBack,
                         coreFocus,
                         accPlanned: nowPrefs.accPlanned,
                     },
@@ -545,7 +590,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         [...nextPool.values()].filter(p => p.section.uniqueId !== target.uniqueId),
                         flags
                     ),
-                    c,
+                    rules,
                     {
                         stable,
                         allowNew: s => replacementFits(s, target, intent, gradeOf),
@@ -555,20 +600,22 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 );
                 why = `Replacing ${target.courseCode}.`;
             } else if (proposal) {
-                result = await solveSchedule(solverCandidates(nextPool.values(), flags), c, {
+                result = await solveSchedule(solverCandidates(nextPool.values(), flags), rules, {
                     stable: new Set(proposal.sections.map(s => s.uniqueId)),
+                    // "make it easier" should be free to swap classes for higher A rates
+                    stableWeight: intent.easier || nowPrefs.easyGrades !== prefsBefore.easyGrades ? 1 : 4,
                     signal: controller.signal,
                     removedBy,
                 });
                 why = 'Updated for your message, keeping classes that still fit.';
             } else {
-                result = await solveSchedule(solverCandidates(nextPool.values(), flags), c, {
+                result = await solveSchedule(solverCandidates(nextPool.values(), flags), rules, {
                     signal: controller.signal,
                     removedBy,
                 });
                 why = `Built from ${nextPool.size} real UT sections that follow your rules.`;
             }
-            const summary = `${showResult(result, proposal?.sections ?? null, why, c)} ${payload.summary ?? ''}`.trim();
+            const summary = showResult(result, proposal?.sections ?? null, why, rules, acc, nowPrefs.accSuggest);
             setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-6));
             setRequest('');
             setFocusId(null);
@@ -677,19 +724,32 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 <span className='eyebrow'>ASK FASTLANE</span>
                 <h2>What classes should I take?</h2>
                 <p className='small muted'>
-                    Describe your ideal week, degree needs, online classes, or planned ACC courses. Fastlane uses listed
-                    UT sections and your imported IDA, not invented classes. After the first answer, tell it what to
-                    change and it keeps the rest of your week.
+                    Chat with Fastlane about your week. It builds a real schedule from UT's listed classes and your IDA,
+                    then keeps adjusting it as you reply.
                 </p>
             </div>
             <div className='chat-history' role='log' aria-label='Planning conversation'>
                 {history.map(turn => (
                     <div key={turn.id} className='chat-turn'>
                         <p className='chat-user'>{turn.request}</p>
-                        <p className='chat-answer'>{turn.summary || 'Recommendations are shown below.'}</p>
+                        <p className='chat-answer'>{turn.summary || 'Your schedule is shown below.'}</p>
                     </div>
                 ))}
+                {busy && progress && (
+                    <p className='chat-answer typing' role='status'>
+                        {progress}
+                    </p>
+                )}
             </div>
+            {history.length > 0 && !busy && consent && (
+                <fieldset className='quick-replies' aria-label='Quick replies'>
+                    {quickReplies(!!proposal, prefs.accSuggest).map(text => (
+                        <button key={text} type='button' className='quick-reply' onClick={() => void run(text)}>
+                            {text}
+                        </button>
+                    ))}
+                </fieldset>
+            )}
             {focus && (
                 <p className='focus-chip' role='status'>
                     Replacing <b>{focus.courseCode}</b> ({pad(focus.uniqueId)}). Say why, for example “too late in the
@@ -724,27 +784,30 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     aria-label='Ask Fastlane for class recommendations'
                 />
             </label>
-            <div className='ai-quick-filters'>
-                <label>
-                    Preferred class time
-                    <select value={timeChoice} onChange={e => setTimeChoice(e.target.value as typeof timeChoice)}>
-                        <option value='any'>{prefs.timeOfDay === 'any' ? 'Any time' : 'From my message'}</option>
-                        <option value='morning'>Morning</option>
-                        <option value='afternoon'>Afternoon</option>
-                        <option value='evening'>Evening</option>
-                    </select>
-                </label>
-                <label>
-                    Historical A− or better
-                    <select value={minGrade} onChange={e => setMinGrade(Number(e.target.value))}>
-                        <option value={0}>Any / unknown</option>
-                        <option value={60}>60% or higher</option>
-                        <option value={70}>70% or higher</option>
-                        <option value={80}>80% or higher</option>
-                        <option value={90}>90% or higher</option>
-                    </select>
-                </label>
-            </div>
+            <details className='more-filters'>
+                <summary className='small muted'>More filters</summary>
+                <div className='ai-quick-filters'>
+                    <label>
+                        Preferred class time
+                        <select value={timeChoice} onChange={e => setTimeChoice(e.target.value as typeof timeChoice)}>
+                            <option value='any'>{prefs.timeOfDay === 'any' ? 'Any time' : 'From my message'}</option>
+                            <option value='morning'>Morning</option>
+                            <option value='afternoon'>Afternoon</option>
+                            <option value='evening'>Evening</option>
+                        </select>
+                    </label>
+                    <label>
+                        Historical A− or better
+                        <select value={minGrade} onChange={e => setMinGrade(Number(e.target.value))}>
+                            <option value={0}>Any / unknown</option>
+                            <option value={60}>60% or higher</option>
+                            <option value={70}>70% or higher</option>
+                            <option value={80}>80% or higher</option>
+                            <option value={90}>90% or higher</option>
+                        </select>
+                    </label>
+                </div>
+            </details>
             {understood.length > 0 && (
                 <ul className='understood small' aria-label='What Fastlane understood'>
                     {understood.map(line => (
@@ -753,7 +816,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 </ul>
             )}
             <div className='ai-advisor-body'>
-                <p className='small muted'>
+                <p className='small muted compared-note'>
                     {compared
                         ? `Last request compared ${compared.sections.toLocaleString()} listed UT sections that fit your preferences and sent the best matches from ${compared.subjects} subjects to AI.`
                         : `When you ask, Fastlane compares ${catalog.length.toLocaleString()} listed UT sections against your unfinished IDA requirements, printed prerequisites, schedule conflicts, preferences and historical grades.`}
@@ -827,11 +890,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         </button>
                     )}
                 </div>
-                {busy && progress && (
-                    <p role='status' className='small muted ai-progress'>
-                        {progress}
-                    </p>
-                )}
                 {error && (
                     <p className='notice warn' role='alert'>
                         {error}
@@ -931,48 +989,118 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         busy={busy}
                     />
                 )}
-                {recommendations.length > 0 && (
-                    <h3 className='ai-results-head'>
-                        {proposal && versions.length > 1 ? 'AI’s latest picks' : 'AI’s picks'}
-                    </h3>
+                {proposal && (
+                    <>
+                        <h3 className='ai-results-head'>Your schedule’s classes</h3>
+                        {proposal.sections.map(c => {
+                            const pick = known.picks.get(c.uniqueId);
+                            const applies = factsById.get(c.uniqueId)?.applies ?? [];
+                            return (
+                                <div key={c.uniqueId} className='ai-result'>
+                                    <ClassCard
+                                        section={c}
+                                        grade={known.grades.get(c.uniqueId)}
+                                        className='in-plan'
+                                        badge={
+                                            applies.length
+                                                ? `Matches your IDA: ${applies.slice(0, 2).join(', ')}`
+                                                : 'Possible elective'
+                                        }
+                                    >
+                                        <button type='button' className='btn ghost sm' onClick={() => togglePlan(c)}>
+                                            Remove from plan
+                                        </button>
+                                        <button
+                                            type='button'
+                                            className='btn ghost sm'
+                                            disabled={!schedule || !c.course}
+                                            onClick={() => void add(c)}
+                                        >
+                                            {savedId === c.uniqueId ? 'Added to schedule' : 'Add to my schedule'}
+                                        </button>
+                                    </ClassCard>
+                                    <p className='small muted why'>
+                                        {pick?.reason || 'Added by Fastlane to complete your week within your rules.'}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </>
                 )}
-                {recommendations.map(rec => {
-                    const c = known.sections.get(rec.id);
-                    if (!c) return null;
-                    const g = known.grades.get(c.uniqueId);
-                    const planned = inPlan.has(c.uniqueId);
-                    return (
-                        <div key={rec.id} className='ai-result'>
-                            <ClassCard
-                                section={c}
-                                grade={g}
-                                className={planned ? 'in-plan' : ''}
-                                badge={
-                                    known.facts.get(c.uniqueId)?.prerequisite.status === 'unmet'
-                                        ? 'Prerequisite needed'
-                                        : undefined
-                                }
-                            >
-                                <button
-                                    type='button'
-                                    className={`btn sm ${planned ? '' : 'primary'}`}
-                                    aria-pressed={planned}
-                                    onClick={() => togglePlan(c)}
-                                >
-                                    {planned ? 'In plan ✓' : 'Add to plan'}
-                                </button>
-                                <button
-                                    type='button'
-                                    className='btn ghost sm'
-                                    disabled={!schedule || !c.course}
-                                    onClick={() => void add(c)}
-                                >
-                                    {savedId === c.uniqueId ? 'Added to schedule' : 'Add to my schedule'}
-                                </button>
-                            </ClassCard>
-                        </div>
-                    );
-                })}
+                {accPlan && accPlan.suggestions.length > 0 && (
+                    <section className='acc-suggestions' aria-label='Classes to take at ACC'>
+                        <h3 className='ai-results-head'>Take at ACC to get ahead</h3>
+                        {accPlan.suggestions.map(x => (
+                            <article key={x.ut} className='class-card online async'>
+                                <div className='class-card-main'>
+                                    <div className='class-card-text'>
+                                        <h4 className='class-title'>{x.tccn} at ACC</h4>
+                                        <p className='class-code'>
+                                            Transfers to UT as {x.ut} <span>· {x.hours} credits</span>
+                                        </p>
+                                        <p className='class-time'>Counts toward: {x.requirement}</p>
+                                        {x.cautions.map(cn => (
+                                            <span key={cn} className='class-badge'>
+                                                {cn}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <div
+                                        className='class-grade'
+                                        title='UT’s historical A/A− rate for the UT equivalent'
+                                    >
+                                        {x.utARate != null ? (
+                                            <>
+                                                <b>{Math.round(x.utARate)}%</b>
+                                                <span>A/A− at UT</span>
+                                            </>
+                                        ) : (
+                                            <span>No UT grade data</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </article>
+                        ))}
+                        <p className='small muted'>
+                            From{' '}
+                            <a href={TCCN_SOURCE} target='_blank' rel='noopener noreferrer'>
+                                UT’s official Texas Common Course Numbering table
+                            </a>
+                            . Check ACC’s schedule for online sections. Credit counts only after UT evaluates your ACC
+                            transcript.
+                            {accPlan.room.room != null &&
+                                ` Your IDA leaves room for up to ${accPlan.room.room} hours from outside UT.`}
+                            {accPlan.residency && ` ${accPlan.residency.label}: ${accPlan.residency.note}`}
+                        </p>
+                    </section>
+                )}
+                {recommendations.some(r => !inPlan.has(r.id)) && (
+                    <details className='other-options'>
+                        <summary className='small'>
+                            Other options AI suggested ({recommendations.filter(r => !inPlan.has(r.id)).length})
+                        </summary>
+                        {recommendations
+                            .filter(r => !inPlan.has(r.id))
+                            .map(rec => {
+                                const c = known.sections.get(rec.id);
+                                if (!c) return null;
+                                return (
+                                    <div key={rec.id} className='ai-result'>
+                                        <ClassCard section={c} grade={known.grades.get(c.uniqueId)}>
+                                            <button
+                                                type='button'
+                                                className='btn sm primary'
+                                                onClick={() => togglePlan(c)}
+                                            >
+                                                Add to plan
+                                            </button>
+                                        </ClassCard>
+                                        {rec.reason && <p className='small muted why'>{rec.reason}</p>}
+                                    </div>
+                                );
+                            })}
+                    </details>
+                )}
                 {!busy && history.length > 0 && recommendations.length === 0 && !request.trim() && !proposal && (
                     <p className='small muted'>No verified candidate IDs were returned. Try broader UT sections.</p>
                 )}

@@ -1,0 +1,1217 @@
+{
+    "source": "https://catalog.utexas.edu/general-information/appendices/texas-common-course-numbering-system/texas-common-course-numbering-system.pdf",
+    "title": "UT Austin General Information Catalog, Appendix: Texas Common Course Numbering System",
+    "dated": "2026-10-22",
+    "about": "Austin Community College (ACC) and other Texas community colleges number courses with the Texas Common Course Numbering System (TCCN). This table is UT Austin's own list of the UT course each TCCN course transfers as. Credit is awarded only after UT evaluates an official transcript.",
+    "notes": [
+        "Lower-division biology credit may transfer as generic credit without a specific UT course number; applicability then needs department or dean approval.",
+        "Some UT equivalents carry a different credit value than the UT course; substitution toward degree requirements can be at the academic dean's discretion.",
+        "Texas community colleges have no direct equivalent of GOV 310L, 312L or 312P. GOVT 2305 + 2306 together fulfill core 070; either one combines with GOV 310L (but not with GOV 312L or 312P) to fulfill core 070."
+    ],
+    "pairs": [
+        {
+            "tccn": "BIOL 1106",
+            "ut": "BIO 106M"
+        },
+        {
+            "tccn": "BIOL 1107",
+            "ut": "BIO 106N"
+        },
+        {
+            "tccn": "BIOL 1306",
+            "ut": "BIO 311C"
+        },
+        {
+            "tccn": "BIOL 1307",
+            "ut": "BIO 311D"
+        },
+        {
+            "tccn": "BIOL 1308",
+            "ut": "BIO 302E"
+        },
+        {
+            "tccn": "BIOL 1309",
+            "ut": "BIO 302D"
+        },
+        {
+            "tccn": "BIOL 1322",
+            "ut": "NTR 306"
+        },
+        {
+            "tccn": "BIOL 1406",
+            "ut": "BIO 311C + 106M"
+        },
+        {
+            "tccn": "BIOL 1407",
+            "ut": "BIO 311D + 106N"
+        },
+        {
+            "tccn": "BIOL 1408",
+            "ut": "BIO 302E + BIO 1 Lab"
+        },
+        {
+            "tccn": "BIOL 1409",
+            "ut": "BIO 302D + BIO 1 Lab"
+        },
+        {
+            "tccn": "BIOL 2120",
+            "ut": "BIO 1 Lab"
+        },
+        {
+            "tccn": "BIOL 2120",
+            "ut": "MIC 116L"
+        },
+        {
+            "tccn": "BIOL 2121",
+            "ut": "BIO 1 Lab"
+        },
+        {
+            "tccn": "BIOL 2121",
+            "ut": "MIC 119K"
+        },
+        {
+            "tccn": "BIOL 2320",
+            "ut": "BIO 3 Soph"
+        },
+        {
+            "tccn": "BIOL 2320",
+            "ut": "MIC 316"
+        },
+        {
+            "tccn": "BIOL 2321",
+            "ut": "BIO 3 Soph"
+        },
+        {
+            "tccn": "ACCT 2301",
+            "ut": "ACC 311"
+        },
+        {
+            "tccn": "BIOL 2321",
+            "ut": "MIC 319"
+        },
+        {
+            "tccn": "ACCT 2302",
+            "ut": "ACC 312"
+        },
+        {
+            "tccn": "BIOL 2401",
+            "ut": "BIO 4 SOPH"
+        },
+        {
+            "tccn": "ACCT 2401",
+            "ut": "ACC 411"
+        },
+        {
+            "tccn": "BIOL 2402",
+            "ut": "BIO 4 SOPH"
+        },
+        {
+            "tccn": "ACCT 2402",
+            "ut": "ACC 412"
+        },
+        {
+            "tccn": "BIOL 2420",
+            "ut": "BIO 3 Soph"
+        },
+        {
+            "tccn": "ANTH 2301",
+            "ut": "ANT 301"
+        },
+        {
+            "tccn": "BIOL 2420",
+            "ut": "MIC 316"
+        },
+        {
+            "tccn": "ANTH 2302",
+            "ut": "ANT 304"
+        },
+        {
+            "tccn": "ANTH 2351",
+            "ut": "ANT 302"
+        },
+        {
+            "tccn": "BIOL 2421",
+            "ut": "BIO 3 Soph"
+        },
+        {
+            "tccn": "ANTH 2401",
+            "ut": "ANT 401"
+        },
+        {
+            "tccn": "BIOL 2421",
+            "ut": "MIC 319"
+        },
+        {
+            "tccn": "ARAB 1411",
+            "ut": "ARA 406"
+        },
+        {
+            "tccn": "ARAB 1412",
+            "ut": "ARA 407"
+        },
+        {
+            "tccn": "CHEM 1109",
+            "ut": "CH 104M"
+        },
+        {
+            "tccn": "ARAB 2311",
+            "ut": "ARA 312K"
+        },
+        {
+            "tccn": "CHEM 1111",
+            "ut": "CH 104M"
+        },
+        {
+            "tccn": "ARAB 2312",
+            "ut": "ARA 312L"
+        },
+        {
+            "tccn": "CHEM 1112",
+            "ut": "CH 104N"
+        },
+        {
+            "tccn": "ARCH 1301",
+            "ut": "ARC 318K"
+        },
+        {
+            "tccn": "CHEM 1309",
+            "ut": "CH 301"
+        },
+        {
+            "tccn": "ARCH 1302",
+            "ut": "ARC 318L"
+        },
+        {
+            "tccn": "CHEM 1311",
+            "ut": "CH 301"
+        },
+        {
+            "tccn": "ARCH 1311",
+            "ut": "ARC 308"
+        },
+        {
+            "tccn": "CHEM 1312",
+            "ut": "CH 302"
+        },
+        {
+            "tccn": "ARTS 1301",
+            "ut": "ARH 301"
+        },
+        {
+            "tccn": "CHEM 1411",
+            "ut": "CH 301 + CH 104M"
+        },
+        {
+            "tccn": "ARTS 1303",
+            "ut": "ARH 302"
+        },
+        {
+            "tccn": "CHEM 1412",
+            "ut": "CH 302 + CH 104N"
+        },
+        {
+            "tccn": "ARTS 1304",
+            "ut": "ARH 303"
+        },
+        {
+            "tccn": "CHEM 2123",
+            "ut": "CH 110K"
+        },
+        {
+            "tccn": "ARTS 1311",
+            "ut": "ART 312C"
+        },
+        {
+            "tccn": "CHEM 2125",
+            "ut": "CH 110L"
+        },
+        {
+            "tccn": "ARTS 1312",
+            "ut": "ART 313C"
+        },
+        {
+            "tccn": "CHEM 2323",
+            "ut": "CH 320M"
+        },
+        {
+            "tccn": "ARTS 1316",
+            "ut": "ART 311C"
+        },
+        {
+            "tccn": "CHEM 2325",
+            "ut": "CH 320N, CH 310N"
+        },
+        {
+            "tccn": "ARTS 1317",
+            "ut": "ART 315K"
+        },
+        {
+            "tccn": "CHEM 2423",
+            "ut": "CH 320M + CH 110K"
+        },
+        {
+            "tccn": "ARTS 2316",
+            "ut": "ART 311K"
+        },
+        {
+            "tccn": "CHEM 2425",
+            "ut": "CH 320N + CH 110K, CH 310N"
+        },
+        {
+            "tccn": "ARTS 2323",
+            "ut": "ART 316K"
+        },
+        {
+            "tccn": "CHIN 1411",
+            "ut": "CHI 406"
+        },
+        {
+            "tccn": "ARTS 2326",
+            "ut": "ART 313K"
+        },
+        {
+            "tccn": "CHIN 1412",
+            "ut": "CHI 407"
+        },
+        {
+            "tccn": "ARTS 2333",
+            "ut": "ART 310P"
+        },
+        {
+            "tccn": "CHIN 2311",
+            "ut": "CHI 312K"
+        },
+        {
+            "tccn": "ARTS 2356",
+            "ut": "ART 317K"
+        },
+        {
+            "tccn": "CHIN 2312",
+            "ut": "CHI 312L"
+        },
+        {
+            "tccn": "ASTR 1103",
+            "ut": "AST 103L"
+        },
+        {
+            "tccn": "COMM 1307",
+            "ut": "J 308S"
+        },
+        {
+            "tccn": "ASTR 1104",
+            "ut": "AST 1 Lab"
+        },
+        {
+            "tccn": "COMM 1316",
+            "ut": "COM 316"
+        },
+        {
+            "tccn": "ASTR 1303",
+            "ut": "AST 301"
+        },
+        {
+            "tccn": "COMM 2302",
+            "ut": "J 301F"
+        },
+        {
+            "tccn": "ASTR 1304",
+            "ut": "AST 309S"
+        },
+        {
+            "tccn": "COMM 2366",
+            "ut": "RTF 306"
+        },
+        {
+            "tccn": "ASTR 1403",
+            "ut": "AST 301 + AST 103L"
+        },
+        {
+            "tccn": "DANC 1151",
+            "ut": "T D 112P"
+        },
+        {
+            "tccn": "ASTR 1404",
+            "ut": "AST 309S + AST 1 Lab"
+        },
+        {
+            "tccn": "DANC 1241",
+            "ut": "T D 212F"
+        },
+        {
+            "tccn": "BCIS 1305",
+            "ut": "MIS 310"
+        },
+        {
+            "tccn": "DANC 1245",
+            "ut": "T D 212C"
+        },
+        {
+            "tccn": "BCIS 1405",
+            "ut": "MIS 410"
+        },
+        {
+            "tccn": "DANC 2151",
+            "ut": "T D 112P"
+        },
+        {
+            "tccn": "DANC 2241",
+            "ut": "T D 212G"
+        },
+        {
+            "tccn": "GEOL 1305",
+            "ut": "GEO 302P"
+        },
+        {
+            "tccn": "DANC 2245",
+            "ut": "T D 212D"
+        },
+        {
+            "tccn": "GEOL 1345",
+            "ut": "MNS 307"
+        },
+        {
+            "tccn": "DRAM 1120",
+            "ut": "T D 114P"
+        },
+        {
+            "tccn": "GEOL 1347",
+            "ut": "GRG 301K"
+        },
+        {
+            "tccn": "DRAM 1121",
+            "ut": "T D 114P"
+        },
+        {
+            "tccn": "GEOL 1401",
+            "ut": "GEO 302K + GEO 1 Lab"
+        },
+        {
+            "tccn": "DRAM 1310",
+            "ut": "T D 301"
+        },
+        {
+            "tccn": "GEOL 1402",
+            "ut": "GEO 302K + GEO 1 Lab"
+        },
+        {
+            "tccn": "DRAM 1330",
+            "ut": "T D 314C"
+        },
+        {
+            "tccn": "GEOL 1403",
+            "ut": "GEO 401"
+        },
+        {
+            "tccn": "DRAM 1351",
+            "ut": "T D 313C"
+        },
+        {
+            "tccn": "GEOL 1404",
+            "ut": "GEO 405"
+        },
+        {
+            "tccn": "DRAM 1352",
+            "ut": "T D 313D"
+        },
+        {
+            "tccn": "GEOL 1405",
+            "ut": "GEO 302P + 1 Lab"
+        },
+        {
+            "tccn": "DRAM 2120",
+            "ut": "T D 114P"
+        },
+        {
+            "tccn": "GEOL 1445",
+            "ut": "MNS 307 + MNS 1 Lab"
+        },
+        {
+            "tccn": "DRAM 2121",
+            "ut": "T D 114P"
+        },
+        {
+            "tccn": "GEOL 1447",
+            "ut": "GRG 401K"
+        },
+        {
+            "tccn": "DRAM 2331",
+            "ut": "T D 314M"
+        },
+        {
+            "tccn": "GERM 1411",
+            "ut": "GER 406"
+        },
+        {
+            "tccn": "DRAM 2336",
+            "ut": "T D 303C"
+        },
+        {
+            "tccn": "GERM 1412",
+            "ut": "GER 407"
+        },
+        {
+            "tccn": "DRAM 2361",
+            "ut": "T D 317C"
+        },
+        {
+            "tccn": "GERM 2311",
+            "ut": "GER 312K"
+        },
+        {
+            "tccn": "DRAM 2362",
+            "ut": "T D 317D"
+        },
+        {
+            "tccn": "GERM 2312",
+            "ut": "GER 312L"
+        },
+        {
+            "tccn": "DRAM 2366",
+            "ut": "RTF 306"
+        },
+        {
+            "tccn": "GOVT 2305",
+            "ut": "GOV 305C"
+        },
+        {
+            "tccn": "ECON 2301",
+            "ut": "ECO 304L"
+        },
+        {
+            "tccn": "GOVT 2306",
+            "ut": "GOV 306C"
+        },
+        {
+            "tccn": "ECON 2302",
+            "ut": "ECO 304K"
+        },
+        {
+            "tccn": "HECO 1322",
+            "ut": "NTR 306"
+        },
+        {
+            "tccn": "EDUC 1100",
+            "ut": "EDP 104"
+        },
+        {
+            "tccn": "HIST 1301",
+            "ut": "HIS 315K"
+        },
+        {
+            "tccn": "EDUC 1200",
+            "ut": "EDP 204"
+        },
+        {
+            "tccn": "HIST 1302",
+            "ut": "HIS 315L"
+        },
+        {
+            "tccn": "EDUC 1300",
+            "ut": "EDP 304"
+        },
+        {
+            "tccn": "HIST 2311",
+            "ut": "HIS 309K"
+        },
+        {
+            "tccn": "ENGL 1301",
+            "ut": "RHE 306"
+        },
+        {
+            "tccn": "HIST 2312",
+            "ut": "HIS 309L"
+        },
+        {
+            "tccn": "ENGL 1302",
+            "ut": "RHE 309J"
+        },
+        {
+            "tccn": "HIST 2321",
+            "ut": "HIS 301F"
+        },
+        {
+            "tccn": "ENGL 2311",
+            "ut": "RHE 317"
+        },
+        {
+            "tccn": "HIST 2322",
+            "ut": "HIS 301J"
+        },
+        {
+            "tccn": "ENGL 2321",
+            "ut": "E 316L"
+        },
+        {
+            "tccn": "HIST 2327",
+            "ut": "HIS 317L"
+        },
+        {
+            "tccn": "ENGL 2322",
+            "ut": "E 316L"
+        },
+        {
+            "tccn": "HIST 2328",
+            "ut": "HIS 314K"
+        },
+        {
+            "tccn": "ENGL 2323",
+            "ut": "E 316L"
+        },
+        {
+            "tccn": "HIST 2381",
+            "ut": "HIS 317L"
+        },
+        {
+            "tccn": "ENGL 2326",
+            "ut": "E 316M"
+        },
+        {
+            "tccn": "HIST 2382",
+            "ut": "HIS 317L"
+        },
+        {
+            "tccn": "ENGL 2327",
+            "ut": "E 316M"
+        },
+        {
+            "tccn": "HUMA 1315",
+            "ut": "F A 310"
+        },
+        {
+            "tccn": "ENGL 2328",
+            "ut": "E 316M"
+        },
+        {
+            "tccn": "ITAL 1411",
+            "ut": "ITL 406"
+        },
+        {
+            "tccn": "ENGL 2331",
+            "ut": "E 316N"
+        },
+        {
+            "tccn": "ITAL 1412",
+            "ut": "ITL 407"
+        },
+        {
+            "tccn": "ENGL 2332",
+            "ut": "E 316N"
+        },
+        {
+            "tccn": "ITAL 2311",
+            "ut": "ITL 312K"
+        },
+        {
+            "tccn": "ENGL 2333",
+            "ut": "E 316N"
+        },
+        {
+            "tccn": "ITAL 2312",
+            "ut": "ITL 312L"
+        },
+        {
+            "tccn": "ENGL 2341",
+            "ut": "E 314L"
+        },
+        {
+            "tccn": "JAPN 1411",
+            "ut": "JPN 406"
+        },
+        {
+            "tccn": "ENGL 2351",
+            "ut": "E 314V (Topic 3)"
+        },
+        {
+            "tccn": "JAPN 1412",
+            "ut": "JPN 407"
+        },
+        {
+            "tccn": "ENGR 1204",
+            "ut": "M E 210"
+        },
+        {
+            "tccn": "JAPN 2311",
+            "ut": "JPN 312K"
+        },
+        {
+            "tccn": "ENGR 1304",
+            "ut": "M E 310"
+        },
+        {
+            "tccn": "JAPN 2312",
+            "ut": "JPN 312L"
+        },
+        {
+            "tccn": "ENGR 2301",
+            "ut": "E M 306"
+        },
+        {
+            "tccn": "KINE 1306",
+            "ut": "KIN 313 (Topic 1)"
+        },
+        {
+            "tccn": "ENGR 2302",
+            "ut": "E M 311M"
+        },
+        {
+            "tccn": "KINE 1308",
+            "ut": "KIN 319K (Topic 2)"
+        },
+        {
+            "tccn": "ENGR 2305",
+            "ut": "ECE 302"
+        },
+        {
+            "tccn": "KINE 1321",
+            "ut": "KIN 319K (Topic 1)"
+        },
+        {
+            "tccn": "ENGR 2332",
+            "ut": "E M 319"
+        },
+        {
+            "tccn": "KINE 1331",
+            "ut": "KIN 314"
+        },
+        {
+            "tccn": "ENGR 2401",
+            "ut": "E M 406"
+        },
+        {
+            "tccn": "KINE 2356",
+            "ut": "KIN 312 (Topic 2)"
+        },
+        {
+            "tccn": "ENGR 2402",
+            "ut": "E M 411M"
+        },
+        {
+            "tccn": "KORE 1411",
+            "ut": "KOR 406"
+        },
+        {
+            "tccn": "ENGR 2405",
+            "ut": "ECE 402"
+        },
+        {
+            "tccn": "KORE 1412",
+            "ut": "KOR 407"
+        },
+        {
+            "tccn": "ENVR 1301",
+            "ut": "GEO 302P"
+        },
+        {
+            "tccn": "KORE 2311",
+            "ut": "KOR 312K"
+        },
+        {
+            "tccn": "ENVR 1401",
+            "ut": "GEO 302P + GEO 1 Lab"
+        },
+        {
+            "tccn": "KORE 2312",
+            "ut": "KOR 312L"
+        },
+        {
+            "tccn": "FREN 1411",
+            "ut": "FR 406"
+        },
+        {
+            "tccn": "LATI 1411",
+            "ut": "LAT 406"
+        },
+        {
+            "tccn": "FREN 1412",
+            "ut": "FR 407"
+        },
+        {
+            "tccn": "LATI 1412",
+            "ut": "LAT 407"
+        },
+        {
+            "tccn": "FREN 2311",
+            "ut": "FR 312K"
+        },
+        {
+            "tccn": "LATI 2311",
+            "ut": "LAT 311"
+        },
+        {
+            "tccn": "FREN 2312",
+            "ut": "FR 312L"
+        },
+        {
+            "tccn": "LATI 2312",
+            "ut": "LAT 312K"
+        },
+        {
+            "tccn": "GEOG 1301",
+            "ut": "GRG 301C"
+        },
+        {
+            "tccn": "MATH 1314",
+            "ut": "M 301"
+        },
+        {
+            "tccn": "GEOG 1302",
+            "ut": "GRG 305"
+        },
+        {
+            "tccn": "MATH 1316",
+            "ut": "M 304E"
+        },
+        {
+            "tccn": "GEOL 1301",
+            "ut": "GEO 302K"
+        },
+        {
+            "tccn": "MATH 1324",
+            "ut": "M 303D"
+        },
+        {
+            "tccn": "GEOL 1302",
+            "ut": "GEO 302K"
+        },
+        {
+            "tccn": "MATH 1325",
+            "ut": "M 303K"
+        },
+        {
+            "tccn": "MATH 1332",
+            "ut": "M 302"
+        },
+        {
+            "tccn": "MATH 1342",
+            "ut": "SDS 301"
+        },
+        {
+            "tccn": "MATH 1350",
+            "ut": "M 316K"
+        },
+        {
+            "tccn": "PHIL 2316",
+            "ut": "PHL 301K"
+        },
+        {
+            "tccn": "MATH 1351",
+            "ut": "M 316L"
+        },
+        {
+            "tccn": "PHIL 2321",
+            "ut": "PHL 305"
+        },
+        {
+            "tccn": "MATH 1414",
+            "ut": "M 401"
+        },
+        {
+            "tccn": "PHYS 1101",
+            "ut": "PHY 102M"
+        },
+        {
+            "tccn": "MATH 1442",
+            "ut": "SDS 401"
+        },
+        {
+            "tccn": "PHYS 1102",
+            "ut": "PHY 102N"
+        },
+        {
+            "tccn": "MATH 2305",
+            "ut": "M 325K"
+        },
+        {
+            "tccn": "PHYS 1103",
+            "ut": "AST 103L"
+        },
+        {
+            "tccn": "MATH 2312",
+            "ut": "M 305G"
+        },
+        {
+            "tccn": "PHYS 1104",
+            "ut": "AST 1 Lab"
+        },
+        {
+            "tccn": "MATH 2313",
+            "ut": "M 308K"
+        },
+        {
+            "tccn": "PHYS 1105",
+            "ut": "PHY 1 Lab"
+        },
+        {
+            "tccn": "MATH 2313",
+            "ut": "M 308N"
+        },
+        {
+            "tccn": "PHYS 1107",
+            "ut": "PHY 1 Lab"
+        },
+        {
+            "tccn": "MATH 2314",
+            "ut": "M 308L"
+        },
+        {
+            "tccn": "PHYS 1301",
+            "ut": "PHY 302K"
+        },
+        {
+            "tccn": "MATH 2314",
+            "ut": "M 308S"
+        },
+        {
+            "tccn": "PHYS 1302",
+            "ut": "PHY 302L"
+        },
+        {
+            "tccn": "MATH 2315",
+            "ut": "M 308M"
+        },
+        {
+            "tccn": "PHYS 1303",
+            "ut": "AST 301"
+        },
+        {
+            "tccn": "MATH 2318",
+            "ut": "M 311"
+        },
+        {
+            "tccn": "PHYS 1304",
+            "ut": "AST 309S"
+        },
+        {
+            "tccn": "MATH 2320",
+            "ut": "M 327K"
+        },
+        {
+            "tccn": "PHYS 1305",
+            "ut": "PHY 309K"
+        },
+        {
+            "tccn": "MATH 2412",
+            "ut": "M 405G"
+        },
+        {
+            "tccn": "PHYS 1307",
+            "ut": "PHY 309L"
+        },
+        {
+            "tccn": "MATH 2413",
+            "ut": "M 408K"
+        },
+        {
+            "tccn": "PHYS 1401",
+            "ut": "PHY 302K + PHY 102M"
+        },
+        {
+            "tccn": "MATH 2413",
+            "ut": "M 408N"
+        },
+        {
+            "tccn": "PHYS 1402",
+            "ut": "PHY 302L + PHY 102N"
+        },
+        {
+            "tccn": "MATH 2414",
+            "ut": "M 408L"
+        },
+        {
+            "tccn": "PHYS 1403",
+            "ut": "AST 301 + AST 103L"
+        },
+        {
+            "tccn": "MATH 2414",
+            "ut": "M 408S"
+        },
+        {
+            "tccn": "PHYS 1404",
+            "ut": "AST 309S + AST 1 Lab"
+        },
+        {
+            "tccn": "MATH 2415",
+            "ut": "M 408M"
+        },
+        {
+            "tccn": "PHYS 1405",
+            "ut": "PHY 309K + PHY 1 Lab"
+        },
+        {
+            "tccn": "MATH 2418",
+            "ut": "M 411"
+        },
+        {
+            "tccn": "PHYS 1407",
+            "ut": "PHY 309L + PHY 1 Lab"
+        },
+        {
+            "tccn": "MATH 2420",
+            "ut": "M 427K"
+        },
+        {
+            "tccn": "PHYS 2125",
+            "ut": "PHY 103M"
+        },
+        {
+            "tccn": "PHYS 2126",
+            "ut": "PHY 103N"
+        },
+        {
+            "tccn": "PHYS 2325",
+            "ut": "PHY 303K"
+        },
+        {
+            "tccn": "PHYS 2326",
+            "ut": "PHY 303L"
+        },
+        {
+            "tccn": "PHYS 2425",
+            "ut": "PHY 303K + PHY 103M"
+        },
+        {
+            "tccn": "PHYS 2426",
+            "ut": "PHY 303L + PHY 103N"
+        },
+        {
+            "tccn": "PORT 1411",
+            "ut": "POR 406"
+        },
+        {
+            "tccn": "PORT 1412",
+            "ut": "POR 407"
+        },
+        {
+            "tccn": "PORT 2311",
+            "ut": "POR 312K"
+        },
+        {
+            "tccn": "PORT 2312",
+            "ut": "POR 312L"
+        },
+        {
+            "tccn": "PSYC 1100",
+            "ut": "EDP 104"
+        },
+        {
+            "tccn": "PSYC 1200",
+            "ut": "EDP 204"
+        },
+        {
+            "tccn": "PSYC 1300",
+            "ut": "EDP 304"
+        },
+        {
+            "tccn": "PSYC 2301",
+            "ut": "PSY 301"
+        },
+        {
+            "tccn": "MUSI 1181",
+            "ut": "MUS 101M"
+        },
+        {
+            "tccn": "PSYC 2306",
+            "ut": "PSY 306"
+        },
+        {
+            "tccn": "MUSI 1182",
+            "ut": "MUS 101N"
+        },
+        {
+            "tccn": "PSYC 2308",
+            "ut": "PSY 304"
+        },
+        {
+            "tccn": "MUSI 1306",
+            "ut": "MUS 302L"
+        },
+        {
+            "tccn": "PSYC 2316",
+            "ut": "PSY 309"
+        },
+        {
+            "tccn": "MUSI 1310",
+            "ut": "MUS 307"
+        },
+        {
+            "tccn": "PSYC 2317",
+            "ut": "PSY 317"
+        },
+        {
+            "tccn": "MUSI 1311",
+            "ut": "MUS 605A"
+        },
+        {
+            "tccn": "PSYC 2319",
+            "ut": "PSY 319K"
+        },
+        {
+            "tccn": "MUSI 1312",
+            "ut": "MUS 605B"
+        },
+        {
+            "tccn": "PSYC 2330",
+            "ut": "PSY 308"
+        },
+        {
+            "tccn": "MUSI 2116",
+            "ut": "MUS 211A"
+        },
+        {
+            "tccn": "RUSS 1411",
+            "ut": "RUS 406"
+        },
+        {
+            "tccn": "MUSI 2117",
+            "ut": "MUS 211B"
+        },
+        {
+            "tccn": "RUSS 1412",
+            "ut": "RUS 407"
+        },
+        {
+            "tccn": "MUSI 2181",
+            "ut": "MUS 110J"
+        },
+        {
+            "tccn": "RUSS 2311",
+            "ut": "RUS 312K"
+        },
+        {
+            "tccn": "MUSI 2182",
+            "ut": "MUS 110K"
+        },
+        {
+            "tccn": "RUSS 2312",
+            "ut": "RUS 312L"
+        },
+        {
+            "tccn": "MUSI 2311",
+            "ut": "MUS 612A"
+        },
+        {
+            "tccn": "SGNL 1301",
+            "ut": "ASL 306"
+        },
+        {
+            "tccn": "MUSI 2312",
+            "ut": "MUS 612B"
+        },
+        {
+            "tccn": "SGNL 1302",
+            "ut": "ASL 307"
+        },
+        {
+            "tccn": "PHED 1306",
+            "ut": "KIN 313 (Topic 1)"
+        },
+        {
+            "tccn": "SGNL 1401",
+            "ut": "ASL 406"
+        },
+        {
+            "tccn": "PHED 1308",
+            "ut": "KIN 319K (Topic 2)"
+        },
+        {
+            "tccn": "SGNL 1402",
+            "ut": "ASL 407"
+        },
+        {
+            "tccn": "PHED 1321",
+            "ut": "KIN 319K (Topic 1)"
+        },
+        {
+            "tccn": "SGNL 2301",
+            "ut": "ASL 312K"
+        },
+        {
+            "tccn": "PHED 1331",
+            "ut": "KIN 314"
+        },
+        {
+            "tccn": "SGNL 2302",
+            "ut": "ASL 312L"
+        },
+        {
+            "tccn": "PHED 2356",
+            "ut": "KIN 312 (Topic 2)"
+        },
+        {
+            "tccn": "SOCI 1301",
+            "ut": "SOC 302"
+        },
+        {
+            "tccn": "PHIL 1301",
+            "ut": "PHL 301"
+        },
+        {
+            "tccn": "SOCI 1306",
+            "ut": "SOC 307E"
+        },
+        {
+            "tccn": "PHIL 2303",
+            "ut": "PHL 312"
+        },
+        {
+            "tccn": "SOCI 2301",
+            "ut": "SOC 307C"
+        },
+        {
+            "tccn": "PHIL 2306",
+            "ut": "PHL 318"
+        },
+        {
+            "tccn": "SOCI 2326",
+            "ut": "PSY 319K"
+        },
+        {
+            "tccn": "PHIL 2307",
+            "ut": "PHL 318K"
+        },
+        {
+            "tccn": "SOCW 2361",
+            "ut": "S W 310"
+        },
+        {
+            "tccn": "SPAN 1411",
+            "ut": "SPN 406"
+        },
+        {
+            "tccn": "SPAN 1412",
+            "ut": "SPN 407"
+        },
+        {
+            "tccn": "SPAN 2311",
+            "ut": "SPN 312K"
+        },
+        {
+            "tccn": "SPAN 2312",
+            "ut": "SPN 312L"
+        },
+        {
+            "tccn": "SPCH 1315",
+            "ut": "CMS 305"
+        },
+        {
+            "tccn": "SPCH 1318",
+            "ut": "CMS 315M"
+        },
+        {
+            "tccn": "SPCH 1321",
+            "ut": "CMS 306M"
+        },
+        {
+            "tccn": "SPCH 2333",
+            "ut": "CMS 310K"
+        },
+        {
+            "tccn": "TECA 1303",
+            "ut": "HDF 304"
+        },
+        {
+            "tccn": "TECA 1354",
+            "ut": "HDF 313"
+        }
+    ]
+}

@@ -100,6 +100,8 @@ export interface PlanningPreferences {
     coreFocus: boolean;
     /** the student plans some courses at ACC without naming them (never counted as credit) */
     accPlanned: boolean;
+    /** "recommend some harder classes to take through ACC": suggest ACC courses from UT's TCCN table */
+    accSuggest: boolean;
 }
 
 export const EMPTY_PREFERENCES: PlanningPreferences = {
@@ -116,6 +118,7 @@ export const EMPTY_PREFERENCES: PlanningPreferences = {
     backToBack: false,
     coreFocus: false,
     accPlanned: false,
+    accSuggest: false,
 };
 
 /** Credit-hour range in a message: "12–13 credit hours", "12 to 15 hours", "15 credits", "at least 12 credits". */
@@ -262,6 +265,12 @@ export function applyPlanningMessage(
             ),
         coreFocus:
             previous.coreFocus || /\bcore[- ]complete\b|\bcore (?:curriculum|requirements?|classes)\b/.test(text),
+        accSuggest:
+            previous.accSuggest ||
+            (/\b(?:acc|austin community college|community college)\b/.test(text) &&
+                /\b(?:recommend|suggest|which|what|harder|hard|get ahead|could take|should take|options?)\b/.test(
+                    text
+                )),
         accPlanned:
             previous.accPlanned ||
             /\b(?:through|at|via)\s+(?:acc|austin community college|a community college)\b/.test(text),
@@ -270,7 +279,7 @@ export function applyPlanningMessage(
         preferAsync: (asyncCount?.min ?? 0) > 0 || (previous.preferAsync && asyncCount?.max !== 0),
         easyGrades:
             previous.easyGrades ||
-            /\beasy\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad|\bhigh a\b|\bhigh (?:a|a's) (?:grades?|rates?)\b|\bprotect (?:my )?gpa\b|\blots of a'?s\b/.test(
+            /\beasy\b|\beasier\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad|\bhigh a\b|\bhigh (?:a|a's) (?:grades?|rates?)\b|\bprotect (?:my )?gpa\b|\blots of a'?s\b/.test(
                 text
             ),
         timeOfDay,
@@ -319,7 +328,8 @@ export function describePreferences(p: PlanningPreferences, dayNames: Record<Day
         );
     if (p.coreFocus) out.push('Unfinished Core Curriculum requirements first');
     if (p.backToBack) out.push('Back-to-back classes with as few gaps as possible');
-    if (p.accPlanned && !p.plannedElsewhere.length)
+    if (p.accSuggest) out.push('Suggest harder classes to take at ACC (from UT’s official transfer table)');
+    else if (p.accPlanned && !p.plannedElsewhere.length)
         out.push('Some classes planned at ACC (not counted as UT credit until it is awarded)');
     return out;
 }

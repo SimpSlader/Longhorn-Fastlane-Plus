@@ -2191,3 +2191,54 @@ button.course-pill {
 .proposal-warnings {
     color: #a16207;
 }
+
+/* Chat-style planner */
+.chat-answer {
+    white-space: pre-line;
+}
+.chat-answer.typing {
+    opacity: 0.75;
+    font-style: italic;
+}
+.quick-replies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border: 0;
+    padding: 0;
+    margin: 4px 0 8px;
+}
+.quick-reply {
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--accent);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+.quick-reply:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.more-filters {
+    margin: 2px 0 6px;
+}
+.more-filters summary {
+    cursor: pointer;
+}
+.ai-result .why {
+    margin: 4px 6px 0;
+}
+.acc-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.other-options {
+    margin-top: 14px;
+}
+.other-options summary {
+    cursor: pointer;
+    color: var(--muted);
+}

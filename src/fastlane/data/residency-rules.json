@@ -1,0 +1,14 @@
+{
+    "economics-ba": {
+        "matches": "econom",
+        "label": "Economics, BA",
+        "sources": [
+            "https://catalog.utexas.edu/archive/2025-26/undergraduate/liberal-arts/degrees-and-programs/bachelor-of-arts-plan-i/economics/",
+            "https://liberalarts.utexas.edu/economics/undergraduate-program/degree-requirements/"
+        ],
+        "mustTakeAtUT": ["ECO 420K", "ECO 420S", "ECO 320L", "ECO 329", "ECO 341K", "ECO 441K", "M 408Q", "M 408R"],
+        "majorSubject": "ECO",
+        "majorHoursInResidence": 18,
+        "note": "Economics 420K, 320L, 329 and 341K or 441K must be completed in residence; Mathematics 408Q and 408R must be taken in residence; at least 18 hours of economics counting toward the major must be taken at UT Austin."
+    }
+}

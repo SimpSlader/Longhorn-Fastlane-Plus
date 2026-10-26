@@ -143,7 +143,12 @@ export function gapMinutes(sections: SectionRecord[]): number {
 }
 
 /** Score of a whole schedule beyond its sections: gaps, online count, credit target, stability. */
-function scheduleBonus(sections: SectionRecord[], c: ScheduleConstraints, stable?: Set<number>): number {
+function scheduleBonus(
+    sections: SectionRecord[],
+    c: ScheduleConstraints,
+    stable?: Set<number>,
+    stableWeight = 4
+): number {
     const credits = sections.reduce((n, s) => n + s.creditHours, 0);
     const asyncCount = sections.filter(isAsync).length;
     let bonus = -(gapMinutes(sections) / 60) * (c.backToBack ? 3 : 0.6);
@@ -155,7 +160,7 @@ function scheduleBonus(sections: SectionRecord[], c: ScheduleConstraints, stable
     if (!c.creditsRequested && credits > DEFAULT_TARGET_MAX) bonus -= 1.5;
     // a real semester is a few substantial classes, not many one-credit fillers
     bonus -= Math.max(0, sections.length - 4) * 1.5;
-    if (stable) bonus += sections.filter(s => stable.has(s.uniqueId)).length * 4;
+    if (stable) bonus += sections.filter(s => stable.has(s.uniqueId)).length * stableWeight;
     return bonus;
 }
 
@@ -305,6 +310,8 @@ export async function solveSchedule(
         stable?: Set<number>;
         allowNew?: (s: SectionRecord) => boolean;
         signal?: AbortSignal;
+        /** how strongly to keep `stable` classes (lower lets "make it easier" swap more) */
+        stableWeight?: number;
         maxNodes?: number;
         keep?: number;
         /** counts of sections removed by each hard rule over the whole catalog, for the explanation */
@@ -312,6 +319,7 @@ export async function solveSchedule(
     } = {}
 ): Promise<SolveResult> {
     const fixed = options.fixed ?? [];
+    const stableWeight = options.stableWeight ?? 4;
     const keep = options.keep ?? 3;
     const maxNodes = options.maxNodes ?? 150_000;
     const fixedCodes = new Set(fixed.map(s => normalizeCourseCode(s.courseCode)));
@@ -326,8 +334,8 @@ export async function solveSchedule(
         .sort(
             (a, b) =>
                 b.score +
-                (options.stable?.has(b.section.uniqueId) ? 4 : 0) -
-                (a.score + (options.stable?.has(a.section.uniqueId) ? 4 : 0))
+                (options.stable?.has(b.section.uniqueId) ? stableWeight : 0) -
+                (a.score + (options.stable?.has(a.section.uniqueId) ? stableWeight : 0))
         );
 
     const fixedCredits = fixed.reduce((n, s) => n + s.creditHours, 0);
@@ -341,11 +349,14 @@ export async function solveSchedule(
     const chosen: SolverCandidate[] = [];
     const codes = new Set<string>();
     // optimistic bonus a schedule can still earn (online match + stability are already in scores/bonus)
-    const BONUS_MAX = 2 + (options.stable ? 4 * options.stable.size : 0);
+    const BONUS_MAX = 2 + (options.stable ? stableWeight * options.stable.size : 0);
 
     const record = () => {
         const sections = [...fixed, ...chosen.map(x => x.section)];
-        const score = fixedScore + chosen.reduce((n, x) => n + x.score, 0) + scheduleBonus(sections, c, options.stable);
+        const score =
+            fixedScore +
+            chosen.reduce((n, x) => n + x.score, 0) +
+            scheduleBonus(sections, c, options.stable, stableWeight);
         const key = sections
             .map(s => s.uniqueId)
             .sort()
