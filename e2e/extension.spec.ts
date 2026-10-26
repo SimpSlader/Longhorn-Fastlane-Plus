@@ -642,11 +642,11 @@ test.describe('AI access remembered after first successful request', () => {
         expect(saved).toBe('test-invite-code-local-only');
 
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
-        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Forget AI code' })).toBeVisible();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
         await page.reload();
-        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
-        await page.getByRole('button', { name: 'Forget code' }).click();
+        await expect(page.getByRole('button', { name: 'Forget AI code' })).toBeVisible();
+        await page.getByRole('button', { name: 'Forget AI code' }).click();
         await expect(page.getByPlaceholder('Enter once to enable AI')).toBeVisible();
     });
 });
