@@ -29,7 +29,9 @@ export async function loadGradesOverride(): Promise<{ descriptor: DatasetDescrip
             const buffer = await idbDatasetStore.getPayload('grades');
             return buffer ? { descriptor: installed.descriptor, buffer } : null;
         }
-        const res = await sendFastlane<{ descriptor: DatasetDescriptor; base64: string } | null>({ type: 'getGradesOverride' });
+        const res = await sendFastlane<{ descriptor: DatasetDescriptor; base64: string } | null>({
+            type: 'getGradesOverride',
+        });
         return res ? { descriptor: res.descriptor, buffer: base64ToBuffer(res.base64) } : null;
     } catch {
         return null;

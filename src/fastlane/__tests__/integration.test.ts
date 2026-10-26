@@ -3,14 +3,18 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { legs, splitLocation, stopsForDay, walkingDirectionsUrl } from '../core/campus';
-import { coreTagFromListing } from '../core/requirements';
 import { defaultQueue } from '../core/queue';
 import { defaultReminderConfig } from '../core/reminders';
+import { coreTagFromListing } from '../core/requirements';
 import { sectionFixture } from './factories';
 
 vi.mock('@shared/storage/UserScheduleStore', () => ({ UserScheduleStore: {} }));
 vi.mock('../storage/stores', () => ({
-    DEFAULT_SETTINGS: { gradeThreshold: 'A-', autofill: { enabled: false, paused: false, preserveNonEmpty: true }, passiveDetection: false },
+    DEFAULT_SETTINGS: {
+        gradeThreshold: 'A-',
+        autofill: { enabled: false, paused: false, preserveNonEmpty: true },
+        passiveDetection: false,
+    },
     FASTLANE_LOCAL_PREFIXES: [],
     FASTLANE_SYNC_PREFIXES: [],
 }));
@@ -31,6 +35,9 @@ describe('upstream integration points (fail loudly if an upstream merge drops a 
         ['src/shared/sentry.ts', [/enabled: !!FASTLANE_SENTRY_DSN/]],
         ['src/shared/storage/OptionsStore.ts', [/enableDataRefreshing: false/]],
         ['src/manifest.ts', [/'alarms'/, /'notifications'/]],
+        ['src/views/components/calendar/Calendar.tsx', [/if \(enableDataRefreshing\) void refreshCourses/]],
+        ['src/views/lib/getGitHubStats.ts', [/https:\/\/api\.github\.com/]],
+        ['src/views/components/injected/CourseCatalogInjectedPopup/GradeDistribution.tsx', [/GradeBarChart/]],
     ];
     for (const [file, patterns] of hooks) {
         it(file, () => {
@@ -38,6 +45,13 @@ describe('upstream integration points (fail loudly if an upstream merge drops a 
             for (const p of patterns) expect(text, `${file} should match ${p}`).toMatch(p);
         });
     }
+
+    it('no third-party fonts, CDNs, proxies or Highcharts remain', () => {
+        expect(read('src/views/styles/fonts.module.scss')).not.toMatch(/fonts\.googleapis\.com/);
+        expect(read('src/views/lib/getGitHubStats.ts')).not.toMatch(/cachedapi/);
+        expect(read('src/pages/calendar/CalendarMain.tsx')).not.toMatch(/<WhatsNewDialog/);
+        expect(read('package.json')).not.toMatch(/highcharts/);
+    });
 
     it('no upstream telemetry DSN or login-page host remains in source', () => {
         expect(read('src/shared/sentry.ts')).not.toMatch(/ingest\.us\.sentry\.io/);
@@ -51,7 +65,9 @@ describe('upstream integration points (fail loudly if an upstream merge drops a 
             'src/fastlane/injected/RowInsights.tsx',
         ]) {
             const text = read(file);
-            expect(text, file).not.toMatch(/\.submit\(|requestSubmit\(|\.click\(\)|dispatchEvent\(new (Mouse|Keyboard|Submit)Event/);
+            expect(text, file).not.toMatch(
+                /\.submit\(|requestSubmit\(|\.click\(\)|dispatchEvent\(new (Mouse|Keyboard|Submit)Event/
+            );
             expect(text, file).not.toMatch(/fetch\(|XMLHttpRequest|sendBeacon/);
         }
     });
@@ -67,7 +83,9 @@ describe('upstream integration points (fail loudly if an upstream merge drops a 
 describe('registration page detection', async () => {
     const { isRegistrationScreen } = await import('@views/lib/getSiteSupport');
     it('matches UT add/drop screens only', () => {
-        expect(isRegistrationScreen('https://utdirect.utexas.edu/registration/registration.WBX?s_ccyys=20272')).toBe(true);
+        expect(isRegistrationScreen('https://utdirect.utexas.edu/registration/registration.WBX?s_ccyys=20272')).toBe(
+            true
+        );
         expect(isRegistrationScreen('https://utdirect.utexas.edu/registration/chooseSemester.WBX')).toBe(true);
         expect(isRegistrationScreen('https://utdirect.utexas.edu/registration/classlist.WBX')).toBe(false);
         expect(isRegistrationScreen('https://login.utexas.edu/login/UI/Login')).toBe(false);
@@ -77,7 +95,12 @@ describe('registration page detection', async () => {
 
 describe('campus map stops', () => {
     const ugs = sectionFixture(1, 'UGS 302', { times: [['MWF', '9:00 a.m.-10:00 a.m.', 'GEA 105']] });
-    const calc = sectionFixture(2, 'M 408C', { times: [['MWF', '10:00 a.m.-11:00 a.m.', 'RLP 0.102'], ['TTH', '11:00 a.m.-12:30 p.m.', 'PMA 5.104']] });
+    const calc = sectionFixture(2, 'M 408C', {
+        times: [
+            ['MWF', '10:00 a.m.-11:00 a.m.', 'RLP 0.102'],
+            ['TTH', '11:00 a.m.-12:30 p.m.', 'PMA 5.104'],
+        ],
+    });
     const live = sectionFixture(3, 'MUS 302L', { times: [['MW', '1:00 p.m.-2:30 p.m.', 'WB']] });
 
     it('groups by weekday in time order with building-level locations', () => {
@@ -91,9 +114,13 @@ describe('campus map stops', () => {
     });
 
     it('builds legs only between different physical buildings and reports gaps', () => {
-        expect(legs(stopsForDay([live, calc, ugs], 'M')).map(l => [l.from.building, l.to.building, l.gapMinutes])).toEqual([['GEA', 'RLP', 0]]);
+        expect(
+            legs(stopsForDay([live, calc, ugs], 'M')).map(l => [l.from.building, l.to.building, l.gapMinutes])
+        ).toEqual([['GEA', 'RLP', 0]]);
         expect(splitLocation('WB')).toEqual({});
-        expect(walkingDirectionsUrl('GEARING HALL', 'PATTON HALL')).toMatch(/^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&travelmode=walking/);
+        expect(walkingDirectionsUrl('GEARING HALL', 'PATTON HALL')).toMatch(
+            /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&travelmode=walking/
+        );
     });
 
     it('maps bare core codes from listings', () => {

@@ -7,7 +7,6 @@ import Calendar from '@views/components/calendar/Calendar';
 import DialogProvider from '@views/components/common/DialogProvider/DialogProvider';
 import ExtensionRoot from '@views/components/common/ExtensionRoot/ExtensionRoot';
 import { MigrationDialog } from '@views/components/common/MigrationDialog';
-import { WhatsNewDialog } from '@views/components/common/WhatsNewPopup';
 import { Suspense, useEffect } from 'react';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
@@ -57,7 +56,7 @@ export default function CalendarMain() {
         <ExtensionRoot className='h-full w-full'>
             <DialogProvider>
                 <MigrationDialog />
-                <WhatsNewDialog />
+                {/* Fastlane: upstream's What's New dialog (UTRP release notes, video from cdn.longhorns.dev) is not shown */}
                 <Suspense fallback={null}>
                     <CalendarBootstrap />
                 </Suspense>

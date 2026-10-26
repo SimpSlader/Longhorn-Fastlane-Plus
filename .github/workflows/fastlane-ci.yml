@@ -29,12 +29,16 @@ jobs:
         run: pnpm build
       - name: MV3 / store security check
         run: pnpm security:check
-      - name: End-to-end tests (unpacked extension in Chromium)
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          xvfb-run -a pnpm exec playwright test
       - name: Package
         run: node scripts/fastlane/package.mjs
+      - name: Security check on the packaged ZIP
+        run: |
+          mkdir -p /tmp/zip-under-test && unzip -q package/*.zip -d /tmp/zip-under-test
+          node scripts/fastlane/security-check.mjs /tmp/zip-under-test
+      - name: End-to-end tests against the packaged ZIP (fresh Chromium profile per test)
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          FASTLANE_EXTENSION_DIR=/tmp/zip-under-test pnpm exec playwright test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

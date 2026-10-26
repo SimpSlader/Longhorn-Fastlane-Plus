@@ -17,7 +17,14 @@ export interface WallpaperPreset {
 export const WALLPAPER_PRESETS: WallpaperPreset[] = [
     { id: 'iphone', label: 'iPhone (1179 × 2556)', width: 1179, height: 2556, safeTop: 780, safeBottom: 260 },
     { id: 'android', label: 'Android (1080 × 2400)', width: 1080, height: 2400, safeTop: 640, safeBottom: 220 },
-    { id: 'portrait', label: 'Generic portrait (1080 × 1920)', width: 1080, height: 1920, safeTop: 420, safeBottom: 160 },
+    {
+        id: 'portrait',
+        label: 'Generic portrait (1080 × 1920)',
+        width: 1080,
+        height: 1920,
+        safeTop: 420,
+        safeBottom: 160,
+    },
 ];
 
 export type WallpaperStyle = 'minimal' | 'aesthetic' | 'map' | 'hybrid';

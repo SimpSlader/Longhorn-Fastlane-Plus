@@ -1,6 +1,6 @@
 export type RequirementStatus = 'completed' | 'in-progress' | 'not-started';
 export type Confidence = 'high' | 'medium' | 'low';
-export type RequirementCategory = 'core' | 'major' | 'hours' | 'gpa' | 'other';
+export type RequirementCategory = 'core' | 'general' | 'major' | 'minor' | 'hours' | 'gpa' | 'other';
 
 export interface Progress {
     value: number;
@@ -47,6 +47,8 @@ export interface ParsedAudit {
     parsedAt: number;
     program?: string;
     requirements: AuditRequirement[];
+    /** Only present when the imported IDA explicitly labels a completion percentage. Never inferred from rule counts. */
+    officialProgress?: { percent: number; source: 'ida-html' | 'ida-pdf' };
     courses: AuditCourse[];
     transfer: { accepted: AuditCourse[]; pending: AuditCourse[] };
     /** total degree hours if a rule states them */

@@ -1,6 +1,8 @@
 /**
  * Reads a saved IDA file locally. Nothing is uploaded: PDF.js (bundled, Apache-2.0) runs in this page.
  */
+
+import { parseHtml } from '@shared/util/parseHtml';
 import { parseAuditHtml, parseAuditText } from './parseAudit';
 import type { ParsedAudit } from './types';
 
@@ -35,7 +37,8 @@ async function pdfLines(buffer: ArrayBuffer): Promise<string[]> {
     const pdfjs = await import('pdfjs-dist');
     const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, disableFontFace: true }).promise;
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, disableFontFace: true })
+        .promise;
     const lines: string[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
         const page = await doc.getPage(p);
@@ -47,7 +50,8 @@ async function pdfLines(buffer: ArrayBuffer): Promise<string[]> {
 }
 
 export async function importAuditFile(file: File): Promise<ParsedAudit> {
-    if (file.size > MAX_AUDIT_BYTES) throw new Error('That file is larger than 15 MB. Save only the audit results page.');
+    if (file.size > MAX_AUDIT_BYTES)
+        throw new Error('That file is larger than 15 MB. Save only the audit results page.');
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     if (isPdf) {
         return parseAuditText(await pdfLines(await file.arrayBuffer()), file.name);
@@ -55,7 +59,7 @@ export async function importAuditFile(file: File): Promise<ParsedAudit> {
     if (/\.(html?|mhtml?)$/i.test(file.name) || file.type.includes('html')) {
         const text = await file.text();
         // DOMParser does not execute scripts or load resources from the saved page
-        const doc = new DOMParser().parseFromString(text, 'text/html');
+        const doc = parseHtml(text);
         return parseAuditHtml(doc, file.name);
     }
     throw new Error('Choose the audit saved as a PDF or as an HTML page (.html).');

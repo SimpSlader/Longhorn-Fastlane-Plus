@@ -111,3 +111,10 @@
         box-shadow: inset 4px 0 0 #1d4ed8;
     }
 }
+
+// Keep all native course details blue for both timed and asynchronous online sections.
+.isOnline:not(.selectedRow) {
+    > td:not(:last-child), > td:not(:last-child) * {
+        color: #1d4ed8 !important;
+    }
+}

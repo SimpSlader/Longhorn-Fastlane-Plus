@@ -30,7 +30,13 @@ export interface AutofillInput {
     manual?: boolean;
 }
 
-export function decideAutofill({ settings, code, fieldValue, lastFilled, manual = false }: AutofillInput): AutofillDecision {
+export function decideAutofill({
+    settings,
+    code,
+    fieldValue,
+    lastFilled,
+    manual = false,
+}: AutofillInput): AutofillDecision {
     if (!manual && !settings.enabled) return { action: 'skip', reason: 'disabled' };
     if (!manual && settings.paused) return { action: 'skip', reason: 'paused' };
     if (!code || !/^\d{5}$/.test(code)) return { action: 'skip', reason: 'no-code' };

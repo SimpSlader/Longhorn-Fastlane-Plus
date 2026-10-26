@@ -23,10 +23,25 @@ import {
 import { sectionFixture } from './factories';
 
 const ARTS = ['Visual & Performing Arts'];
-const music = sectionFixture(23095, 'MUS 302L', { title: 'Western Music', core: ARTS, times: [['MWF', '10:00 a.m.-11:00 a.m.']] });
-const myth = sectionFixture(33515, 'C C 303', { title: 'Classical Mythology', core: ARTS, times: [['TTH', '9:30 a.m.-11:00 a.m.']] });
-const rome = sectionFixture(33505, 'C C 302', { title: 'Ancient Rome', core: ARTS, times: [['MWF', '1:00 p.m.-2:00 p.m.']] });
-const nutrition = sectionFixture(55675, 'NTR 306', { core: ['Natural Science and Technology, Part I'], times: [['TTH', '9:30 a.m.-11:00 a.m.']] });
+const music = sectionFixture(23095, 'MUS 302L', {
+    title: 'Western Music',
+    core: ARTS,
+    times: [['MWF', '10:00 a.m.-11:00 a.m.']],
+});
+const myth = sectionFixture(33515, 'C C 303', {
+    title: 'Classical Mythology',
+    core: ARTS,
+    times: [['TTH', '9:30 a.m.-11:00 a.m.']],
+});
+const rome = sectionFixture(33505, 'C C 302', {
+    title: 'Ancient Rome',
+    core: ARTS,
+    times: [['MWF', '1:00 p.m.-2:00 p.m.']],
+});
+const nutrition = sectionFixture(55675, 'NTR 306', {
+    core: ['Natural Science and Technology, Part I'],
+    times: [['TTH', '9:30 a.m.-11:00 a.m.']],
+});
 
 function basePlan() {
     let plan = emptyPlan('sched-1', 'ideal', 1);
@@ -97,7 +112,10 @@ describe('backup sections', () => {
     });
 
     it('prefers a backup in the slot requirement over an off-category one', () => {
-        const offTopic = sectionFixture(11111, 'M 408C', { core: ['Mathematics'], times: [['MWF', '8:00 a.m.-9:00 a.m.']] });
+        const offTopic = sectionFixture(11111, 'M 408C', {
+            core: ['Mathematics'],
+            times: [['MWF', '8:00 a.m.-9:00 a.m.']],
+        });
         let plan = emptyPlan('s', 'custom', 0);
         plan = addSlot(plan, music, 'CORE 050', 0, 'arts');
         plan = addBackup(plan, 'arts', offTopic, 0);

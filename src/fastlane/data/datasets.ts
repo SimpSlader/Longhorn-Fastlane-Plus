@@ -96,7 +96,8 @@ export function validateManifest(json: unknown, allowedHosts: string[], now = Da
         } else if (d.format !== 'json' && d.format !== 'sqlite') errors.push(`${where}: format must be json or sqlite`);
         else if (!isAllowedUrl(d.url, allowedHosts)) errors.push(`${where}: url is not on an allowed HTTPS host`);
         else if (!/^[a-f0-9]{64}$/.test(d.sha256)) errors.push(`${where}: sha256 must be 64 hex characters`);
-        else if (!Number.isInteger(d.bytes) || d.bytes <= 0 || d.bytes > MAX_DATASET_BYTES) errors.push(`${where}: bad size`);
+        else if (!Number.isInteger(d.bytes) || d.bytes <= 0 || d.bytes > MAX_DATASET_BYTES)
+            errors.push(`${where}: bad size`);
         else if (Number.isNaN(Date.parse(d.publishedAt)) || Date.parse(d.publishedAt) > now + 60 * 60 * 1000) {
             errors.push(`${where}: publishedAt is missing or in the future`);
         } else if (typeof d.source !== 'string' || typeof d.license !== 'string' || !d.source || !d.license) {
@@ -174,7 +175,12 @@ async function fetchWithTimeout(fetchFn: typeof fetch, url: string, timeoutMs: n
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        return await fetchFn(url, { signal: controller.signal, credentials: 'omit', cache: 'no-cache', redirect: 'error' });
+        return await fetchFn(url, {
+            signal: controller.signal,
+            credentials: 'omit',
+            cache: 'no-cache',
+            redirect: 'error',
+        });
     } finally {
         clearTimeout(timer);
     }
@@ -187,14 +193,19 @@ export async function checkForUpdates(opts: UpdateOptions): Promise<UpdateReport
     if (!opts.manifestUrl) return { ...report, skippedReason: 'disabled' };
     if (opts.online === false) return { ...report, skippedReason: 'offline' };
     const meta = await opts.store.getMeta();
-    if (!opts.force && meta.lastCheckedAt && now - meta.lastCheckedAt < (opts.intervalMs ?? DEFAULT_CHECK_INTERVAL_MS)) {
+    if (
+        !opts.force &&
+        meta.lastCheckedAt &&
+        now - meta.lastCheckedAt < (opts.intervalMs ?? DEFAULT_CHECK_INTERVAL_MS)
+    ) {
         return { ...report, skippedReason: 'throttled' };
     }
     const fetchFn = opts.fetchFn ?? fetch;
     const timeout = opts.timeoutMs ?? 20_000;
     report.checked = true;
     try {
-        if (!isAllowedUrl(opts.manifestUrl, opts.allowedHosts)) throw new Error('Manifest URL is not on an allowed HTTPS host');
+        if (!isAllowedUrl(opts.manifestUrl, opts.allowedHosts))
+            throw new Error('Manifest URL is not on an allowed HTTPS host');
         const res = await fetchWithTimeout(fetchFn, opts.manifestUrl, timeout);
         if (!res.ok) throw new Error(`Manifest request failed (${res.status})`);
         const validation = validateManifest(await res.json(), opts.allowedHosts, now);
@@ -212,7 +223,8 @@ export async function checkForUpdates(opts: UpdateOptions): Promise<UpdateReport
                 if (!dl.ok) throw new Error(`download failed (${dl.status})`);
                 const payload = await dl.arrayBuffer();
                 if (payload.byteLength !== descriptor.bytes) throw new Error('size does not match manifest');
-                if ((await sha256Hex(payload)) !== descriptor.sha256) throw new Error('SHA-256 does not match manifest');
+                if ((await sha256Hex(payload)) !== descriptor.sha256)
+                    throw new Error('SHA-256 does not match manifest');
                 const formatError = verifyFormat(descriptor, payload);
                 if (formatError) throw new Error(formatError);
                 await opts.store.put({ descriptor, installedAt: now, origin: 'downloaded' }, payload);

@@ -110,38 +110,53 @@ describe('detectConflicts', () => {
 describe('classifyModality', () => {
     it('blue (async) only for internet mode with no meeting times and no physical room', () => {
         expect(classifyModality({ instructionModeText: 'Internet', meetings: [] }).modality).toBe('async-online');
-        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('', '', 'WB')] }).modality).toBe('async-online');
+        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('', '', 'WB')] }).modality).toBe(
+            'async-online'
+        );
     });
 
     it('internet with scheduled meetings is live online, even in room WB', () => {
-        const r = classifyModality({ instructionModeText: 'Internet', meetings: [raw('TTH', '12:30 p.m.-2:00 p.m.', 'WB')] });
+        const r = classifyModality({
+            instructionModeText: 'Internet',
+            meetings: [raw('TTH', '12:30 p.m.-2:00 p.m.', 'WB')],
+        });
         expect(r.modality).toBe('live-online');
         expect(r.reasons.join(' ')).toContain('Scheduled online meetings');
     });
 
     it('does not assume a WB room means asynchronous', () => {
         expect(classifyModality({ instructionModeText: '', meetings: [raw('', '', 'WB')] }).modality).toBe('unknown');
-        expect(classifyModality({ instructionModeText: '', meetings: [raw('MW', '1:00 p.m.-2:30 p.m.', 'WB')] }).modality).toBe(
-            'live-online'
-        );
+        expect(
+            classifyModality({ instructionModeText: '', meetings: [raw('MW', '1:00 p.m.-2:30 p.m.', 'WB')] }).modality
+        ).toBe('live-online');
     });
 
     it('TBA or partial times on an internet section are unknown, not async', () => {
-        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('TBA', 'TBA')] }).modality).toBe('unknown');
-        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('MW', '')] }).modality).toBe('unknown');
+        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('TBA', 'TBA')] }).modality).toBe(
+            'unknown'
+        );
+        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('MW', '')] }).modality).toBe(
+            'unknown'
+        );
     });
 
     it('internet with a physical room is unknown (attendance may be required)', () => {
-        expect(classifyModality({ instructionModeText: 'Internet', meetings: [raw('', '', 'JES A121A')] }).modality).toBe('unknown');
+        expect(
+            classifyModality({ instructionModeText: 'Internet', meetings: [raw('', '', 'JES A121A')] }).modality
+        ).toBe('unknown');
     });
 
     it('hybrid and face-to-face keep normal styling', () => {
         expect(classifyModality({ instructionModeText: 'Hybrid/Blended', meetings: [] }).modality).toBe('hybrid');
-        expect(classifyModality({ instructionModeText: 'Face-to-face', meetings: [raw('MWF', '9:00 a.m.-10:00 a.m.', 'GDC 1.304')] }).modality).toBe(
-            'in-person'
-        );
-        expect(classifyModality({ instructionModeText: '', meetings: [raw('MWF', '9:00 a.m.-10:00 a.m.', 'GDC 1.304')] }).modality).toBe(
-            'in-person'
-        );
+        expect(
+            classifyModality({
+                instructionModeText: 'Face-to-face',
+                meetings: [raw('MWF', '9:00 a.m.-10:00 a.m.', 'GDC 1.304')],
+            }).modality
+        ).toBe('in-person');
+        expect(
+            classifyModality({ instructionModeText: '', meetings: [raw('MWF', '9:00 a.m.-10:00 a.m.', 'GDC 1.304')] })
+                .modality
+        ).toBe('in-person');
     });
 });

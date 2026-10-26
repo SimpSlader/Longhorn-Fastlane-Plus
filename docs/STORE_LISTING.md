@@ -1,7 +1,7 @@
 # Chrome Web Store listing
 
 ## Name
-Longhorn Fastlane Plus _(see trademark note in LICENSE_COMPLIANCE.md — consider "Fastlane Plus for UT Austin" if UT does not approve "Longhorn")_
+Fastlane Course Planner _(trademark-safe name; see docs/BRANDING.md. "UT Austin" appears only descriptively in the description.)_
 
 ## Summary (≤132 characters)
 Independent UT Austin planner: inline grade %, async & conflict highlights, ranked backups, local IDA import, registration helper.
@@ -13,7 +13,7 @@ Productivity → Education
 
 Plan your UT Austin semester faster — without giving your data to anyone.
 
-Longhorn Fastlane Plus is an independent, student-built extension based on the open-source UT Registration Plus. It keeps everything UT Registration Plus does and adds:
+Fastlane Course Planner is an independent, student-built extension based on the open-source UT Registration Plus. It keeps everything UT Registration Plus does and adds:
 
 • Grade percentages right on the course schedule: see "72.4% A-+" beside each section, calculated from real historical grade counts, with sample size, semesters, professor vs. course-wide scope, and source on hover. Choose your threshold (A, A-, B+ …).
 • Asynchronous classes highlighted in blue — only when the listing shows an online instruction mode with no scheduled meetings. Live online classes get their own label.

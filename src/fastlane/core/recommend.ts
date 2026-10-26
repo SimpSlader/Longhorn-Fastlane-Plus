@@ -20,7 +20,7 @@ import { formatPercent, SMALL_SAMPLE_SIZE } from './grades';
 import type { ConflictResult, SectionTimes } from './meetings';
 import { conflictingSections, detectConflicts, meetsOn } from './meetings';
 import { MODALITY_LABELS } from './modality';
-import { describeRequirement, normalizeCourseCode } from './requirements';
+import { describeRequirement, normalizeCourseCode, sectionMatchesRequirement } from './requirements';
 import type { AvailabilityDisplay, SectionRecord } from './sections';
 import { availabilityDisplay, semesterKey, toSectionTimes } from './sections';
 
@@ -76,7 +76,10 @@ export interface Recommendation {
 
 function defaultEligibility(section: SectionRecord): Eligibility {
     if (section.isReserved) {
-        return { status: 'restricted', notes: ['Some seats are reserved; check the reserved-seat details on UT’s listing'] };
+        return {
+            status: 'restricted',
+            notes: ['Some seats are reserved; check the reserved-seat details on UT’s listing'],
+        };
     }
     return { status: 'unknown', notes: ['Prerequisites not verified — check the course description'] };
 }
@@ -132,7 +135,7 @@ export function recommend(input: RecommendInput): Recommendation[] {
         if (seen.has(section.uniqueId) || exclude.has(section.uniqueId)) continue;
         if (excludeCourses.has(normalizeCourseCode(section.courseCode))) continue;
         if (section.status?.value === 'CANCELLED') continue;
-        const satisfies = outstanding.filter(req => section.requirementTags.includes(req));
+        const satisfies = outstanding.filter(req => sectionMatchesRequirement(section, req));
         if (satisfies.length === 0) continue;
         seen.add(section.uniqueId);
 
@@ -154,23 +157,34 @@ export function recommend(input: RecommendInput): Recommendation[] {
             inSemester ? 0 : 1,
             conflictRank,
             availabilityRank(section),
-            modalityRank(section, prefs),
             gradeReliability,
             gradePercent,
+            modalityRank(section, prefs),
             professorRank,
             fridayRank,
             eligibilityRank,
             section.uniqueId,
         ];
 
-        const reasons = [`Satisfies ${satisfies.map(describeRequirement).join(', ')}`];
+        const broadOnly = satisfies.every(tag => tag.startsWith('DEPT '));
+        const reasons = [
+            `${broadOnly ? 'Possible fit for' : 'Satisfies'} ${satisfies.map(describeRequirement).join(', ')}`,
+        ];
         const warnings: string[] = [];
+        if (satisfies.some(tag => tag.startsWith('DEPT ')))
+            warnings.push(
+                'Departmental match is not official degree credit; verify course level and degree applicability.'
+            );
         if (inSemester && input.semester) reasons.push(`Offered ${input.semester}`);
         if (!inSemester) warnings.push(`Listed for ${semesterKey(section.semester)}, not ${input.semester}`);
         if (conflict.status === 'clear') reasons.push('No known conflicts with your active schedule');
         if (conflict.status === 'unknown') warnings.push('Conflict status unknown — some meeting times are missing');
         if (conflict.status === 'conflict') {
-            warnings.push(`Conflicts with ${conflictingSections(conflict).map(s => s.label).join(', ')}`);
+            warnings.push(
+                `Conflicts with ${conflictingSections(conflict)
+                    .map(s => s.label)
+                    .join(', ')}`
+            );
         }
         if (section.modality !== 'in-person') reasons.push(MODALITY_LABELS[section.modality]);
         if (grade) {

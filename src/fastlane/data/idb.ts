@@ -79,6 +79,15 @@ export async function idbPutMany(store: string, values: unknown[]): Promise<void
     await done(tx);
 }
 
+export async function idbDeleteMany(store: string, keys: IDBValidKey[]): Promise<void> {
+    if (!keys.length) return;
+    const db = await openDb();
+    const tx = db.transaction(store, 'readwrite');
+    const os = tx.objectStore(store);
+    for (const k of keys) os.delete(k);
+    await done(tx);
+}
+
 export async function idbClearAll(): Promise<void> {
     const db = await openDb();
     const names = Object.values(STORES);

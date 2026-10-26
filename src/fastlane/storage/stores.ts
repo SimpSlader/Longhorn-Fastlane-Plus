@@ -21,6 +21,8 @@ import { defaultReminderConfig } from '../core/reminders';
 export interface FastlaneSettings {
     gradeThreshold: GradeThreshold;
     showInlineGrades: boolean;
+    /** Rate My Professors rating next to the grade chip (sends professor names to RMP) */
+    showProfessorRatings: boolean;
     highlightAsync: boolean;
     showConflictDetails: boolean;
     showAssistant: boolean;
@@ -35,11 +37,14 @@ export interface FastlaneSettings {
     /** "Spring 2027" etc. null = any */
     targetSemester: string | null;
     themePreference: 'system' | 'light' | 'dark';
+    /** set once the student picks a theme; until then the Light default applies */
+    themeChosen: boolean;
 }
 
 export const DEFAULT_SETTINGS: FastlaneSettings = {
     gradeThreshold: DEFAULT_GRADE_THRESHOLD,
     showInlineGrades: true,
+    showProfessorRatings: true,
     highlightAsync: true,
     showConflictDetails: true,
     showAssistant: true,
@@ -50,10 +55,17 @@ export const DEFAULT_SETTINGS: FastlaneSettings = {
     avoidFriday: false,
     dataUpdates: true,
     targetSemester: null,
-    themePreference: 'system',
+    themePreference: 'light',
+    themeChosen: false,
 };
 
 export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('FastlaneSettings', DEFAULT_SETTINGS);
+
+/** Optional beta invite code remembered only in this Chrome profile after a successful AI call.
+ * Never store the Groq API key here, or in the extension build.
+ * The invite code is deliberately excluded from exported settings and data backups.
+ */
+export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { accessCode: '' });
 
 interface PlanStoreShape {
     /** keyed by UT Registration Plus schedule id */
@@ -88,5 +100,13 @@ export const FastlaneReminderStore = createLocalStore<ReminderStoreShape>('Fastl
 });
 
 /** Every chrome.storage key Fastlane owns (used by "delete my data") */
-export const FASTLANE_LOCAL_PREFIXES = ['FastlanePlans:', 'FastlaneQueue:', 'FastlaneAudit:', 'FastlaneReminders:'];
+export const FASTLANE_LOCAL_PREFIXES = [
+    'FastlanePlans:',
+    'FastlaneQueue:',
+    'FastlaneAudit:',
+    'FastlaneReminders:',
+    'FastlaneAiAccess:',
+    'FastlanePlanning:',
+    'FastlaneHistory:',
+];
 export const FASTLANE_SYNC_PREFIXES = ['FastlaneSettings:'];

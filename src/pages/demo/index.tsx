@@ -3,8 +3,9 @@
  * Mounts the REAL listing integration and registration assistant over local fixtures, so everything
  * can be tried without signing in to UT. Nothing here contacts UT.
  */
-import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
+
 import { OptionsStore } from '@shared/storage/OptionsStore';
+import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import { UserSchedule } from '@shared/types/UserSchedule';
 import { getCourseColors } from '@shared/util/colors';
 import CourseCatalogMain from '@views/components/CourseCatalogMain';
@@ -13,11 +14,11 @@ import getCourseTableRows from '@views/lib/getCourseTableRows';
 import { SiteSupport } from '@views/lib/getSiteSupport';
 import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { sectionFromCourse, analyzeRow } from 'src/fastlane/adapters/utrp';
-import { addBackup, emptyPlan, addSlot } from 'src/fastlane/core/plans';
+import { analyzeRow, sectionFromCourse } from 'src/fastlane/adapters/utrp';
+import { addBackup, addSlot, emptyPlan } from 'src/fastlane/core/plans';
 import { mountRegistrationAssistant } from 'src/fastlane/injected/registration/mount';
 import { defaultRequirement } from 'src/fastlane/services/planService';
-import { FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
+import { FastlaneAuditStore, FastlanePlanStore, FastlaneSettingsStore } from 'src/fastlane/storage/stores';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
 import { ADD_DROP_FORM_HTML, courseScheduleTableHtml, DEMO_SEMESTER_CODE } from './fixture';
@@ -68,7 +69,8 @@ async function setupDemoSchedule() {
     }
     const plans = (await FastlanePlanStore.get('plans')) as Record<string, unknown>;
     await FastlanePlanStore.set('plans', { ...plans, [schedule.id]: plan } as never);
-    $('setupStatus').textContent = `Created “${DEMO_NAME}” with UGS 302, M 408C and MUS 302L (live online), plus two ranked backups. Rows that overlap it are now struck through.`;
+    $('setupStatus').textContent =
+        `Created “${DEMO_NAME}” with UGS 302, M 408C and MUS 302L (live online), plus two ranked backups. Rows that overlap it are now struck through.`;
 }
 
 async function removeDemoSchedule() {
@@ -83,31 +85,38 @@ $('setupDemo').addEventListener('click', () => void setupDemoSchedule());
 $('removeDemo').addEventListener('click', () => void removeDemoSchedule());
 
 // ---- simulated UT result messages (the assistant never triggers these) ----
-const result = $('result');
+const result = () => $('message');
 const unique = () => ($<HTMLInputElement>('s_unique_add').value || 'the requested class').trim();
 $('demo-add-drop').addEventListener('submit', e => {
     e.preventDefault();
-    result.className = 'msg ok';
-    result.textContent = `You have added ${unique()} to your schedule.`;
+    result().className = 'ok';
+    result().textContent = `You have added ${unique()} to your schedule.`;
 });
 for (const [id, cls, text] of [
-    ['simFull', 'msg bad', (u: string) => `Requested class ${u} is filled to closing limit.`],
-    ['simConflict', 'msg bad', (u: string) => `Time conflict: ${u} conflicts with another class on your schedule.`],
-    ['simRestricted', 'msg bad', (u: string) => `Unique ${u} is restricted to certain majors.`],
+    ['simFull', 'bad', (u: string) => `Requested class ${u} is filled to closing limit.`],
+    ['simConflict', 'bad', (u: string) => `Time conflict: ${u} conflicts with another class on your schedule.`],
+    ['simRestricted', 'bad', (u: string) => `Unique ${u} is restricted to certain majors.`],
 ] as const) {
     $(id).addEventListener('click', () => {
-        result.className = cls;
-        result.textContent = text(unique());
+        result().className = cls;
+        result().textContent = text(unique());
     });
 }
 $('simClear').addEventListener('click', () => {
-    result.className = 'msg';
-    result.textContent = '';
+    result().className = '';
+    result().textContent = '';
 });
 
 // ---- mount the real components ----
 function ListingBootstrap() {
-    suspendUntilStoresReady([UserScheduleStore, OptionsStore, FastlaneSettingsStore, FastlanePlanStore]);
+    // the listing toolbar reads the imported IDA; every store a component reads must be loaded first
+    suspendUntilStoresReady([
+        UserScheduleStore,
+        OptionsStore,
+        FastlaneSettingsStore,
+        FastlanePlanStore,
+        FastlaneAuditStore,
+    ]);
     return <CourseCatalogMain support={SiteSupport.COURSE_CATALOG_LIST} pageUrl={DEMO_URL} disableAutoLoad />;
 }
 

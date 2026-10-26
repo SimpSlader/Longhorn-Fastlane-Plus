@@ -14,15 +14,25 @@ const NEGATED_ADD = /\b(?:not|wasn'?t|didn'?t|unable to|failed to|cannot|can'?t)
 export function classifyMessage(text: string): DetectedKind | null {
     const t = text.replace(/\s+/g, ' ').trim();
     if (!t || t.length > 600) return null;
-    if (/(?:requested class is filled to closing limit|no seats (?:are )?available|requested class is closed|class is (?:filled|full|closed)|course is (?:filled|full)|closed to registration|reached (?:its )?capacity)/i.test(t)) {
+    if (
+        /(?:filled to (?:the )?closing limit|no seats (?:are )?available|closed to registration|reached (?:its )?capacity|\b(?:class|section|course)(?:\s+(?:unique\s+)?\d{5})?\s+is\s+(?:now\s+)?(?:filled|full|closed)\b)/i.test(
+            t
+        )
+    ) {
         return 'full';
     }
     if (/\btime conflict\b|conflicts? with (?:a |another )?class/i.test(t)) return 'conflict';
-    if (/(?:restricted to|reserved for|prerequisite|not (?:eligible|permitted)|registration (?:bar|hold)|hold (?:on|preventing)|exceeds? the (?:maximum|registration) (?:hours|limit)|duplicate class|invalid unique|consent required)/i.test(t)) {
+    if (
+        /(?:restricted to|reserved for|prerequisite|not (?:eligible|permitted)|registration (?:bar|hold)|hold (?:on|preventing)|exceeds? the (?:maximum|registration) (?:hours|limit)|duplicate class|invalid unique|consent required)/i.test(
+            t
+        )
+    ) {
         return 'restriction';
     }
     if (
-        /\b(?:you (?:have )?added|successfully added|has been added|was added|added to your (?:schedule|classes))\b/i.test(t) &&
+        /\b(?:you (?:have )?added|successfully added|has been added|was added|added to your (?:schedule|classes))\b/i.test(
+            t
+        ) &&
         !NEGATED_ADD.test(t)
     ) {
         return 'success';

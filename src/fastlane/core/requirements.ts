@@ -18,14 +18,48 @@ export interface CoreComponent {
 export const CORE_COMPONENTS: CoreComponent[] = [
     { code: '010', name: 'Communication (English Composition)', aliases: ['english composition', 'communication'] },
     { code: '020', name: 'Mathematics', aliases: ['mathematics', 'math'] },
-    { code: '030', name: 'Natural Science and Technology, Part I', aliases: ['natural science and technology, part i', 'natural science & technology, part i', 'science and technology, part i', 'nat sci & tech, part i'] },
+    {
+        code: '030',
+        name: 'Natural Science and Technology, Part I',
+        aliases: [
+            'natural science and technology, part i',
+            'natural science & technology, part i',
+            'science and technology, part i',
+            'nat sci & tech, part i',
+        ],
+    },
     { code: '040', name: 'Humanities', aliases: ['humanities'] },
-    { code: '050', name: 'Visual and Performing Arts', aliases: ['visual and performing arts', 'visual & performing arts', 'vis & perf arts'] },
+    {
+        code: '050',
+        name: 'Visual and Performing Arts',
+        aliases: ['visual and performing arts', 'visual & performing arts', 'vis & perf arts'],
+    },
     { code: '060', name: 'U.S. History', aliases: ['u.s. history', 'us history', 'american history'] },
-    { code: '070', name: 'American and Texas Government', aliases: ['american and texas government', 'government', 'american & texas government'] },
-    { code: '080', name: 'Social and Behavioral Sciences', aliases: ['social and behavioral sciences', 'social & behavioral sciences', 'social and behavioral science'] },
-    { code: '090', name: 'First-Year Signature Course', aliases: ['first-year signature course', 'first year signature course', 'signature course'] },
-    { code: '093', name: 'Natural Science and Technology, Part II', aliases: ['natural science and technology, part ii', 'natural science & technology, part ii', 'science and technology, part ii', 'nat sci & tech, part ii'] },
+    {
+        code: '070',
+        name: 'American and Texas Government',
+        aliases: ['american and texas government', 'government', 'american & texas government'],
+    },
+    {
+        code: '080',
+        name: 'Social and Behavioral Sciences',
+        aliases: ['social and behavioral sciences', 'social & behavioral sciences', 'social and behavioral science'],
+    },
+    {
+        code: '090',
+        name: 'First-Year Signature Course',
+        aliases: ['first-year signature course', 'first year signature course', 'signature course'],
+    },
+    {
+        code: '093',
+        name: 'Natural Science and Technology, Part II',
+        aliases: [
+            'natural science and technology, part ii',
+            'natural science & technology, part ii',
+            'science and technology, part ii',
+            'nat sci & tech, part ii',
+        ],
+    },
 ];
 
 const CORE_BY_CODE = new Map(CORE_COMPONENTS.map(c => [c.code, c]));
@@ -41,7 +75,8 @@ export function courseTag(courseCode: string): string {
 /** "c s  314h" → "C S 314H"; "UGS302" → "UGS 302" */
 export function normalizeCourseCode(code: string): string {
     const compact = code.toUpperCase().replace(/\s+/g, ' ').trim();
-    const match = compact.match(/^([A-Z][A-Z ]*?)\s+([FSNW]?\d{3}[A-Z]{0,2})$/) ?? compact.match(/^([A-Z]+)(\d{3}[A-Z]{0,2})$/);
+    const match =
+        compact.match(/^([A-Z][A-Z ]*?)\s+([FSNW]?\d{3}[A-Z]{0,2})$/) ?? compact.match(/^([A-Z]+)(\d{3}[A-Z]{0,2})$/);
     if (!match) return compact;
     return `${match[1]!.trim()} ${match[2]}`;
 }
@@ -90,6 +125,7 @@ export function describeRequirement(tag: string): string {
     }
     if (tag.startsWith('COURSE ')) return tag.slice(7);
     if (tag.startsWith('FLAG ')) return `${tag.slice(5)} flag`;
+    if (tag.startsWith('DEPT ')) return `${tag.slice(5)} courses (possible requirement fit; verify with UT)`;
     return tag;
 }
 
@@ -119,4 +155,18 @@ const FLAG_ALIASES: Array<[RegExp, string]> = [
 export function flagCode(value: string): string | null {
     for (const [pattern, code] of FLAG_ALIASES) if (pattern.test(value)) return code;
     return null;
+}
+
+/** AI-reviewed broad department tags are potential matches, never proof of degree credit. */
+export function sectionMatchesRequirement(
+    section: { courseCode: string; requirementTags: string[] },
+    requirement: string
+): boolean {
+    if (section.requirementTags.includes(requirement)) return true;
+    if (!/^DEPT [A-Z][A-Z ]{0,5}$/.test(requirement)) return false;
+    const subject = section.courseCode
+        .replace(/\s*[0-9].*$/, '')
+        .trim()
+        .toUpperCase();
+    return subject === requirement.slice(5);
 }

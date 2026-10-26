@@ -22,8 +22,32 @@ export interface SemesterRef {
     code?: string;
 }
 
+/**
+ * Where a section record came from:
+ *  - "ut-page": the student viewed it on UT's course schedule (confirmed section details; older records omit it)
+ *  - "ut-offerings": listed in the Registrar's published course-offerings document for the term
+ */
+export type SectionSource = 'ut-page' | 'ut-offerings';
+
+/** Provenance of a listing imported from the Registrar's course-offerings document. */
+export interface OfferingListing {
+    /** "Spring 2027" */
+    term: string;
+    /** date printed on the document ("as of 10/01/2026"), ISO */
+    asOf: string | null;
+    sourceUrl: string;
+    document: string;
+    sha256: string;
+    importedAt: number;
+}
+
 export interface SectionRecord {
     uniqueId: number;
+    source?: SectionSource;
+    /** set when the section appears in an imported official course-offerings document */
+    listing?: OfferingListing;
+    /** "Prerequisite: …" clause as printed by UT */
+    prerequisites?: string;
     /** "MUS 302L" */
     courseCode: string;
     /** "INTRODUCTION TO WESTERN MUSIC" */
@@ -46,6 +70,21 @@ export interface SectionRecord {
     course?: unknown;
     /** when this record was captured, epoch ms */
     capturedAt: number;
+}
+
+/** Property set on a UTRP course built from an offerings listing (kept when it is added to a schedule). */
+export const OFFERINGS_COURSE_MARK = 'fastlaneSource';
+
+/** True when the section's details were seen on UT's own course schedule (not only in the offerings list). */
+export function isConfirmedSection(s: Pick<SectionRecord, 'source'>): boolean {
+    return s.source !== 'ut-offerings';
+}
+
+export function subjectOf(courseCode: string): string {
+    return courseCode
+        .replace(/\s+\d.*$/, '')
+        .trim()
+        .toUpperCase();
 }
 
 export function semesterKey(s?: SemesterRef): string {

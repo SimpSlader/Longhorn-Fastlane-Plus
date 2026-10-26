@@ -10,7 +10,7 @@
  *  - Pending transfer credit is NEVER counted as completed. A requirement that depends on pending
  *    transfer work is downgraded to in-progress and flagged.
  */
-import { coreCodesInText, coreTag, normalizeCourseCode } from '../core/requirements';
+import { coreCodesInText, coreTag, courseTag, normalizeCourseCode } from '../core/requirements';
 import type {
     AuditCourse,
     AuditCourseStatus,
@@ -37,10 +37,17 @@ const RESTRICTION_PATTERN =
 export function classifyCategory(section: string, text: string, tags: string[]): RequirementCategory {
     if (tags.some(t => t.startsWith('CORE')) || /core curriculum/i.test(section)) return 'core';
     if (/\bgpa\b|grade point/i.test(`${section} ${text}`)) return 'gpa';
-    if (/total hours|upper[- ]division hours|hours in residence|minimum of \d+ (semester )?hours/i.test(`${section} ${text}`)) {
+    if (
+        /total hours|upper[- ]division hours|hours in residence|minimum of \d+ (semester )?hours/i.test(
+            `${section} ${text}`
+        )
+    ) {
         return 'hours';
     }
-    if (/major|minor|degree|program|certificate|requirements|b\.?a\.?|b\.?s\.?/i.test(section)) return 'major';
+    if (/\bminor\b/i.test(section)) return 'minor';
+    if (/general education|general requirements|university requirements|writing flag|global cultures/i.test(section))
+        return 'general';
+    if (/major|degree|program|certificate|requirements|b\.?a\.?|b\.?s\.?/i.test(section)) return 'major';
     return 'other';
 }
 
@@ -58,6 +65,10 @@ function finalizeRequirement(
     baseConfidence: Confidence
 ): AuditRequirement {
     const tags = coreCodesInText(base.text).map(coreTag);
+    // Named courses are recommendation candidates; OR/AND and applicability still require audit review.
+    for (const match of base.text.matchAll(/\b([A-Z][A-Z ]{0,5})\s+(\d{3}[A-Z]{0,2})\b/g)) {
+        tags.push(courseTag(`${match[1]} ${match[2]}`));
+    }
     const issues = [...(base.issues ?? [])];
     let confidence: Confidence = baseConfidence;
     const numeric = statusFromNumbers(base.applied, base.remaining);
@@ -149,7 +160,9 @@ function collectRestrictions(texts: string[]): string[] {
 }
 
 function deriveCreditHours(reqs: AuditRequirement[]): ParsedAudit['creditHours'] {
-    const total = reqs.find(r => r.category === 'hours' && /total|minimum of \d+/i.test(r.text) && r.required?.unit !== 'courses');
+    const total = reqs.find(
+        r => r.category === 'hours' && /total|minimum of \d+/i.test(r.text) && r.required?.unit !== 'courses'
+    );
     if (!total) return { confidence: 'low' };
     return {
         required: total.required?.value,
@@ -160,6 +173,21 @@ function deriveCreditHours(reqs: AuditRequirement[]): ParsedAudit['creditHours']
 }
 
 /** Parses an IDA results page (live DOM or a saved .html file loaded with DOMParser). */
+/** UT's progress widget contains both an expected-progress marker and an actual completion
+ * number. Read only the latter; never confuse the expected marker with degree completion. */
+export function readOfficialIdaProgress(doc: Document): ParsedAudit['officialProgress'] {
+    const widget = doc.querySelector('#progress_summary');
+    if (!widget) return undefined;
+    const displayed = clean(widget.querySelector('.progress_number')?.textContent);
+    const match = displayed.match(/^(100|[1-9]?\d)\s*%?$/);
+    if (match) return { percent: Number(match[1]), source: 'ida-html' };
+    const actualBar = [...widget.querySelectorAll('img[alt]')]
+        .map(img => img.getAttribute('alt') ?? '')
+        .find(text => /^(100|[1-9]?\d)\s*%\s*complete$/i.test(text.trim()));
+    const barMatch = actualBar?.trim().match(/^(100|[1-9]?\d)\s*%\s*complete$/i);
+    return barMatch ? { percent: Number(barMatch[1]), source: 'ida-html' } : undefined;
+}
+
 export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now()): ParsedAudit {
     const warnings: string[] = [];
     const courses = parseCourseRows(doc);
@@ -168,7 +196,8 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
     const pendingCodes = new Set(transfer.pending.map(c => normalizeCourseCode(c.code)));
     const requirements: AuditRequirement[] = [];
     const sections = [...doc.querySelectorAll('#requirements table.results')];
-    if (sections.length === 0) warnings.push('No requirement tables found. Is this an Interactive Degree Audit results page?');
+    if (sections.length === 0)
+        warnings.push('No requirement tables found. Is this an Interactive Degree Audit results page?');
 
     sections.forEach((table, tableIndex) => {
         const titleTh = table.querySelector('thead th.section_title');
@@ -218,6 +247,7 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         parsedAt: now,
         program,
         requirements,
+        officialProgress: readOfficialIdaProgress(doc),
         courses,
         transfer,
         creditHours: deriveCreditHours(requirements),
@@ -231,7 +261,9 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
  * derived from the Required / Counted / Lacking numbers and every item is at most medium confidence.
  */
 export function parseAuditText(lines: string[], fileName?: string, now = Date.now()): ParsedAudit {
-    const warnings = ['Parsed from PDF text: completion icons are not available, so statuses come from the hours columns. Please review.'];
+    const warnings = [
+        'Parsed from PDF text: completion icons are not available, so statuses come from the hours columns. Please review.',
+    ];
     const courses: AuditCourse[] = [];
     const requirements: AuditRequirement[] = [];
     let semester = '';
@@ -242,10 +274,13 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
 
     const courseLine =
         /^(?:(in progress|planned|future)\s+)?([A-Z][A-Z ]{0,6}?)\s+([FSNW]?\d{3}[A-Z]{0,2})\s+(.+?)\s+(?:([A-F][+-]?|CR|NC|P|F|IP|PEND\w*)\s+)?(\d{5})?\s*(In-Residence|Transfer(?: pending)?|Pending Transfer|Credit By Exam)\s+(\d+(?:\.\d+)?)\b/i;
-    const ruleNumbers = /(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s*(.*)$/i;
+    const ruleNumbers =
+        /(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s+(\d+(?:\.\d+)?)\s*(hours?|courses?)\s*(.*)$/i;
 
     const flushRule = (numbersMatch: RegExpMatchArray, head: string) => {
-        const text = clean([...buffer, head].join(' ')).replace(/^\d+\s+/, '').replace(/^(completed|not completed|partially completed|done)\s+/i, '');
+        const text = clean([...buffer, head].join(' '))
+            .replace(/^\d+\s+/, '')
+            .replace(/^(completed|not completed|partially completed|done)\s+/i, '');
         buffer = [];
         if (!text) return;
         const unit = (s: string) => (/course/i.test(s) ? 'courses' : 'hours') as Progress['unit'];
@@ -323,7 +358,10 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
             }
         }
         // a requirement section title usually stands alone, e.g. "Core Curriculum (42 hours required ...)"
-        if (/^(core curriculum|major requirements|.*requirements\b.*|total hours.*|gpa.*)$/i.test(line) && !ruleNumbers.test(line)) {
+        if (
+            /^(core curriculum|major requirements|.*requirements\b.*|total hours.*|gpa.*)$/i.test(line) &&
+            !ruleNumbers.test(line)
+        ) {
             if (mode !== 'coursework' || /core curriculum|requirements/i.test(line)) {
                 section = line.replace(/\s*\(.*\)$/, '');
                 mode = 'requirements';
@@ -343,10 +381,13 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
         }
     }
 
-    if (requirements.length === 0) warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
+    if (requirements.length === 0)
+        warnings.push('No requirements could be read from this PDF. Try saving the audit page as HTML instead.');
     const transfer = splitTransfer(courses);
+    const explicit = lines.map(line => clean(line).match(/^(100|[1-9]?\d)\s*%\s*complete$/i)).find(Boolean);
     return {
         source: 'pdf',
+        officialProgress: explicit ? { percent: Number(explicit[1]), source: 'ida-pdf' } : undefined,
         fileName,
         parsedAt: now,
         requirements,
@@ -383,7 +424,9 @@ export function correctRequirement(
 ): ParsedAudit {
     return {
         ...audit,
-        requirements: audit.requirements.map(r => (r.id === id ? { ...r, ...patch, reviewed: true, confidence: 'high' as const } : r)),
+        requirements: audit.requirements.map(r =>
+            r.id === id ? { ...r, ...patch, reviewed: true, confidence: 'high' as const } : r
+        ),
     };
 }
 

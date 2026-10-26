@@ -1,6 +1,7 @@
 import { background } from '@shared/messages';
 import { CacheStore } from '@shared/storage/CacheStore';
 import { parseSemesterCode, type Semester } from '@shared/types/Course';
+import { parseHtml } from '@shared/util/parseHtml';
 
 const AVAILABLE_SEMESTERS_CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -19,7 +20,7 @@ async function refreshAvailableSemesters(): Promise<Semester[]> {
                 response: 'text',
             });
 
-            const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+            const doc = parseHtml(htmlText);
             const links = doc.querySelectorAll('a[href*="/schedules/"]');
 
             const semesterCodes = new Set<string>();

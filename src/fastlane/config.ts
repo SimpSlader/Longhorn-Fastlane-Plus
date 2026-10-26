@@ -1,6 +1,7 @@
 /** Public project links (configurable at build time). */
 export const FASTLANE_REPO_URL: string =
-    (import.meta.env.VITE_FASTLANE_REPO_URL as string | undefined) || 'https://github.com/SimpSlader/Longhorn-Fastlane-Plus';
+    (import.meta.env.VITE_FASTLANE_REPO_URL as string | undefined) ||
+    'https://github.com/SimpSlader/Longhorn-Fastlane-Plus';
 
 /** Opens a prefilled public GitHub issue; the student reviews and submits it themselves. */
 export function feedbackIssueUrl(feedback: string): string {

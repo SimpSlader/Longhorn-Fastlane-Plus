@@ -21,13 +21,15 @@
             .msg { margin-top: 10px; min-height: 22px; font-weight: 600; }
             .msg.ok { color: #15803d; } .msg.bad { color: #b91c1c; }
             .note { color: #57534e; font-size: 13px; }
-            input { font: 16px ui-monospace, monospace; padding: 6px; width: 110px; }
+            input[type=text] { font: 16px ui-monospace, monospace; padding: 6px; width: 110px; }
+            #message { margin-top: 10px; min-height: 22px; font-weight: 600; }
+            #message.ok { color: #15803d; } #message.bad { color: #b91c1c; }
             @media (max-width: 1100px) { main { margin-right: 0; } }
         </style>
     </head>
     <body>
         <header>
-            <h1>Longhorn Fastlane Plus — offline demo</h1>
+            <h1>Fastlane Course Planner — offline demo</h1>
             <div><b>Not a UT page.</b> These are local fixtures shaped like UT’s course schedule and add/drop screens. Nothing here contacts UT.</div>
         </header>
         <main>
@@ -53,7 +55,6 @@
                     <button id="simRestricted" type="button">Simulate restriction</button>
                     <button id="simClear" type="button">Clear message</button>
                 </div>
-                <div id="result" class="msg" role="alert"></div>
             </section>
         </main>
         <script src="./index.tsx" type="module"></script>

@@ -1,16 +1,23 @@
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
-import { Suspense, StrictMode } from 'react';
+import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { suspendUntilStoresReady } from 'src/lib/chrome-extension-toolkit/storage/createStore';
 
 import { FastlaneAuditStore, FastlanePlanStore, FastlaneQueueStore, FastlaneSettingsStore } from '../../storage/stores';
 import { ASSISTANT_CSS } from './assistantStyles';
+import { contextInvalidated, watchAssistantContext } from './contextLifetime';
 import RegistrationAssistant from './RegistrationAssistant';
 
 export const HOST_ID = 'fastlane-registration-assistant';
 
 function Bootstrap({ host }: { host: HTMLElement }) {
-    suspendUntilStoresReady([FastlaneSettingsStore, FastlaneQueueStore, FastlaneAuditStore, FastlanePlanStore, UserScheduleStore]);
+    suspendUntilStoresReady([
+        FastlaneSettingsStore,
+        FastlaneQueueStore,
+        FastlaneAuditStore,
+        FastlanePlanStore,
+        UserScheduleStore,
+    ]);
     return <RegistrationAssistant host={host} />;
 }
 
@@ -26,7 +33,14 @@ export function mountRegistrationAssistant(doc: Document = document): HTMLElemen
     const root = doc.createElement('div');
     shadow.append(style, root);
     doc.body.append(host);
-    createRoot(root).render(
+    const reactRoot = createRoot(root, {
+        onUncaughtError(error) {
+            if (contextInvalidated(error)) expire();
+            else console.error(error);
+        },
+    });
+    const expire = watchAssistantContext(host, () => reactRoot.unmount());
+    reactRoot.render(
         <StrictMode>
             <Suspense fallback={null}>
                 <Bootstrap host={host} />

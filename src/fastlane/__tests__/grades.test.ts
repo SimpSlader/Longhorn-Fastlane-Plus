@@ -76,7 +76,21 @@ describe('computeThreshold', () => {
 
     it('uses real-looking UT counts', () => {
         // MUS 302L style distribution
-        const counts = { A: 612, 'A-': 211, 'B+': 98, B: 77, 'B-': 41, 'C+': 22, C: 19, 'C-': 9, 'D+': 4, D: 6, 'D-': 2, F: 36, Other: 58 };
+        const counts = {
+            A: 612,
+            'A-': 211,
+            'B+': 98,
+            B: 77,
+            'B-': 41,
+            'C+': 22,
+            C: 19,
+            'C-': 9,
+            'D+': 4,
+            D: 6,
+            'D-': 2,
+            F: 36,
+            Other: 58,
+        };
         const r = computeThreshold(counts, 'A-')!;
         expect(r.graded).toBe(1137);
         expect(r.atOrAbove).toBe(823);
@@ -90,7 +104,12 @@ describe('helpers', () => {
     });
 
     it('sums counts across semesters', () => {
-        expect(sumCounts([{ A: 1, Other: 2 }, { A: 3, B: 4 }])).toEqual({ A: 4, B: 4, Other: 2 });
+        expect(
+            sumCounts([
+                { A: 1, Other: 2 },
+                { A: 3, B: 4 },
+            ])
+        ).toEqual({ A: 4, B: 4, Other: 2 });
     });
 
     it('formats without rounding up to a misleading value', () => {

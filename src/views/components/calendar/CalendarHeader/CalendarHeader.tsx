@@ -22,7 +22,6 @@ import ExportIcon from '~icons/ph/export';
 import FileCodeIcon from '~icons/ph/file-code';
 import FilePngIcon from '~icons/ph/file-png';
 import FileTextIcon from '~icons/ph/file-text';
-import SidebarIcon from '~icons/ph/sidebar';
 
 import { handleExportJson, saveAsCal, saveAsText, saveCalAsPng } from '../utils';
 
@@ -35,8 +34,9 @@ export interface CalendarHeaderProps {
  * Renders the header component for the calendar.
  * @returns The JSX element representing the calendar header.
  */
-export default function CalendarHeader({ sidebarOpen, onSidebarToggle }: CalendarHeaderProps): JSX.Element {
+export default function CalendarHeader(_props: CalendarHeaderProps): JSX.Element {
     const activeSchedule = useActiveSchedule();
+    const sidebarOpen = OptionsStore.useStore(store => store.showCalendarSidebar);
     const lastCheckedText = useRelativeTime(activeSchedule.lastCheckedAt);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -90,24 +90,21 @@ export default function CalendarHeader({ sidebarOpen, onSidebarToggle }: Calenda
 
     return (
         <div
-            style={{ scrollbarGutter: 'auto' }}
+            style={{
+                scrollbarGutter: 'auto',
+                paddingLeft: sidebarOpen ? 24 : 72,
+                paddingTop: 16,
+                paddingBottom: 12,
+                flexWrap: 'wrap',
+                rowGap: 12,
+                overflow: 'visible',
+            }}
             className='sticky left-0 right-0 top-0 z-10 min-h-[75px] flex items-center gap-5 oveflow-x-auto overflow-y-hidden bg-white pl-spacing-7 pt-spacing-5 pb-1'
         >
-            {!sidebarOpen && (
-                <Button
-                    variant='minimal'
-                    size='small'
-                    color='theme-black'
-                    onClick={onSidebarToggle}
-                    className='screenshot:hidden'
-                    icon={SidebarIcon}
-                />
-            )}
-
             <LargeLogo className='hidden! screenshot:flex!' />
             <Divider className='self-center hidden! screenshot:block!' size='2.5rem' orientation='vertical' />
 
-            <div className='truncate flex-initial min-w-[min-content] screenshot:transform-origin-left screenshot:scale-120'>
+            <div className='min-w-0 flex-initial screenshot:transform-origin-left screenshot:scale-120'>
                 <ScheduleTotalHoursAndCourses
                     scheduleId={activeSchedule.id}
                     scheduleName={activeSchedule.name}

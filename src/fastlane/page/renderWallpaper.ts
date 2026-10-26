@@ -178,7 +178,11 @@ export function renderWallpaper(
             const codeW = ctx.measureText(e.courseCode).width;
             ctx.font = `400 ${24 * s}px system-ui, sans-serif`;
             ctx.fillStyle = muted;
-            ctx.fillText(truncate(ctx, e.title, width - margin * 2 - codeW - 300 * s), margin + 34 * s + codeW, y + 30 * s);
+            ctx.fillText(
+                truncate(ctx, e.title, width - margin * 2 - codeW - 300 * s),
+                margin + 34 * s + codeW,
+                y + 30 * s
+            );
             ctx.textAlign = 'right';
             ctx.fillStyle = ink;
             ctx.font = `600 ${24 * s}px system-ui, sans-serif`;
@@ -197,6 +201,10 @@ export function renderWallpaper(
     if (asynchronous.length) {
         ctx.fillStyle = muted;
         ctx.font = `600 ${22 * s}px system-ui, sans-serif`;
-        ctx.fillText(truncate(ctx, `ONLINE, ANYTIME: ${asynchronous.map(a => a.courseCode).join(' · ')}`, width - margin * 2), margin, y);
+        ctx.fillText(
+            truncate(ctx, `ONLINE, ANYTIME: ${asynchronous.map(a => a.courseCode).join(' · ')}`, width - margin * 2),
+            margin,
+            y
+        );
     }
 }

@@ -35,7 +35,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" package/*.zip package/RELEASE.json --draft --generate-notes --title "Longhorn Fastlane Plus $GITHUB_REF_NAME"
+        run: gh release create "$GITHUB_REF_NAME" package/*.zip package/RELEASE.json --draft --generate-notes --title "Fastlane Course Planner $GITHUB_REF_NAME"
       - name: Upload to Chrome Web Store (draft only)
         if: inputs.upload_to_store && env.CWS_CLIENT_ID != ''
         env:

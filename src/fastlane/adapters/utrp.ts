@@ -14,7 +14,7 @@ import type { Modality, ModalityResult } from '../core/modality';
 import { classifyModality } from '../core/modality';
 import { tagsForSection } from '../core/requirements';
 import type { SectionRecord } from '../core/sections';
-import { sectionLabel, toSectionTimes } from '../core/sections';
+import { OFFERINGS_COURSE_MARK, sectionLabel, toSectionTimes } from '../core/sections';
 import type { GradeDatasetInfo } from '../data/activeGradeDataset';
 import { getActiveGradeDataset } from '../data/activeGradeDataset';
 
@@ -40,7 +40,8 @@ export function rawMeetingsFromRow(row: Element): RawMeeting[] {
     const rooms = read('td[data-th="Room"] > span');
     const n = Math.max(days.length, hours.length, rooms.length);
     const lines: RawMeeting[] = [];
-    for (let i = 0; i < n; i++) lines.push({ daysText: days[i] ?? '', hoursText: hours[i] ?? '', roomText: rooms[i] ?? '' });
+    for (let i = 0; i < n; i++)
+        lines.push({ daysText: days[i] ?? '', hoursText: hours[i] ?? '', roomText: rooms[i] ?? '' });
     return lines;
 }
 
@@ -51,7 +52,11 @@ export function instructionModeTextFromRow(row: Element): string {
 export function analyzeRow(row: Element): { modality: ModalityResult; meetings: Meeting[]; complete: boolean } {
     const raw = rawMeetingsFromRow(row);
     const { meetings, complete } = meetingsFromRaw(raw);
-    return { modality: classifyModality({ instructionModeText: instructionModeTextFromRow(row), meetings: raw }), meetings, complete };
+    return {
+        modality: classifyModality({ instructionModeText: instructionModeTextFromRow(row), meetings: raw }),
+        meetings,
+        complete,
+    };
 }
 
 function meetingsFromCourse(course: Course): Meeting[] {
@@ -79,12 +84,17 @@ export function sectionFromCourse(
     const meetings = fromRow?.meetings ?? meetingsFromCourse(course);
     const modality = fromRow?.modality.modality ?? modalityFromCourse(course, meetings);
     const code = courseCode(course);
+    // a course built from the Registrar's offerings document keeps that provenance after being scheduled
+    const listedOnly = (course as unknown as Record<string, unknown>)[OFFERINGS_COURSE_MARK] === 'ut-offerings';
     return {
         uniqueId: course.uniqueId,
+        ...(listedOnly ? { source: 'ut-offerings' as const } : {}),
         courseCode: code,
         title: course.courseName,
         semester: course.semester,
-        instructors: course.instructors.map(i => i.fullName ?? `${i.firstName ?? ''} ${i.lastName ?? ''}`.trim()).filter(Boolean),
+        instructors: course.instructors
+            .map(i => i.fullName ?? `${i.firstName ?? ''} ${i.lastName ?? ''}`.trim())
+            .filter(Boolean),
         creditHours: course.creditHours,
         meetings,
         // a stored in-person course with no meeting times has unknown times
@@ -93,7 +103,9 @@ export function sectionFromCourse(
         core: course.core ?? [],
         flags: course.flags ?? [],
         isReserved: course.isReserved,
-        status: course.status ? { value: course.status, observedAt: course.scrapedAt, source: 'UT course schedule page' } : undefined,
+        status: course.status
+            ? { value: course.status, observedAt: course.scrapedAt, source: 'UT course schedule page' }
+            : undefined,
         url: course.url,
         requirementTags: tagsForSection({ courseCode: code, core: course.core, flags: course.flags }),
         course: JSON.parse(JSON.stringify(course)),

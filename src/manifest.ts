@@ -16,6 +16,7 @@ if (isBeta && process.env.NODE_ENV !== 'production') throw new Error('Cannot hav
 // Fastlane: only UT pages the extension enhances. Upstream's login.utexas.edu match was removed so no
 // script ever runs on UT's sign-in page.
 const HOST_PERMISSIONS: string[] = [
+    'https://utdirect.utexas.edu/apps/degree/audits/results/*',
     '*://*.utdirect.utexas.edu/apps/registrar/course_schedule/*',
     '*://*.utdirect.utexas.edu/registration/*',
     '*://*.utexas.collegescheduler.com/*',
@@ -24,6 +25,11 @@ const HOST_PERMISSIONS: string[] = [
     'https://*.bluera.com/rpvlf.aspx*',
     '*://my.utexas.edu/student/*',
 ];
+
+// Network access is used only by Fastlane's opt-in AI panel; content scripts still run on UT pages only.
+const AI_API_HOST_PERMISSION = 'https://longhorn-fastlane-plus.vercel.app/*';
+// Public professor ratings shown next to grades; only professor names are sent, from the background worker.
+const RMP_HOST_PERMISSION = 'https://www.ratemyprofessors.com/*';
 
 const manifest = defineManifest(async env => {
     const isDev = env.mode === 'development';
@@ -47,7 +53,9 @@ const manifest = defineManifest(async env => {
             'notifications',
             ...(isDev ? (['declarativeNetRequest', 'declarativeNetRequestWithHostAccess'] as const) : []),
         ],
-        host_permissions: isDev ? [...HOST_PERMISSIONS, '<all_urls>'] : HOST_PERMISSIONS,
+        host_permissions: isDev
+            ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION, '<all_urls>']
+            : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION],
         action: {
             default_popup: 'src/pages/popup/index.html',
             default_icon: `icons/icon_${mode}_32.png`,

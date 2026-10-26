@@ -5,12 +5,12 @@ import ConflictsWithWarning from '@views/components/common/ConflictsWithWarning'
 import ExtensionRoot from '@views/components/common/ExtensionRoot/ExtensionRoot';
 import type { JSX } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { analyzeRow, scheduleTimes, sectionFromCourse } from 'src/fastlane/adapters/utrp';
 import { detectConflicts } from 'src/fastlane/core/meetings';
 import { toSectionTimes } from 'src/fastlane/core/sections';
-import RowInsights from 'src/fastlane/injected/RowInsights';
+import RowInsights, { QuickAddButton } from 'src/fastlane/injected/RowInsights';
 import { FastlaneSettingsStore } from 'src/fastlane/storage/stores';
-import { createPortal } from 'react-dom';
 import ChartBarFillIcon from '~icons/ph/chart-bar-fill';
 
 import styles from './TableRow.module.scss';
@@ -84,11 +84,14 @@ export default function TableRow({ row, isSelected, activeSchedule, onClick }: P
 
     useEffect(() => {
         const isAsync = highlightAsync && rowAnalysis.modality.modality === 'async-online';
+        const isOnline = highlightAsync && ['async-online', 'live-online'].includes(rowAnalysis.modality.modality);
+        element.classList.toggle(styles.isOnline ?? 'fastlane-online', isOnline);
         // biome-ignore lint/style/noNonNullAssertion: CSS module class
         element.classList[isAsync ? 'add' : 'remove'](styles.isAsync!);
         return () => {
             // biome-ignore lint/style/noNonNullAssertion: CSS module class
             element.classList.remove(styles.isAsync!);
+            element.classList.remove(styles.isOnline ?? 'fastlane-online');
         };
     }, [element, highlightAsync, rowAnalysis]);
 
@@ -150,6 +153,7 @@ export default function TableRow({ row, isSelected, activeSchedule, onClick }: P
                 >
                     <ChartBarFillIcon className='text-ut-white h-4 w-4' />
                 </button>
+                {course && <QuickAddButton course={course} activeSchedule={activeSchedule} />}
                 {conflicts.length > 0 && (
                     <ConflictsWithWarning
                         className='opacity-0 absolute left-13 top--3 text-white group-hover:opacity-100'

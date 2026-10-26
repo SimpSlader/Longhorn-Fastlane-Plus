@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 
-const SHOTS = resolve(process.cwd(), 'store-assets/screenshots');
+const SHOTS = resolve(process.cwd(), 'reports/screenshots');
 mkdirSync(SHOTS, { recursive: true });
 
 async function openDemo(page: Page, extensionId: string) {
@@ -23,26 +23,159 @@ test.describe('Chrome extension permissions & security', () => {
     test('manifest requests only the minimal permissions and UT hosts', async ({ sw }) => {
         const manifest = await sw.evaluate(() => chrome.runtime.getManifest());
         expect(manifest.manifest_version).toBe(3);
-        expect(manifest.name).toBe('Longhorn Fastlane Plus');
-        expect([...(manifest.permissions ?? [])].sort()).toEqual(['alarms', 'notifications', 'scripting', 'storage', 'unlimitedStorage']);
+        expect(manifest.name).toBe('Fastlane Course Planner');
+        expect([...(manifest.permissions ?? [])].sort()).toEqual([
+            'alarms',
+            'notifications',
+            'scripting',
+            'storage',
+            'unlimitedStorage',
+        ]);
         for (const host of manifest.host_permissions ?? []) {
-            expect(host).toMatch(/utexas\.edu|collegescheduler\.com|bluera\.com/);
+            expect(host).toMatch(
+                /utexas\.edu|collegescheduler\.com|bluera\.com|longhorn-fastlane-plus\.vercel\.app|www\.ratemyprofessors\.com\/\*$/
+            );
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');
-        expect(manifest.content_security_policy?.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
+        expect(manifest.content_security_policy?.extension_pages).toBe(
+            "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+        );
+    });
+});
+
+test.describe('fresh profile', () => {
+    test('only this extension is installed and its pages load without errors', async ({ context, extensionId, sw }) => {
+        expect(context.serviceWorkers()).toHaveLength(1);
+        expect(await sw.evaluate(() => chrome.runtime.getManifest().name)).toBe('Fastlane Course Planner');
+        const errors: string[] = [];
+        const failedThirdParty: string[] = [];
+        const page = await context.newPage();
+        page.on('pageerror', e => errors.push(e.message));
+        page.on('console', m => {
+            if (m.type() === 'error') errors.push(m.text());
+        });
+        page.on('response', r => {
+            if (r.status() >= 400 && new URL(r.url()).hostname === 'api.github.com') failedThirdParty.push(r.url());
+        });
+        for (const p of [
+            'fastlane.html',
+            'demo.html',
+            'calendar.html',
+            'src/pages/popup/index.html',
+            'map.html',
+            'options.html',
+        ]) {
+            await page.goto(`chrome-extension://${extensionId}/${p}`);
+            await page.waitForTimeout(700);
+        }
+        // The Settings page's GitHub contributor request can be rate-limited (403) or offline in CI. Those are
+        // network conditions, not extension errors; any other console error fails the test.
+        const excused = (e: string) => failedThirdParty.length > 0 && /Failed to load resource/.test(e);
+        expect(errors.filter(e => !excused(e) && !/api\.github\.com|ERR_INTERNET_DISCONNECTED/i.test(e))).toEqual([]);
+    });
+});
+
+test.describe('calendar sidebar usability', () => {
+    test('calendar shows saved backups and separates its black title from totals and toggle', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await page.goto(`chrome-extension://${extensionId}/calendar.html`);
+        const backups = page.getByRole('complementary', { name: 'Backups' });
+        await expect(backups).toBeVisible();
+        await expect(backups).toContainText('33505');
+        await expect(backups).toContainText('23095');
+        const summary = page.getByTestId('schedule-summary');
+        const title = summary.getByText('Fastlane demo (Ideal)', { exact: true });
+        await expect(title).toHaveCSS('color', 'rgb(17, 17, 17)');
+        const titleBox = await title.boundingBox();
+        const totalsBox = await page.getByTestId('schedule-totals').boundingBox();
+        expect(titleBox && totalsBox && titleBox.y + titleBox.height <= totalsBox.y).toBe(true);
+        await page.getByRole('button', { name: 'Hide schedule sidebar' }).click();
+        const toggleBox = await page.getByRole('button', { name: 'Show schedule sidebar' }).boundingBox();
+        await expect.poll(async () => (await summary.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(72);
+        expect(toggleBox?.x).toBe(16);
+        await page.screenshot({ path: `${SHOTS}/calendar-backups.png` });
+    });
+
+    test('a compact icon button reopens the sidebar when it is collapsed', async ({ context, extensionId }) => {
+        const page = await context.newPage();
+        await page.goto(`chrome-extension://${extensionId}/calendar.html`);
+        const hide = page.getByRole('button', { name: 'Hide schedule sidebar' });
+        await expect(hide).toBeVisible();
+        await hide.click();
+        const reopen = page.getByRole('button', { name: 'Show schedule sidebar' });
+        await expect(reopen).toBeVisible();
+        const dimensions = await reopen.boundingBox();
+        expect(dimensions).not.toBeNull();
+        expect(dimensions?.width).toBeGreaterThanOrEqual(40);
+        expect(dimensions?.height).toBeGreaterThanOrEqual(40);
+        await page.screenshot({ path: `${SHOTS}/calendar-sidebar-closed.png`, fullPage: false });
+        for (const viewport of [
+            { width: 1440, height: 1000 },
+            { width: 800, height: 600 },
+        ]) {
+            await page.setViewportSize(viewport);
+            const geometry = await reopen.evaluate(button => {
+                const rect = button.getBoundingClientRect();
+                const root = button.getRootNode() as Document | ShadowRoot;
+                return {
+                    position: getComputedStyle(button).position,
+                    left: rect.left,
+                    top: rect.top,
+                    clickable: button.contains(
+                        root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+                    ),
+                    clipped: Array.from(
+                        (function* () {
+                            for (let parent = button.parentElement; parent; parent = parent.parentElement) yield parent;
+                        })()
+                    ).some(parent => /auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflow)),
+                };
+            });
+            expect(geometry).toEqual({ position: 'fixed', left: 16, top: 16, clickable: true, clipped: false });
+        }
+        await page.reload();
+        await expect(reopen).toBeVisible();
+        await reopen.click();
+        await expect(hide).toBeVisible();
+        await expect(reopen).toHaveCount(0);
+        await page.reload();
+        await expect(hide).toBeVisible();
     });
 });
 
 test.describe('course listing integration (demo fixtures, real code)', () => {
-    test('inline grade percentages, threshold changes, async and conflict indicators', async ({ context, extensionId }) => {
+    test('inline grade percentages, threshold changes, async and conflict indicators', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
 
         // A- or better percentage with professor attribution next to the graph button
         const music = rowFor(page, '23095');
-        await expect(music.locator('[data-fastlane="grade"]')).toContainText(/\d+\.\d%\s*A-\+\s*·\s*Prof/);
+        // professor-specific data names the professor and the sample size; course-wide data says "All profs"
+        await expect(music.locator('[data-fastlane="grade"]')).toContainText(
+            /\d+\.\d%\s*A-\+\s*·\s*Middleton\s*·\s*n=\d/
+        );
+        await expect(rowFor(page, '55675').locator('[data-fastlane="grade"]')).toContainText(
+            /All profs\s*·\s*n=[\d,]+/
+        );
         const before = await music.locator('[data-fastlane="grade"]').innerText();
+        // professor rating sits right after the A distribution and links to the professor's RMP page
+        const rmp = music.locator('[data-fastlane="rmp"]');
+        await expect(rmp).toContainText('★ 4.4');
+        await expect(rmp).toContainText('RMP · 31');
+        await expect(rmp).toHaveAttribute('href', 'https://www.ratemyprofessors.com/professor/4242');
+        expect(
+            await music
+                .locator('[data-fastlane="row"] > *')
+                .evaluateAll(els => els.map(e => e.getAttribute('data-fastlane')).slice(0, 2))
+        ).toEqual(['grade', 'rmp']);
 
         // changing the threshold globally recalculates from counts
         await page.locator('#ut-registration-plus-table-head select').selectOption('B');
@@ -64,6 +197,8 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         const live = rowFor(page, '27425');
         await expect(live.locator('[data-fastlane="live-online"]')).toBeVisible();
         expect(await live.getAttribute('class')).not.toMatch(/isAsync/);
+        await expect(live.locator('td[data-th="Unique"] a')).toHaveCSS('color', 'rgb(29, 78, 216)');
+        await expect(music.locator('td[data-th="Unique"] a')).toHaveCSS('color', 'rgb(29, 78, 216)');
         expect(await rowFor(page, '33505').getAttribute('class')).not.toMatch(/isAsync/);
 
         // confirmed conflict names the planned class and strikes the row
@@ -77,10 +212,34 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         // async section never conflicts by modality alone
         await expect(music.locator('[data-fastlane="conflict"]')).toHaveCount(0);
 
-        await page.locator('section').nth(1).screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
+        await page
+            .locator('section')
+            .nth(1)
+            .screenshot({ path: `${SHOTS}/1-listing-grades-async-conflicts.png` });
+
+        // green + quick-adds the class to the active schedule, takes the class color, and removes on a second click
+        const quick = live.locator('[data-fastlane="quick-add"]');
+        // it sits immediately to the right of the orange grade-chart button
+        expect(await quick.evaluate(el => el.previousElementSibling?.getAttribute('aria-label') ?? '')).toBe(
+            'Open historical grade distribution graph'
+        );
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
+        expect(await quick.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(22, 163, 74)');
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'true');
+        // the button fades from green to the color UTRP gave the class
+        await page.waitForTimeout(400);
+        const added = await quick.evaluate(el => getComputedStyle(el).backgroundColor);
+        expect(added).not.toBe('rgb(22, 163, 74)');
+        await quick.locator('xpath=..').screenshot({ path: `${SHOTS}/1b-quick-add-added.png` });
+        await quick.click();
+        await expect(quick).toHaveAttribute('aria-pressed', 'false');
     });
 
-    test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({ context, extensionId }) => {
+    test('backups do not join the active schedule, prevent duplicates, and persist after reload', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
         const theatre = rowFor(page, '27425');
@@ -110,12 +269,44 @@ test.describe('course listing integration (demo fixtures, real code)', () => {
         await expect(page.locator('.slot-primary', { hasText: '33505' })).toBeVisible();
         const swapped = await page.evaluate(async () => {
             const all = await chrome.storage.local.get(null);
-            const demo = (all.schedules as Array<{ name: string; courses: Array<{ uniqueId: number }> }>).find(s => s.name === 'Fastlane demo (Ideal)')!;
+            const demo = (all.schedules as Array<{ name: string; courses: Array<{ uniqueId: number }> }>).find(
+                s => s.name === 'Fastlane demo (Ideal)'
+            )!;
             return demo.courses.map(c => c.uniqueId).sort();
         });
         expect(swapped).toEqual([33505, 53780, 65555]);
         await page.reload();
         await expect(page.locator('.slot-primary', { hasText: '33505' })).toContainText('Active · backup');
+    });
+});
+
+test.describe('grade distribution graph (Highcharts replacement)', () => {
+    test('opens the course popup with a dependency-free SVG chart', async ({ context, extensionId }) => {
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await rowFor(page, '23095').getByRole('button', { name: 'Open historical grade distribution graph' }).click();
+        const chart = page.locator('svg[role="img"][aria-label="Grade distribution chart"]');
+        await expect(chart).toBeVisible();
+        await expect(page.locator('table caption', { hasText: 'Grade distribution' })).toBeAttached(); // accessible data table
+        await expect(page.getByText('Grade Distribution for')).toBeVisible();
+        expect(await page.evaluate(() => 'Highcharts' in window)).toBe(false);
+        await page.waitForTimeout(1200); // let the dialog's open transition and column animation finish
+        // the dialog must reserve the chart's height and show it without scrolling (regression: auto-height SVG collapsed)
+        const box = (await chart.boundingBox())!;
+        expect(box.height).toBeGreaterThan(200);
+        expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+        await chart.locator('rect[data-grade="A"]').hover();
+        await expect(page.getByRole('tooltip')).toContainText(/A.*\d+ students · \d+\.\d%/s);
+        await expect(page.getByRole('tooltip')).toHaveCSS('color', 'rgb(0, 0, 0)');
+        expect((await page.getByRole('tooltip').boundingBox())?.width).toBeGreaterThanOrEqual(160);
+        for (const [name, color] of [
+            ['Past Syllabi', 'rgb(255, 243, 204)'],
+            ['CES', 'rgb(230, 247, 246)'],
+            ['RateMyProf', 'rgb(234, 243, 248)'],
+        ]) {
+            await expect(page.getByRole('button', { name, exact: true })).toHaveCSS('background-color', color);
+        }
+        await page.screenshot({ path: `${SHOTS}/9-grade-distribution-popup.png` });
     });
 });
 
@@ -134,7 +325,16 @@ test.describe('registration assistant', () => {
         await expect(panel.locator('.code')).toHaveText('65605');
         await page.reload();
         await expect(panel.locator('.code')).toHaveText('65605');
-        await expect(panel.locator('.hist li')).toHaveCount(4);
+        await expect(panel.getByText('Attempt history')).toHaveCount(0);
+        const historyLength = await page.evaluate(
+            async () =>
+                (
+                    (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as {
+                        history: unknown[];
+                    }
+                ).history.length
+        );
+        expect(historyLength).toBe(4);
         await panel.screenshot({ path: `${SHOTS}/3-registration-assistant.png` });
     });
 
@@ -145,20 +345,21 @@ test.describe('registration assistant', () => {
         // off by default: nothing is filled
         await expect(panel.locator('.code')).toHaveText('65555');
         await expect(page.locator('#s_unique_add')).toHaveValue('');
-        // manual "Fill next code" works even with autofill off
-        await panel.getByRole('button', { name: 'Fill next code' }).click();
+        // Turning on the switch fills the current code without submitting.
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).check();
         await expect(page.locator('#s_unique_add')).toHaveValue('65555');
-        await expect(page.locator('#s_unique_drop')).toHaveValue('');
-        await expect(page.locator('#result')).toHaveText('');
+        await expect(page.locator('#s_swap_unique_add')).toHaveValue('');
+        await expect(page.locator('#ds_request_STADD')).toBeChecked();
+        await expect(page.locator('#message')).toHaveText('');
 
-        // enable autofill: marking Full moves to the next fallback and fills it
-        await page.evaluate(async () => {
-            const key = 'FastlaneSettings:autofill';
-            await chrome.storage.sync.set({ [key]: { enabled: true, paused: false, preserveNonEmpty: true } });
-        });
+        // Off prevents filling the next code; switching back on fills it immediately.
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).uncheck();
         await panel.getByRole('button', { name: 'Full' }).click();
+        await expect(panel.locator('.code')).toHaveText('65705');
+        await expect(page.locator('#s_unique_add')).toHaveValue('65555');
+        await panel.getByRole('switch', { name: 'Auto-fill code' }).check();
         await expect(page.locator('#s_unique_add')).toHaveValue('65705');
-        await expect(page.locator('#result')).toHaveText(''); // no submission happened
+        await expect(page.locator('#message')).toHaveText(''); // no submission happened
 
         // a value the student typed is never overwritten
         await page.locator('#s_unique_add').fill('11111');
@@ -168,31 +369,99 @@ test.describe('registration assistant', () => {
 
         // history logs autofill events
         const actions = await page.evaluate(async () => {
-            const q = (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as { history: Array<{ action: string }> };
+            const q = (await chrome.storage.local.get('FastlaneQueue:queue'))['FastlaneQueue:queue'] as {
+                history: Array<{ action: string }>;
+            };
             return q.history.map(h => h.action);
         });
         expect(actions).toContain('autofilled');
     });
 });
 
-test.describe('degree audit, recommendations, reminders, map, wallpaper', () => {
+test.describe('optional outcome suggestions (UT-shaped add/drop form)', () => {
+    test('suggests from #message only after the student submits, and waits for confirmation', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        // enable the option the way a student does (Registration prep → checkbox), before visiting the page
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#register`);
+        const toggle = page.getByRole('checkbox', { name: /Suggest outcomes from UT/ });
+        await toggle.check();
+        await page.reload();
+        await expect(page.getByRole('checkbox', { name: /Suggest outcomes from UT/ })).toBeChecked();
+        await page.goto(`chrome-extension://${extensionId}/demo.html`);
+        const panel = page.locator('#fastlane-registration-assistant');
+        await expect(panel.locator('.code')).toHaveText('65555');
+        await panel.getByRole('button', { name: 'Copy 65555' }).click();
+        await page.locator('#s_unique_add').fill('65555');
+        await page.locator('#simFull').click(); // UT shows "filled to closing limit"
+        await expect(panel.getByText('appears to say')).toBeVisible();
+        await expect(panel.locator('.code')).toHaveText('65555'); // nothing recorded yet
+        await panel.getByRole('button', { name: 'Mark Full' }).click();
+        await expect(panel.locator('.code')).toHaveText('65705');
+    });
+});
+
+test.describe('network activity matches the privacy policy', () => {
+    test('extension pages contact no third-party hosts', async ({ context, extensionId }) => {
+        const hosts = new Set<string>();
+        context.on('request', r => {
+            const u = new URL(r.url());
+            if (!['chrome-extension:', 'data:', 'blob:'].includes(u.protocol)) hosts.add(u.hostname);
+        });
+        const page = await context.newPage();
+        await openDemo(page, extensionId);
+        await rowFor(page, '23095').getByRole('button', { name: 'Open historical grade distribution graph' }).click();
+        for (const tab of ['plan', 'recommend', 'audit', 'register', 'map', 'wallpaper', 'settings']) {
+            await page.goto(`chrome-extension://${extensionId}/fastlane.html#${tab}`);
+            await page.waitForTimeout(400);
+        }
+        for (const p of ['calendar.html', 'map.html', 'src/pages/popup/index.html']) {
+            await page.goto(`chrome-extension://${extensionId}/${p}`);
+            await page.waitForTimeout(800);
+        }
+        // Disclosed in the privacy policy: UTRP's Settings page lists contributors from GitHub's public API, and
+        // the calendar's Quick Add loads UT's public semester index page, and course listings look up professors'
+        // public Rate My Professors ratings by name (no student data is sent; stubbed in tests).
+        await page.goto(`chrome-extension://${extensionId}/options.html`);
+        await page.waitForTimeout(1500);
+        const disclosed = new Set(['api.github.com', 'registrar.utexas.edu', 'www.ratemyprofessors.com']);
+        const unexpected = [...hosts].filter(h => !disclosed.has(h));
+        expect(unexpected, `unexpected hosts: ${unexpected.join(', ')}`).toEqual([]);
+    });
+});
+
+test.describe('degree audit, recommendations, reminders and simple navigation', () => {
     test('imports an IDA HTML file locally and shows review items', async ({ context, extensionId }) => {
         const page = await context.newPage();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
-        await page.locator('input[type=file]').setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
-        await expect(page.getByText('core requirements complete')).toBeVisible();
-        await expect(page.getByRole('button', { name: /Needs review/ })).toBeVisible();
-        await page.getByRole('button', { name: /^All \(/ }).click();
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        // UT's own completion number (68%), not the expected-pace marker or a count of checks
+        const official = page.locator('.metric').filter({ hasText: 'Official IDA degree completion' });
+        await expect(official).toContainText('68%');
+        // cards are collapsed; expanding shows remaining, in-progress and completed requirements separately
+        await page.locator('summary').filter({ hasText: 'Core Curriculum' }).click();
         await expect(page.getByText('CORE (090)').first()).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/4-degree-audit-review.png`, fullPage: false });
         await page.reload();
-        await expect(page.getByText('core requirements complete')).toBeVisible(); // persisted
+        await expect(official).toContainText('68%'); // persisted
     });
 
-    test('recommends only cached, requirement-matching sections with honest availability', async ({ context, extensionId }) => {
+    test('recommends only cached, requirement-matching sections with honest availability', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
         await page.waitForTimeout(2500); // listing is cached in the background (debounced)
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         const recs = page.locator('.rec');
         await expect(recs.first()).toBeVisible();
@@ -200,35 +469,66 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         expect(text).not.toContain('GOV 310L');
         expect(text).toMatch(/Open as of|Check availability|Closed as of/);
         expect(text).toContain('Satisfies Core 050');
+        await expect(page.getByRole('button', { name: 'Add to my schedule' }).first()).toBeVisible();
+        await page.getByRole('button', { name: 'Add to my schedule' }).first().click();
+        // the course-inventory panel has its own (empty) status line
+        await expect(page.getByRole('status').filter({ hasText: 'Added' })).toBeVisible();
         await page.screenshot({ path: `${SHOTS}/5-recommendations.png`, fullPage: false });
     });
 
     test('reminders create chrome.alarms and can be cleared', async ({ context, extensionId, sw }) => {
         const page = await context.newPage();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#register`);
+        await expect(page.getByRole('heading', { name: 'Registration reminders' })).toBeVisible(); // stores initialized
         const future = new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString().slice(0, 10);
         await page.evaluate(async date => {
             const key = 'FastlaneReminders:reminders';
             const cur = (await chrome.storage.local.get(key))[key] as Record<string, unknown>;
-            await chrome.storage.local.set({ [key]: { ...cur, enabled: true, window: { date, time: '08:00', timeZone: 'America/Chicago' } } });
+            await chrome.storage.local.set({
+                [key]: { ...cur, enabled: true, window: { date, time: '08:00', timeZone: 'America/Chicago' } },
+            });
         }, future);
         await expect
-            .poll(async () => (await sw.evaluate(async () => (await chrome.alarms.getAll()).map(a => a.name))).filter(n => n.startsWith('fastlane-reminder:')).length)
+            .poll(
+                async () =>
+                    (await sw.evaluate(async () => (await chrome.alarms.getAll()).map(a => a.name))).filter(n =>
+                        n.startsWith('fastlane-reminder:')
+                    ).length
+            )
             .toBeGreaterThanOrEqual(4);
         await page.screenshot({ path: `${SHOTS}/6-registration-prep-reminders.png`, fullPage: false });
     });
 
-    test('campus map and wallpaper render locally', async ({ context, extensionId }) => {
+    test('planner shows four primary pages without map, wallpaper or history clutter', async ({
+        context,
+        extensionId,
+    }) => {
         const page = await context.newPage();
         await openDemo(page, extensionId);
-        await page.goto(`chrome-extension://${extensionId}/fastlane.html#map`);
-        await expect(page.locator('.map-wrap circle').first()).toBeVisible();
-        await expect(page.getByText(/estimates, not verified routes/)).toBeVisible();
-        await page.screenshot({ path: `${SHOTS}/7-campus-map.png`, fullPage: false });
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#home`);
+        const nav = page.getByRole('navigation', { name: 'Sections' });
+        await expect(nav.getByRole('button')).toHaveCount(4);
+        for (const label of ['Overview', 'Find classes', 'My schedule', 'Degree progress']) {
+            await expect(nav.getByRole('button', { name: label })).toBeVisible();
+        }
+        await expect(nav.getByText('Campus map')).toHaveCount(0);
+        await expect(nav.getByText('Phone wallpaper')).toHaveCount(0);
+        await expect(nav.getByText('History & undo')).toHaveCount(0);
+
+        await nav.getByRole('button', { name: 'Find classes' }).click();
+        // the AI chat is the default; advanced browsing is one click away
+        await expect(page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' })).toBeVisible();
+        await page.getByText('Browse courses and adjust advanced filters').click();
+        await page.getByRole('button', { name: 'Browse all classes' }).click();
+        await expect(page.getByRole('combobox', { name: 'Subject' })).toBeVisible();
+        await expect(page.getByRole('group', { name: 'Allowed class days' })).toBeVisible();
+        await expect(page.getByRole('combobox', { name: 'Minimum historical A minus percentage' })).toBeVisible();
+
+        // Old bookmarked links should lead back to a supported planner screen.
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#wallpaper`);
-        const dataUrlLength = await page.locator('canvas').evaluate(c => (c as HTMLCanvasElement).toDataURL('image/png').length);
-        expect(dataUrlLength).toBeGreaterThan(20_000);
-        await page.screenshot({ path: `${SHOTS}/8-wallpaper.png`, fullPage: false });
+        await expect(page.getByRole('heading', { name: 'Plan your next semester.' })).toBeVisible();
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#map`);
+        await expect(page.getByRole('heading', { name: 'Plan your next semester.' })).toBeVisible();
     });
 
     test('works offline: grades, conflicts, plans and cached recommendations', async ({ context, extensionId }) => {
@@ -239,6 +539,11 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         await page.reload();
         await expect(rowFor(page, '23095').locator('[data-fastlane="grade"]')).toContainText('%');
         await expect(rowFor(page, '20001').locator('[data-fastlane="conflict"]')).toBeVisible();
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
         // (Playwright's offline emulation does not change navigator.onLine on extension pages, so the
         // offline badge is covered by manual testing; here we verify the features work without network.)
@@ -260,5 +565,88 @@ test.describe('degree audit, recommendations, reminders, map, wallpaper', () => 
         expect(local['FastlaneAudit:audit']).toBeNull();
         expect((local['FastlaneQueue:queue'] as { items: unknown[] }).items).toEqual([]);
         expect(Object.keys(local)).toContain('schedules'); // UTRP schedules kept unless "delete everything"
+    });
+});
+
+test.describe('UT course-schedule search form resilience', () => {
+    const ut = 'https://utdirect.utexas.edu/apps/registrar/course_schedule/';
+
+    test('leaves a changed UT form untouched when the expected wrapper is missing', async ({ context }) => {
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route(ut, route =>
+            route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><html><body><form><label for="mtg_days_st">Days</label><select id="mtg_days_st" name="mtg_days_st"><option value="001000" selected>Wednesday</option></select></form></body></html>',
+            })
+        );
+        await page.goto(ut);
+        await expect(page.locator('#mtg_days_st')).toHaveValue('001000');
+        await expect(page.locator('#fastlane-mtg-days-picker')).toHaveCount(0);
+        expect(errors).toEqual([]);
+    });
+
+    test('keeps the student’s selected days and updates only on interaction', async ({ context }) => {
+        const page = await context.newPage();
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route(ut, route =>
+            route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><html><body><form><div class="form_element"><label for="mtg_days_st">AND days</label><select id="mtg_days_st" name="mtg_days_st"><option value="001000" selected>Wednesday</option></select></div></form></body></html>',
+            })
+        );
+        await page.goto(ut);
+        await expect(page.locator('#fastlane-mtg-days-picker input[type="checkbox"]')).toHaveCount(6);
+        await expect(page.locator('#fastlane-mtg-days-input')).toHaveValue('001000');
+        await expect(page.getByRole('checkbox', { name: 'Wednesday' })).toBeChecked();
+        await page.getByRole('checkbox', { name: 'Friday' }).check();
+        await expect(page.locator('#fastlane-mtg-days-input')).toHaveValue('001010');
+        expect(errors).toEqual([]);
+    });
+});
+
+test.describe('AI access remembered after first successful request', () => {
+    test('saves beta code locally once, shares it between audit and scheduling, and supports forgetting', async ({
+        context,
+        extensionId,
+    }) => {
+        const page = await context.newPage();
+        await page.route('https://longhorn-fastlane-plus.vercel.app/api/audit-review', async route => {
+            const data = route.request().postDataJSON() as { accessCode?: string };
+            expect(data.accessCode).toBe('test-invite-code-local-only');
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({ summary: 'Reviewed supplied requirements.', suggestions: [] }),
+            });
+        });
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page.getByText('Check unclear items with AI (optional)').click();
+        await page.getByRole('button', { name: 'Review with AI' }).click();
+        await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+        await page.getByRole('checkbox').last().check();
+        await page.getByRole('button', { name: 'Check requirements with AI' }).click();
+        await expect(page.getByText('Reviewed supplied requirements.')).toBeVisible();
+        await expect(page.getByText('AI access saved on this device.')).toBeVisible();
+        const saved = await page.evaluate(
+            async () => (await chrome.storage.local.get('FastlaneAiAccess:accessCode'))['FastlaneAiAccess:accessCode']
+        );
+        expect(saved).toBe('test-invite-code-local-only');
+
+        await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
+        await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
+        await page.reload();
+        await expect(page.getByText(/AI access saved on this device/)).toBeVisible();
+        await page.getByRole('button', { name: 'Forget code' }).click();
+        await expect(page.getByPlaceholder('Enter once to enable AI')).toBeVisible();
     });
 });

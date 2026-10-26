@@ -101,6 +101,11 @@ export function createMessenger<M>(destination: 'background' | 'foreground') {
                         ]);
                     }
                 }
+                // Fastlane: after an extension reload, stale content scripts get a rejected promise with a clear
+                // error instead of a synchronous "Extension context invalidated" throw.
+                if (!globalThis.chrome?.runtime?.id) {
+                    throw new Error('Extension context invalidated.');
+                }
                 return chrome.runtime.sendMessage(message);
             };
         },

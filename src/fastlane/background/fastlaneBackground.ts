@@ -4,44 +4,36 @@
  *  - hand verified downloaded datasets to content scripts
  *  - schedule registration reminders with chrome.alarms and show chrome.notifications
  *  - optionally check for static dataset updates at most once per day
+ *  - look up public Rate My Professors ratings by professor name (no student data)
  * No network request here ever goes to a developer-controlled server with student data.
  */
+
 import type { PlannedReminder, ReminderConfig } from '../core/reminders';
-import { ALARM_PREFIX, planReminders } from '../core/reminders';
+import { ALARM_PREFIX, normalizeReminderConfig, planReminders } from '../core/reminders';
 import type { SectionRecord } from '../core/sections';
-import { semesterKey } from '../core/sections';
 import bundled from '../data/bundled-datasets.json';
 import { checkForUpdates } from '../data/datasets';
-import { idbDatasetStore, idbGetAll, idbPutMany, STORES } from '../data/idb';
-import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
+import { idbDatasetStore } from '../data/idb';
+import { putObservedSections, readSections } from '../data/sectionStore';
 import { dataManifestConfig } from '../services/dataConfig';
+import { registerHistory } from '../services/history';
+import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
 import { FastlaneReminderStore, FastlaneSettingsStore } from '../storage/stores';
+import { checkForNewLocalBuild, isDevNotification, registerDevAutoReload } from './devAutoReload';
+import { professorRating } from './rmp';
 
 export const UT_REGISTRATION_URL = 'https://utdirect.utexas.edu/registration/chooseSemester.WBX';
 const DATA_ALARM = 'fastlane-data-check';
 const NOTIFICATION_ICON = 'icons/icon_production_128.png';
 
-interface CachedSection extends SectionRecord {
-    key: string;
-    semesterLabel: string;
-}
-
 async function cacheSections(sections: SectionRecord[]): Promise<number> {
-    const rows: CachedSection[] = sections
-        .filter(s => Number.isInteger(s.uniqueId) && typeof s.courseCode === 'string')
-        .slice(0, 500)
-        .map(s => ({ ...s, key: `${s.semester?.code ?? semesterKey(s.semester)}:${s.uniqueId}`, semesterLabel: semesterKey(s.semester) }));
-    await idbPutMany(STORES.sections, rows);
-    return rows.length;
-}
-
-async function getSections(semester: string | null | undefined): Promise<SectionRecord[]> {
-    const all = await idbGetAll<CachedSection>(STORES.sections);
-    return semester ? all.filter(s => s.semesterLabel === semester) : all;
+    return putObservedSections(sections.slice(0, 500));
 }
 
 export async function syncReminderAlarms(config?: ReminderConfig): Promise<PlannedReminder[]> {
-    const reminders = config ?? ((await FastlaneReminderStore.get('reminders')) as unknown as ReminderConfig);
+    const reminders = normalizeReminderConfig(
+        config ?? ((await FastlaneReminderStore.get('reminders')) as unknown as ReminderConfig)
+    );
     const existing = await chrome.alarms.getAll();
     await Promise.all(existing.filter(a => a.name.startsWith(ALARM_PREFIX)).map(a => chrome.alarms.clear(a.name)));
     let planned: PlannedReminder[] = [];
@@ -72,7 +64,9 @@ async function onAlarm(alarm: chrome.alarms.Alarm) {
         return;
     }
     if (!alarm.name.startsWith(ALARM_PREFIX)) return;
-    const reminders = (await FastlaneReminderStore.get('reminders')) as unknown as ReminderConfig;
+    const reminders = normalizeReminderConfig(
+        (await FastlaneReminderStore.get('reminders')) as unknown as ReminderConfig
+    );
     // recompute so edits made after scheduling are respected
     const match = planReminders(reminders, (alarm.scheduledTime ?? Date.now()) - 60_000).find(r => r.id === alarm.name);
     if (match) notify(`${alarm.name}:${Date.now()}`, match.title, match.message);
@@ -87,7 +81,9 @@ export async function runDataCheck(force: boolean) {
         store: idbDatasetStore,
         force,
         online: navigator.onLine,
-        bundled: Object.fromEntries(bundled.datasets.map(d => [d.id, { sha256: d.sha256, publishedAt: d.publishedAt }])),
+        bundled: Object.fromEntries(
+            bundled.datasets.map(d => [d.id, { sha256: d.sha256, publishedAt: d.publishedAt }])
+        ),
     });
 }
 
@@ -96,16 +92,23 @@ function openTab(url: string) {
 }
 
 export function registerFastlaneBackground() {
+    if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true') registerDevAutoReload();
+    registerHistory();
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (!isFastlaneRequest(msg)) return false;
         const respond = (p: Promise<unknown>) =>
-            p.then(data => sendResponse({ ok: true, data })).catch((e: Error) => sendResponse({ ok: false, error: e.message }));
+            p
+                .then(data => sendResponse({ ok: true, data }))
+                .catch((e: Error) => sendResponse({ ok: false, error: e.message }));
         switch (msg.type) {
             case 'cacheSections':
                 respond(cacheSections(msg.sections));
                 return true;
+            case 'professorRating':
+                respond(professorRating(msg.first, msg.last));
+                return true;
             case 'getSections':
-                respond(getSections(msg.semester));
+                respond(readSections(msg.semester));
                 return true;
             case 'getGradesOverride':
                 respond(
@@ -120,12 +123,23 @@ export function registerFastlaneBackground() {
                 respond(syncReminderAlarms());
                 return true;
             case 'testNotification':
-                notify(`fastlane-test:${Date.now()}`, 'Fastlane test notification', 'Reminders are working. You will be notified at the times you chose.');
+                notify(
+                    `fastlane-test:${Date.now()}`,
+                    'Fastlane test notification',
+                    'Reminders are working. You will be notified at the times you chose.'
+                );
                 sendResponse({ ok: true });
                 return false;
             case 'checkDataUpdates':
                 respond(runDataCheck(!!msg.force));
                 return true;
+            case 'devCheckReload':
+                if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true') {
+                    respond(checkForNewLocalBuild());
+                    return true;
+                }
+                sendResponse({ ok: true, data: false });
+                return false;
             case 'openFastlane':
                 openTab(chrome.runtime.getURL(`fastlane.html${msg.tab ? `#${msg.tab}` : ''}`));
                 sendResponse({ ok: true });
@@ -138,10 +152,15 @@ export function registerFastlaneBackground() {
     chrome.alarms.onAlarm.addListener(alarm => void onAlarm(alarm));
 
     chrome.notifications.onButtonClicked.addListener((id, index) => {
+        if (isDevNotification(id)) return; // handled by devAutoReload
         openTab(index === 0 ? UT_REGISTRATION_URL : chrome.runtime.getURL('fastlane.html#register'));
         chrome.notifications.clear(id);
     });
     chrome.notifications.onClicked.addListener(id => {
+        if (isDevNotification(id)) {
+            chrome.notifications.clear(id);
+            return;
+        }
         if (id.startsWith('fastlane')) openTab(UT_REGISTRATION_URL);
         chrome.notifications.clear(id);
     });

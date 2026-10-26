@@ -143,6 +143,29 @@ export function planReminders(config: ReminderConfig, now = Date.now()): Planned
     return out.filter(r => r.when > now).sort((a, b) => a.when - b.when);
 }
 
+/**
+ * Fills in anything missing from a stored or partially written config (e.g. a fresh profile where the
+ * window was saved before defaults were written), so scheduling never silently fails.
+ */
+export function normalizeReminderConfig(raw: Partial<ReminderConfig> | null | undefined): ReminderConfig {
+    const base = defaultReminderConfig();
+    if (!raw || typeof raw !== 'object') return base;
+    const tasks = { ...base.tasks };
+    for (const key of Object.keys(base.tasks) as TaskKey[]) {
+        const t = raw.tasks?.[key];
+        if (t && typeof t.enabled === 'boolean' && Number.isFinite(t.minutesBefore)) tasks[key] = t;
+    }
+    return {
+        enabled: typeof raw.enabled === 'boolean' ? raw.enabled : base.enabled,
+        window:
+            raw.window && typeof raw.window.date === 'string' && typeof raw.window.time === 'string'
+                ? raw.window
+                : base.window,
+        offsets: Array.isArray(raw.offsets) ? raw.offsets.filter(o => Number.isFinite(o) && o >= 0) : base.offsets,
+        tasks,
+    };
+}
+
 export function isReminderConfig(value: unknown): value is ReminderConfig {
     const v = value as ReminderConfig;
     return (

@@ -14,7 +14,7 @@ Semantic versioning on `package.json` `version` (the manifest version is derived
 ## Release steps
 1. `pnpm install && pnpm vitest run && pnpm exec playwright test`
 2. Bump `version` in `package.json`, update release notes.
-3. `git tag vX.Y.Z && git push --tags` → **Prepare Chrome Web Store release** workflow builds, tests, packages and creates a **draft** GitHub release with `longhorn-fastlane-plus-X.Y.Z.zip` and `RELEASE.json` (SHA-256).
+3. `git tag vX.Y.Z && git push --tags` → **Prepare Chrome Web Store release** workflow builds, tests, packages and creates a **draft** GitHub release with `fastlane-course-planner-X.Y.Z.zip` and `RELEASE.json` (SHA-256).
 4. Walk through `docs/STORE_REVIEW_CHECKLIST.md`.
 5. Upload the ZIP in the Chrome Web Store Developer Dashboard (or run the workflow manually with *upload_to_store*; it uploads a draft and never publishes).
 6. Submit for review. Students receive the update through Chrome's normal extension updates after approval.

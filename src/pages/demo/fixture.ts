@@ -27,34 +27,101 @@ export const DEMO_COURSES: DemoCourse[] = [
     {
         header: 'MUS 302L INTRODUCTION TO WESTERN MUSIC',
         sections: [
-            { unique: '23095', days: [], hours: [], rooms: [], mode: 'Internet', instructor: 'MIDDLETON, J', status: 'open', core: 'Visual and Performing Arts' },
-            { unique: '23100', days: ['MW'], hours: ['1:00 p.m.-2:30 p.m.'], rooms: ['WB'], mode: 'Internet', instructor: 'PENATE, M', status: 'open', core: 'Visual and Performing Arts' },
+            {
+                unique: '23095',
+                days: [],
+                hours: [],
+                rooms: [],
+                mode: 'Internet',
+                instructor: 'MIDDLETON, J',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
+            {
+                unique: '23100',
+                days: ['MW'],
+                hours: ['1:00 p.m.-2:30 p.m.'],
+                rooms: ['WB'],
+                mode: 'Internet',
+                instructor: 'PENATE, M',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
         ],
     },
     {
         header: 'C C 303 INTRODUCTION TO CLASSICAL MYTHOLOGY',
-        sections: [{ unique: '33515', days: [], hours: [], rooms: [], mode: 'Internet', instructor: 'NETHERCUT, J', status: 'closed', core: 'Visual and Performing Arts' }],
+        sections: [
+            {
+                unique: '33515',
+                days: [],
+                hours: [],
+                rooms: [],
+                mode: 'Internet',
+                instructor: 'NETHERCUT, J',
+                status: 'closed',
+                core: 'Visual and Performing Arts',
+            },
+        ],
     },
     {
         header: 'C C 302 INTRODUCTION TO ANCIENT ROME',
         sections: [
-            { unique: '33505', days: ['TTH'], hours: ['9:30 a.m.-11:00 a.m.'], rooms: ['WAG 201'], mode: 'Face-to-face', instructor: 'RIGGSBY, A', status: 'open', core: 'Visual and Performing Arts' },
+            {
+                unique: '33505',
+                days: ['TTH'],
+                hours: ['9:30 a.m.-11:00 a.m.'],
+                rooms: ['WAG 201'],
+                mode: 'Face-to-face',
+                instructor: 'RIGGSBY, A',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
         ],
     },
     {
         header: 'ART 301 THE STUDIO EXPERIENCE',
         sections: [
-            { unique: '20001', days: ['MWF'], hours: ['10:00 a.m.-11:00 a.m.'], rooms: ['ART 1.120'], mode: 'Face-to-face', instructor: 'SMITH, J', status: 'open', core: 'Visual and Performing Arts' },
+            {
+                unique: '20001',
+                days: ['MWF'],
+                hours: ['10:00 a.m.-11:00 a.m.'],
+                rooms: ['ART 1.120'],
+                mode: 'Face-to-face',
+                instructor: 'SMITH, J',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
         ],
     },
     {
         header: 'ARH 301 SURVEY OF ANCIENT THROUGH MEDIEVAL ART',
-        sections: [{ unique: '20004', days: ['MW'], hours: [''], rooms: [''], mode: 'Face-to-face', instructor: 'SMITH, J', status: 'open', core: 'Visual and Performing Arts' }],
+        sections: [
+            {
+                unique: '20004',
+                days: ['MW'],
+                hours: [''],
+                rooms: [''],
+                mode: 'Face-to-face',
+                instructor: 'SMITH, J',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
+        ],
     },
     {
         header: 'T D 301 INTRODUCTION TO THEATRE',
         sections: [
-            { unique: '27425', days: ['TTH'], hours: ['2:00 p.m.-3:30 p.m.'], rooms: ['WB'], mode: 'Internet', instructor: 'SMITH, J', status: 'open', core: 'Visual and Performing Arts' },
+            {
+                unique: '27425',
+                days: ['TTH'],
+                hours: ['2:00 p.m.-3:30 p.m.'],
+                rooms: ['WB'],
+                mode: 'Internet',
+                instructor: 'SMITH, J',
+                status: 'open',
+                core: 'Visual and Performing Arts',
+            },
         ],
     },
     {
@@ -75,13 +142,32 @@ export const DEMO_COURSES: DemoCourse[] = [
     {
         header: 'UGS 302 FIRST-YEAR SIGNATURE COURSE',
         sections: [
-            { unique: '65555', days: ['MWF'], hours: ['9:00 a.m.-10:00 a.m.'], rooms: ['GEA 105'], mode: 'Face-to-face', instructor: 'SMITH, J', status: 'open', core: 'First-Year Signature Course', flags: ['Writing'] },
+            {
+                unique: '65555',
+                days: ['MWF'],
+                hours: ['9:00 a.m.-10:00 a.m.'],
+                rooms: ['GEA 105'],
+                mode: 'Face-to-face',
+                instructor: 'SMITH, J',
+                status: 'open',
+                core: 'First-Year Signature Course',
+                flags: ['Writing'],
+            },
         ],
     },
     {
         header: 'M 408C DIFFERENTIAL AND INTEGRAL CALCULUS',
         sections: [
-            { unique: '53780', days: ['MWF', 'TTH'], hours: ['10:00 a.m.-11:00 a.m.', '11:00 a.m.-12:30 p.m.'], rooms: ['RLP 0.102', 'PMA 5.104'], mode: 'Face-to-face', instructor: 'SMITH, J', status: 'open', core: 'Mathematics' },
+            {
+                unique: '53780',
+                days: ['MWF', 'TTH'],
+                hours: ['10:00 a.m.-11:00 a.m.', '11:00 a.m.-12:30 p.m.'],
+                rooms: ['RLP 0.102', 'PMA 5.104'],
+                mode: 'Face-to-face',
+                instructor: 'SMITH, J',
+                status: 'open',
+                core: 'Mathematics',
+            },
         ],
     },
 ];
@@ -112,9 +198,18 @@ export function courseScheduleTableHtml(): string {
     return `<table class="rwd-table results"><thead><tr><th>Unique</th><th>Days</th><th>Hour</th><th>Room</th><th>Instruction Mode</th><th>Instructor</th><th>Status</th><th>Flags</th><th>Core</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/** Mirrors the structure of UT's add/drop form (field names from public sources); divs instead of a table so the listing scraper ignores it. */
 export const ADD_DROP_FORM_HTML = `
-<form id="demo-add-drop" autocomplete="off">
-  <p><label for="s_unique_add">Unique number to add</label> <input id="s_unique_add" name="s_unique_add" maxlength="5" inputmode="numeric"></p>
-  <p><label for="s_unique_drop">Unique number to drop</label> <input id="s_unique_drop" name="s_unique_drop" maxlength="5" inputmode="numeric"></p>
-  <button type="submit" id="demo-submit">Submit (simulated)</button>
+<div id="n_message"><span class="notification">Please select a registration action.</span></div>
+<form id="demo-add-drop" name="regform" autocomplete="off">
+  <div id="message" role="status"></div>
+  <div id="message2"></div>
+  <p><input type="radio" name="s_request" id="ds_request_STADD" value="STADD" checked>
+     <label for="s_unique_add">REGISTER for or ADD</label> <input type="text" name="s_unique_add" id="s_unique_add" size="6" maxlength="5"></p>
+  <p><input type="radio" name="s_request" id="s_request_STDRP" value="STDRP">
+     <label for="s_unique_drop">DROP</label> <select name="s_unique_drop" id="s_unique_drop"><option value="">Select unique to:</option></select></p>
+  <p><input type="radio" name="s_request" id="s_request_STSWP" value="STSWP">
+     <select name="s_swap_unique_drop" id="s_swap_unique_drop"><option value="">Select unique to:</option></select>
+     DROP DEPENDENT UPON successfully ADDING <input type="text" name="s_swap_unique_add" id="s_swap_unique_add" size="6" maxlength="5"></p>
+  <input type="submit" name="s_submit" id="s_submit" value="Submit (simulated)">
 </form>`;

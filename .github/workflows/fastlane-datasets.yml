@@ -1,11 +1,16 @@
 name: Publish public datasets (GitHub Pages)
 # Publishes DATA ONLY (SQLite/JSON + manifest with SHA-256) for optional in-extension updates.
 # Only datasets listed in docs/DATA_SOURCES.md as redistributable may be published here.
+#
+# DISABLED BY DEFAULT: public hosting of the grade dataset is on hold until redistribution is approved
+# (see docs/GRADE_DATA_PROVENANCE.md). Running it requires BOTH the repository variable
+# DATASET_REDISTRIBUTION_APPROVED=true AND typing the confirmation phrase below. No push trigger.
 on:
   workflow_dispatch:
-  push:
-    branches: [fastlane-plus]
-    paths: ['src/assets/database/**', 'scripts/fastlane/publish-datasets.mjs']
+    inputs:
+      confirm:
+        description: Type "I confirm redistribution of this dataset was approved" to publish
+        required: true
 permissions:
   contents: read
   pages: write
@@ -15,6 +20,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    if: vars.DATASET_REDISTRIBUTION_APPROVED == 'true' && inputs.confirm == 'I confirm redistribution of this dataset was approved'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

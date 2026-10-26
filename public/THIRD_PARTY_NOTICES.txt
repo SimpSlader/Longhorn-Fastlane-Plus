@@ -1,6 +1,6 @@
-LONGHORN FASTLANE PLUS — THIRD-PARTY NOTICES
+FASTLANE COURSE PLANNER — THIRD-PARTY NOTICES
 
-Longhorn Fastlane Plus is an independent, student-developed project. It is not affiliated with,
+Fastlane Course Planner is an independent, student-developed project. It is not affiliated with,
 endorsed by, or approved by The University of Texas at Austin or the UT Registration Plus team.
 
 ==============================================================================
@@ -10,7 +10,7 @@ This extension is a fork of UT Registration Plus.
 MIT License
 
 Copyright (c) 2023 Sriram Hariharan (UT Registration Plus)
-Copyright (c) 2026 Longhorn Fastlane Plus contributors (modifications)
+Copyright (c) 2026 Fastlane Course Planner contributors (modifications)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -64,7 +64,7 @@ UT_Grade_Parser (https://github.com/doprz/UT_Grade_Parser, MIT OR Apache-2.0) an
 UT Registration Plus. Campus map artwork and walkway graph: UT Registration Plus (MIT).
 
 ==============================================================================
-BUNDLED OPEN-SOURCE PACKAGES (393)
+BUNDLED OPEN-SOURCE PACKAGES (391)
 ==============================================================================
 
 @babel/code-frame@7.29.0 — MIT — https://babel.dev/docs/en/next/babel-code-frame
@@ -3316,37 +3316,6 @@ hast-util-whitespace@3.0.0 — MIT — https://github.com/syntax-tree/hast-util-
 
 hastscript@9.0.1 — MIT — https://github.com/syntax-tree/hastscript#readme
   Same license text as decode-named-character-reference.
-
-highcharts@12.5.0 — https://www.highcharts.com/license — http://www.highcharts.com
-  (license file not included in package; see the package homepage)
-
-highcharts-react-official@3.2.3 — MIT — https://github.com/highcharts/highcharts-react#readme
-  Highcharts React 
-  
-  Copyright (c) 2016-2017, Highsoft
-  
-  The software in Highcharts React repository is free and open source, 
-  but as highcharts-react relies on Highcharts.js, it requires a valid 
-  Highcharts license for commercial use.
-  
-  Permission is hereby granted, free of charge, to any person obtaining
-  a copy of this software and associated documentation files (the
-  "Software"), to deal in the Software without restriction, including
-  without limitation the rights to use, copy, modify, merge, publish,
-  distribute, sublicense, and/or sell copies of the Software, and to
-  permit persons to whom the Software is furnished to do so, subject to
-  the following conditions:
-  
-  The above copyright notice and this permission notice shall be
-  included in all copies or substantial portions of the Software.
-  
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 highlight.js@10.7.3 — BSD-3-Clause — https://highlightjs.org/
   BSD 3-Clause License

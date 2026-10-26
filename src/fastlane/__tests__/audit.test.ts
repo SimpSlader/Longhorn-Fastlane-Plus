@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+    classifyCategory,
     confirmRequirement,
     correctRequirement,
     needsReview,
@@ -53,6 +54,11 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
     const doc = fixture('dap-audit-results-real.html');
     const audit = parseAuditHtml(doc);
 
+    it('reads the actual official completion percentage, not expected pace', () => {
+        // Real IDA fixture: progress_number is 68%; time marker says expected 62%.
+        expect(audit.officialProgress).toEqual({ percent: 68, source: 'ida-html' });
+    });
+
     it('parses every rule row with its markup status', () => {
         const rules = [...doc.querySelectorAll('#requirements tbody.section > tr.rule')].filter(
             r => r.querySelectorAll(':scope > td').length >= 6
@@ -65,7 +71,16 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
     it('extracts core curriculum codes and categories', () => {
         const core = audit.requirements.filter(r => r.category === 'core');
         const tags = new Set(core.flatMap(r => r.tags));
-        for (const t of ['CORE 010', 'CORE 020', 'CORE 040', 'CORE 050', 'CORE 060', 'CORE 070', 'CORE 080', 'CORE 090']) {
+        for (const t of [
+            'CORE 010',
+            'CORE 020',
+            'CORE 040',
+            'CORE 050',
+            'CORE 060',
+            'CORE 070',
+            'CORE 080',
+            'CORE 090',
+        ]) {
             expect(tags.has(t), t).toBe(true);
         }
         expect(core.find(r => r.tags.includes('CORE 090'))?.status).toBe('completed');
@@ -74,7 +89,13 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
 
     it('reads course history across semesters and skips excluded classes', () => {
         expect(audit.courses.length).toBeGreaterThan(10);
-        expect(audit.courses[0]).toMatchObject({ code: 'C S 314', grade: 'B+', unique: '50245', semester: 'Fall 2024', hours: 3 });
+        expect(audit.courses[0]).toMatchObject({
+            code: 'C S 314',
+            grade: 'B+',
+            unique: '50245',
+            semester: 'Fall 2024',
+            hours: 3,
+        });
         expect(new Set(audit.courses.map(c => c.semester)).has('Classes Excluded from Audit')).toBe(false);
     });
 
@@ -86,6 +107,18 @@ describe('parseAuditHtml — real IDA markup (Degree Audit Plus fixture)', () =>
         const outstanding = outstandingTags(audit);
         expect(outstanding).not.toContain('CORE 090');
         expect(takenCourseCodes(audit)).toContain('C S 314');
+    });
+});
+
+describe('degree completion metrics and categories', () => {
+    it('does not convert rule counts into an official completion percentage', () => {
+        const basic = parseAuditHtml(fixture('dap-audit-results.html'));
+        expect(basic.officialProgress).toBeUndefined();
+    });
+    it('recognizes minor and general-education sections separately from major', () => {
+        expect(classifyCategory('Minor Requirements', 'Complete three hours', [])).toBe('minor');
+        expect(classifyCategory('General Education', 'A writing flag required', [])).toBe('general');
+        expect(classifyCategory('Major Requirements', 'Complete course', [])).toBe('major');
     });
 });
 
@@ -120,7 +153,10 @@ describe('pending transfer credit', () => {
     it('can be corrected or confirmed on the review screen', () => {
         const arts = audit.requirements.find(r => r.tags.includes('CORE 050'))!;
         const corrected = correctRequirement(audit, arts.id, { status: 'not-started' });
-        expect(corrected.requirements.find(r => r.id === arts.id)).toMatchObject({ status: 'not-started', reviewed: true });
+        expect(corrected.requirements.find(r => r.id === arts.id)).toMatchObject({
+            status: 'not-started',
+            reviewed: true,
+        });
         expect(needsReview(confirmRequirement(audit, arts.id)).map(r => r.id)).not.toContain(arts.id);
     });
 });
