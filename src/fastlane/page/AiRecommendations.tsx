@@ -233,32 +233,42 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             live = false;
         };
     }, []);
+    const session = useMemo<ChatSession | null>(
+        () =>
+            history.length || versions.length
+                ? {
+                      history,
+                      versions,
+                      versionIndex,
+                      pool: [...pool],
+                      known: {
+                          sections: [...known.sections],
+                          facts: [...known.facts],
+                          grades: [...known.grades],
+                          picks: [...known.picks],
+                      },
+                      accPlan,
+                      overrides,
+                      droppedTags,
+                      lastKind,
+                  }
+                : null,
+        [history, versions, versionIndex, pool, known, accPlan, overrides, droppedTags, lastKind]
+    );
+    // saved shortly after each change, and right away when leaving Find classes
+    const latest = useRef<{ restored: boolean; session: ChatSession | null }>({ restored: false, session: null });
+    latest.current = { restored, session };
     useEffect(() => {
         if (!restored) return;
-        const timer = setTimeout(() => {
-            const session: ChatSession | null =
-                history.length || versions.length
-                    ? {
-                          history,
-                          versions,
-                          versionIndex,
-                          pool: [...pool],
-                          known: {
-                              sections: [...known.sections],
-                              facts: [...known.facts],
-                              grades: [...known.grades],
-                              picks: [...known.picks],
-                          },
-                          accPlan,
-                          overrides,
-                          droppedTags,
-                          lastKind,
-                      }
-                    : null;
-            void FastlaneChatStore.set('session', session);
-        }, 300);
+        const timer = setTimeout(() => void FastlaneChatStore.set('session', session), 300);
         return () => clearTimeout(timer);
-    }, [restored, history, versions, versionIndex, pool, known, accPlan, overrides, droppedTags, lastKind]);
+    }, [restored, session]);
+    useEffect(
+        () => () => {
+            if (latest.current.restored) void FastlaneChatStore.set('session', latest.current.session);
+        },
+        []
+    );
 
     const taken = useMemo(
         () =>
