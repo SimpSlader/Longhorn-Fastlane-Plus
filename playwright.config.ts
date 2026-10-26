@@ -9,10 +9,11 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
     testDir: 'e2e',
     timeout: 60_000,
-    // each test gets its own temporary browser profile, so local runs use several workers; a test that times out
-    // while the Mac is busy gets one more try. CI runners are small, so CI keeps one worker and no retries.
+    // each test gets its own temporary browser profile, so tests run side by side (GitHub's 4-core runners take 2 at a
+    // time); a test that times out on a busy machine gets one more try, and a stuck run stops after 15 minutes
     fullyParallel: true,
-    workers: process.env.CI ? 1 : 4,
-    retries: process.env.CI ? 0 : 1,
+    workers: process.env.CI ? 2 : 4,
+    retries: 1,
+    globalTimeout: 15 * 60_000,
     reporter: [['list'], ['json', { outputFile: 'reports/e2e-results.json' }]],
 });

@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    # a hung browser test fails the check instead of blocking a merge for an hour
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,9 +21,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # on pull requests the separate "type-check" and "test" checks already run these
       - name: Type check
+        if: github.event_name != 'pull_request'
         run: pnpm check-types
       - name: Unit tests
+        if: github.event_name != 'pull_request'
         run: pnpm vitest run --reporter=default --reporter=json --outputFile=reports/unit-results.json
       - name: Bundled dataset manifest is current
         run: pnpm data:check
@@ -35,6 +40,12 @@ jobs:
         run: |
           mkdir -p /tmp/zip-under-test && unzip -q package/*.zip -d /tmp/zip-under-test
           node scripts/fastlane/security-check.mjs /tmp/zip-under-test
+      # Chromium is downloaded once per Playwright version, not on every run
+      - name: Cache Playwright's Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: End-to-end tests against the packaged ZIP (fresh Chromium profile per test)
         run: |
           pnpm exec playwright install --with-deps chromium
