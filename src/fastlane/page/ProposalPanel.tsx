@@ -105,7 +105,11 @@ export default function ProposalPanel(props: Props) {
                 sections={version.sections}
                 compact
                 label='Proposed weekly calendar'
-                onSelect={s => setSelectedId(id => (id === s.uniqueId ? null : s.uniqueId))}
+                onSelect={s => {
+                    // like My schedule: the course popup opens, and the actions stay below the calendar
+                    setSelectedId(s.uniqueId);
+                    setPopup(s);
+                }}
                 selectedId={selectedId}
                 changed={changed}
             />
@@ -124,7 +128,7 @@ export default function ProposalPanel(props: Props) {
                     busy={props.busy}
                 />
             ) : (
-                <p className='fl-hint'>Tap a class for details.</p>
+                <p className='fl-hint'>Click a class for its details.</p>
             )}
             <button
                 type='button'

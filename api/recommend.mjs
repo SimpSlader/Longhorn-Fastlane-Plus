@@ -143,7 +143,14 @@ function sanitize(body) {
           }))
         : [];
     const completed = Array.isArray(body.completed) ? body.completed.slice(0, 70).map(v => safeString(v, 20)) : [];
-    return { requirements, candidates, completed, preferences, planningRequest, chatHistory };
+    // the student's saved preferences ("prioritize classes that are mostly A's")
+    const memory = Array.isArray(body.memory)
+        ? body.memory
+              .slice(0, 12)
+              .map(v => safeString(v, 160))
+              .filter(Boolean)
+        : [];
+    return { requirements, candidates, completed, preferences, planningRequest, chatHistory, memory };
 }
 
 const responseSchema = {
@@ -192,6 +199,8 @@ Nonnegotiable rules
 12. Be transparent about impossible requests: say which requirement prevents completion and suggest targeted changes instead of silently dropping a restriction.
 
 Priority hierarchy. Hard constraints never give way: minimum 12 credits, the requested credit range, excluded subjects and classes, allowed meeting days, no time conflicts, the actual semester and real sections, printed prerequisites (disclose uncertainty: "prereq" met, unmet or check; never recommend an unmet one without a clear warning). Then optimize, in order: outstanding degree requirements, historically high A rates, the requested online count, back-to-back classes with minimal gaps, professor preferences, earlier end times and convenience.
+
+memory lists the student's saved preferences and goals (for example graduating early, an internal transfer, or wanting classes that historically give mostly A's); apply them unless the latest message says otherwise.
 
 The latest message may change earlier preferences; keep earlier preferences from chatHistory unless explicitly revised. Never treat a hard constraint as optional to make a schedule work.
 

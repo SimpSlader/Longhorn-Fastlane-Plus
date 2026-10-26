@@ -4,13 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
-import { accCandidateUtCodes, accSuggestions, TCCN_SOURCE } from '../core/acc';
+import { accCandidateUtCodes, accSuggestions, programResidency, TCCN_SOURCE } from '../core/acc';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { planningPreferences } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
+import { gradFacts, isAdviceQuestion } from '../core/gradPlan';
 import type { DayCode } from '../core/meetings';
+import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/memory';
 import { composeReply, quickReplies } from '../core/plannerReply';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
@@ -30,7 +32,12 @@ import {
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
 import { createPlanningSchedule } from '../services/planningService';
-import { FastlaneAiAccessStore, FastlaneAuditStore, FastlaneSettingsStore } from '../storage/stores';
+import {
+    FastlaneAiAccessStore,
+    FastlaneAuditStore,
+    FastlaneMemoryStore,
+    FastlaneSettingsStore,
+} from '../storage/stores';
 import { inventorySubjects, useInventory } from './CourseInventory';
 import type { AiPick } from './ProposalPanel';
 import ProposalPanel from './ProposalPanel';
@@ -56,6 +63,7 @@ async function gradeForSection(section: SectionRecord): Promise<GradeStat | null
 }
 
 const ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
+const ADVISE_ENDPOINT = 'https://longhorn-fastlane-plus.vercel.app/api/advise';
 interface AiSelection {
     id: number;
     reason: string;
@@ -123,9 +131,15 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [saveNote, setSaveNote] = useState('');
     const textRef = useRef<HTMLTextAreaElement>(null);
     // preferences carry over between follow-ups; the message being typed is included before it is sent
+    // saved memory comes first, so anything said in this chat can still override it
+    const memory = FastlaneMemoryStore.useStore(s => s.items) ?? [];
+    const [memoryOpen, setMemoryOpen] = useState(false);
+    // the follow-up chips fit the last answer: degree advice or a schedule
+    const [lastKind, setLastKind] = useState<'advice' | 'schedule'>('schedule');
+    const [memoryDraft, setMemoryDraft] = useState('');
     const conversation = useMemo(
-        () => [...history.map(h => h.context), request.trim()].filter(Boolean),
-        [history, request]
+        () => [...memory, ...history.map(h => h.context), request.trim()].filter(Boolean),
+        [memory, history, request]
     );
     const prefs = useMemo(
         () => planningPreferences(conversation, subjectCodes, UT_SUBJECTS),
@@ -323,8 +337,145 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
+    const say = (request: string, summary: string, context = request) => {
+        setHistory(previous => [...previous, { id: Date.now(), request, context, summary }].slice(-12));
+        setRequest('');
+        setError('');
+    };
+
+    /** "remember …" / "forget …": kept in this browser only, no AI call. Returns true when handled. */
+    const handleMemory = async (message: string): Promise<boolean> => {
+        const command = memoryCommand(message);
+        if (!command) return false;
+        if ('forgetAll' in command) {
+            await FastlaneMemoryStore.set('items', []);
+            say(message, 'Done. I cleared everything I had remembered.', '');
+        } else if ('forget' in command) {
+            const next = forgetMemory(memory, command.forget);
+            await FastlaneMemoryStore.set('items', next);
+            say(
+                message,
+                next.length < memory.length
+                    ? `Done. I forgot ${memory.length - next.length === 1 ? 'that' : 'those'}.`
+                    : `I didn’t have anything saved about “${command.forget}”. Open Memory to see what I remember.`,
+                ''
+            );
+        } else {
+            await FastlaneMemoryStore.set('items', addMemory(memory, command.add));
+            say(
+                message,
+                `Got it. I’ll remember: “${command.add}”. I use this in every chat; open Memory to change it.`,
+                ''
+            );
+        }
+        return true;
+    };
+
+    /** UT's ACC suggestions for the unfinished requirements, with the UT version's historical A rate. */
+    const accForAudit = async (planned: string[] = []) => {
+        if (!audit) return null;
+        const firstSection = new Map<string, SectionRecord>();
+        for (const sec of catalog) {
+            const key = normalizeCourseCode(sec.courseCode);
+            if (sec.course && !firstSection.has(key)) firstSection.set(key, sec);
+        }
+        const utGrades = new Map<string, { percent: number; sample: number }>();
+        for (const code of accCandidateUtCodes(audit)) {
+            const sec = firstSection.get(code);
+            const stat = sec ? await gradeForSection(sec) : null;
+            if (stat) utGrades.set(code, { percent: stat.result.percent, sample: stat.result.graded });
+        }
+        return accSuggestions({ audit, planned, gradeOf: code => utGrades.get(code) ?? null });
+    };
+
+    /** Degree-level questions ("how do I graduate early?"): local numbers, explained by the advisor. */
+    const advise = async (message: string, code: string) => {
+        if (!audit) return;
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setBusy(true);
+        setError('');
+        setProgress('Reading your IDA…');
+        try {
+            const goals = [...memory, ...history.map(h => h.request), message];
+            const facts = gradFacts(audit, { mccombs: wantsMcCombs(goals) });
+            setProgress('Checking UT’s official ACC transfer table…');
+            const acc = await accForAudit(proposal?.sections.map(s => normalizeCourseCode(s.courseCode)) ?? []);
+            setProgress('Thinking about your plan…');
+            const response = await fetch(ADVISE_ENDPOINT, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    accessCode: code,
+                    question: message,
+                    memory,
+                    chatHistory: history.slice(-3).flatMap(h => [
+                        { role: 'student', text: h.request },
+                        { role: 'assistant', text: h.summary },
+                    ]),
+                    facts: {
+                        program: facts.program,
+                        hoursRequired: facts.hoursRequired,
+                        hoursApplied: facts.hoursApplied,
+                        hoursRemaining: facts.hoursRemaining,
+                        inProgressHours: facts.inProgressHours,
+                        residenceRemaining: facts.residenceRemaining,
+                        accRoomHours: facts.accRoomHours,
+                        scenarios: facts.scenarios,
+                        residency: programResidency(audit)?.note ?? '',
+                        accOptions: (acc?.suggestions ?? []).map(x => ({
+                            acc: x.tccn,
+                            ut: x.ut,
+                            requirement: x.requirement,
+                            utARate: x.utARate,
+                        })),
+                        outstanding: audit.requirements
+                            .filter(r => r.status !== 'completed')
+                            .slice(0, 30)
+                            .map(r => r.text.slice(0, 160)),
+                        completed: [...taken].slice(0, 70),
+                        mccombs: facts.mccombs
+                            ? {
+                                  rules: [
+                                      facts.mccombs.rules.applyWithin,
+                                      facts.mccombs.rules.residenceNote,
+                                      facts.mccombs.rules.gpa,
+                                      facts.mccombs.rules.outsideCoursework,
+                                      facts.mccombs.rules.competitive,
+                                      facts.mccombs.rules.cycle,
+                                  ],
+                                  utLongSemesters: facts.mccombs.utLongSemesters,
+                                  prerequisites: facts.mccombs.prerequisites,
+                                  source: facts.mccombs.rules.source,
+                              }
+                            : null,
+                    },
+                }),
+            });
+            const payload = (await response.json()) as { answer?: string; error?: string };
+            if (response.status === 401 && savedCode) {
+                await FastlaneAiAccessStore.set('accessCode', '');
+                setInviteCode('');
+            }
+            if (!response.ok || !payload.answer)
+                throw new Error(payload.error ?? `AI service unavailable (HTTP ${response.status})`);
+            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            say(message, payload.answer);
+            setLastKind('advice');
+        } catch (failure) {
+            if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
+            else setError(failure instanceof Error ? failure.message : 'The advisor is unavailable.');
+        } finally {
+            if (abortRef.current === controller) abortRef.current = null;
+            setBusy(false);
+            setProgress('');
+        }
+    };
+
     const run = async (override?: string) => {
         if (busy) return;
+        if (await handleMemory((override ?? request).trim())) return;
         if (!consent) {
             setError('Check “I agree to send…” below first; Fastlane only contacts its AI after you agree.');
             return;
@@ -347,6 +498,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setError('Import your IDA on Degree progress before asking AI to plan your degree.');
             return;
         }
+        if (!focus && isAdviceQuestion(message)) {
+            await advise(message, code);
+            return;
+        }
+        setLastKind('schedule');
 
         // --- what this message changes: one class of the proposal, the whole plan, or (first time) everything
         const intent = refineIntent(message);
@@ -360,12 +516,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             );
             return;
         }
-        const prefsBefore = planningPreferences(
-            history.map(h => h.context),
+        const prefsBefore = planningPreferences([...memory, ...history.map(h => h.context)], subjectCodes, UT_SUBJECTS);
+        const nowPrefs = planningPreferences(
+            [...memory, ...history.map(h => h.context), message],
             subjectCodes,
             UT_SUBJECTS
         );
-        const nowPrefs = planningPreferences([...history.map(h => h.context), message], subjectCodes, UT_SUBJECTS);
         let context = message;
         let dropped = droppedTags;
         const extraExcluded: string[] = [];
@@ -421,7 +577,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     const credits = kept.reduce((n, s) => n + s.creditHours, 0);
                     summary = `${composeReply({ sections: kept, before: proposal.sections, report: null, avoidDays: c.avoidDays })}\nThat leaves ${credits} credits. Tap “Fill to ${c.minCredits}+ credits” or tell me what to add.`;
                 }
-                setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-6));
+                setHistory(previous =>
+                    [...previous, { id: Date.now(), request: message, context, summary }].slice(-20)
+                );
                 setRequest('');
                 setFocusId(null);
             } catch (failure) {
@@ -445,18 +603,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             let acc: typeof accPlan = null;
             if (audit) {
                 setProgress('Checking UT’s official ACC transfer table…');
-                const firstSection = new Map<string, SectionRecord>();
-                for (const sec of catalog) {
-                    const key = normalizeCourseCode(sec.courseCode);
-                    if (sec.course && !firstSection.has(key)) firstSection.set(key, sec);
-                }
-                const utGrades = new Map<string, { percent: number; sample: number }>();
-                for (const code of accCandidateUtCodes(audit)) {
-                    const sec = firstSection.get(code);
-                    const stat = sec ? await gradeForSection(sec) : null;
-                    if (stat) utGrades.set(code, { percent: stat.result.percent, sample: stat.result.graded });
-                }
-                acc = accSuggestions({ audit, planned: [], gradeOf: code => utGrades.get(code) ?? null });
+                acc = await accForAudit();
             }
             // only when asked ("take those at ACC") do ACC courses leave the UT schedule
             const rules =
@@ -549,6 +696,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     })),
                     planningRequest,
                     chatHistory: history.slice(-4).map(h => ({ request: h.context, summary: h.summary })),
+                    memory,
                     preferences: {
                         semester: actualTerm,
                         avoidFriday: settings.avoidFriday,
@@ -663,7 +811,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             setAccPlan(acc);
             const summary = showResult(result, proposal?.sections ?? null, why, rules, acc, nowPrefs.accSuggest);
-            setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-6));
+            setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-20));
             setRequest('');
             setFocusId(null);
         } catch (failure) {
@@ -753,8 +901,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             ? `No ${subjectForCode(subject)?.name ?? subject} sections are listed for ${actualTerm || 'this semester'}.`
             : '';
     const needsSetup = !savedCode || !consent;
+    // "remember …" / "forget …" never contacts the AI, so it works before setup
     const canSend =
-        consent && !!audit && catalog.length > 0 && !!request.trim() && (!!savedCode || !!inviteCode.trim());
+        !!request.trim() &&
+        (!!memoryCommand(request) ||
+            (consent && !!audit && catalog.length > 0 && (!!savedCode || !!inviteCode.trim())));
     const chips: Array<{ text: string; onClick: () => void }> = busy
         ? []
         : noSchedule
@@ -773,9 +924,21 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     void solveLocally('rebuild', next);
                 },
             }))
-          : history.length > 0 && consent
-            ? quickReplies(!!proposal, prefs.accSuggest).map(text => ({ text, onClick: () => void run(text) }))
-            : [];
+          : !consent
+            ? []
+            : history.length === 0
+              ? [
+                    'Plan my path to graduate early',
+                    'Build my schedule for next semester',
+                    'How many classes should I take through ACC?',
+                ].map(text => ({ text, onClick: () => void run(text) }))
+              : lastKind === 'advice'
+                ? [
+                      proposal ? 'Update my schedule with that plan' : 'Build my schedule for next semester',
+                      'How many classes should I take through ACC?',
+                      'Which UT classes would protect my GPA?',
+                  ].map(text => ({ text, onClick: () => void run(text) }))
+                : quickReplies(!!proposal, prefs.accSuggest).map(text => ({ text, onClick: () => void run(text) }));
 
     return (
         <section className='fl-chat' aria-label='Fastlane schedule chat'>
@@ -787,18 +950,78 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     <h2>Fastlane</h2>
                     <span>Builds your semester from UT’s real classes and your IDA</span>
                 </div>
+                <button
+                    type='button'
+                    className='fl-chat-new'
+                    aria-expanded={memoryOpen}
+                    onClick={() => setMemoryOpen(o => !o)}
+                >
+                    Memory{memory.length ? ` · ${memory.length}` : ''}
+                </button>
                 {(history.length > 0 || proposal) && (
                     <button type='button' className='fl-chat-new' onClick={newChat}>
                         New chat
                     </button>
                 )}
+                {memoryOpen && (
+                    <section className='fl-memory' aria-label='What Fastlane remembers'>
+                        <p className='fl-hint'>
+                            Fastlane uses these in every chat. They stay in this browser and are sent with your AI
+                            requests. You can also say “remember …” or “forget …”.
+                        </p>
+                        {memory.length ? (
+                            <ul>
+                                {memory.map(item => (
+                                    <li key={item}>
+                                        <span>{item}</span>
+                                        <button
+                                            type='button'
+                                            aria-label={`Forget “${item}”`}
+                                            onClick={() =>
+                                                void FastlaneMemoryStore.set(
+                                                    'items',
+                                                    memory.filter(i => i !== item)
+                                                )
+                                            }
+                                        >
+                                            ×
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className='fl-hint'>Nothing saved yet.</p>
+                        )}
+                        <form
+                            className='fl-memory-add'
+                            onSubmit={e => {
+                                e.preventDefault();
+                                const text = memoryDraft.trim();
+                                if (!text) return;
+                                void FastlaneMemoryStore.set('items', addMemory(memory, text.slice(0, 160)));
+                                setMemoryDraft('');
+                            }}
+                        >
+                            <input
+                                value={memoryDraft}
+                                onChange={e => setMemoryDraft(e.target.value)}
+                                placeholder='e.g. I want to graduate early'
+                                aria-label='Something for Fastlane to remember'
+                                maxLength={160}
+                            />
+                            <button type='submit' className='btn sm'>
+                                Remember
+                            </button>
+                        </form>
+                    </section>
+                )}
             </header>
 
             <div className='fl-chat-log' role='log' aria-label='Planning conversation' ref={logRef}>
                 <p className='bubble bot'>
-                    Hi! Tell me what you want this semester: credits, which days, easy or challenging, online classes,
-                    or anything you’ll take at ACC. I’ll build a real schedule, and you can keep chatting to change it,
-                    like “remove history” or “no Fridays”.
+                    Hi! I can build your semester schedule from UT’s real classes, or talk through your whole degree:
+                    graduating early, what to take at ACC, how many classes a semester. Ask me anything, or say
+                    “remember …” and I’ll keep it in mind for next time.
                 </p>
                 {notice && <p className='bubble bot warn'>{notice}</p>}
                 {history.map((turn, i) => (
@@ -895,9 +1118,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     <label className='check'>
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
-                            I agree to send my unfinished requirement descriptions, completed course codes, preferences,
-                            my typed request and public course details to Fastlane's server and Groq. No name, EID or
-                            full IDA file is sent.
+                            I agree to send my unfinished requirement descriptions, completed course codes, hour totals
+                            computed from my IDA, my saved memory and preferences, my typed request and public course
+                            details to Fastlane's server and Groq. No name, EID, grades or full IDA file is sent.
                         </span>
                     </label>
                 </div>
@@ -935,7 +1158,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             ? `Why replace ${focus.courseCode}?`
                             : proposal
                               ? 'Reply… e.g. “remove history”, “no Fridays”, “make it easier”'
-                              : 'Message Fastlane… e.g. “15 easy credits, Tue/Thu only”'
+                              : 'Message Fastlane… e.g. “how do I graduate early?” or “15 easy credits, Tue/Thu only”'
                     }
                     aria-label='Ask Fastlane for class recommendations'
                 />

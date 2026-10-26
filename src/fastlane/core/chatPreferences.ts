@@ -292,7 +292,7 @@ export function applyPlanningMessage(
         preferAsync: (asyncCount?.min ?? 0) > 0 || (previous.preferAsync && asyncCount?.max !== 0),
         easyGrades:
             previous.easyGrades ||
-            /\beasy\b|\beasier\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad|\bhigh a\b|\bhigh (?:a|a's) (?:grades?|rates?)\b|\bprotect (?:my )?gpa\b|\blots of a'?s\b/.test(
+            /\beasy\b|\beasier\b|\beasiest\b|\bhigh(?:est)? (?:grades?|gpa)\b|\bgood grades?\b|\bgenerous grad|\bhigh a\b|\bhigh (?:a|a's) (?:grades?|rates?)\b|\bprotect (?:my )?gpa\b|\blots of a'?s\b|\bmostly a'?s\b|\bmostly a['’]?s\b|\bhigh(?:est)? grades?\b|\bprioriti[sz]e (?:high )?grades?\b/.test(
                 text
             ),
         timeOfDay,

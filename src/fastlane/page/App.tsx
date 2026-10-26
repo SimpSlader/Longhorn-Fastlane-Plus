@@ -13,6 +13,7 @@ import SparkleIcon from '~icons/ph/sparkle';
 import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
+    FastlaneMemoryStore,
     FastlanePlanStore,
     FastlaneQueueStore,
     FastlaneReminderStore,
@@ -120,6 +121,7 @@ function Workspace() {
         FastlaneQueueStore,
         FastlaneAuditStore,
         FastlaneAiAccessStore,
+        FastlaneMemoryStore,
         FastlaneReminderStore,
     ]);
     const [tab, params, go] = useHashRoute();
@@ -259,14 +261,14 @@ function Workspace() {
                     </div>
                 </div>
             </aside>
-            <main className='main'>
+            <main className={current === 'finder' ? 'main main-chat' : 'main'}>
                 {current === 'home' && <HomeTab go={go} />}
                 {current === 'finder' && <FindClasses initialRequirement={params.get('req')} />}
                 {current === 'plan' && <PlanTab onNavigate={go} />}
                 {current === 'audit' && <AuditTab onNavigate={go} />}
                 {current === 'register' && <RegisterTab />}
                 {current === 'settings' && <SettingsTab />}
-                <div className='footer-note'>
+                <div className='footer-note' hidden={current === 'finder'}>
                     Planning information comes from UT pages you viewed and bundled public datasets. Always verify
                     unique numbers, availability, restrictions and rooms in UT’s official course schedule. Historical
                     grades are not predictions.

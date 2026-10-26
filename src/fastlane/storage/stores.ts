@@ -67,6 +67,10 @@ export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('Fastlane
  */
 export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { accessCode: '' });
 
+/** Preferences the student asked Fastlane to remember ("I want to graduate early"). Only in this Chrome profile;
+ * each item is shown in the chat's Memory panel and can be deleted. */
+export const FastlaneMemoryStore = createLocalStore<{ items: string[] }>('FastlaneMemory', { items: [] });
+
 interface PlanStoreShape {
     /** keyed by UT Registration Plus schedule id */
     plans: Record<string, PlanMeta>;
