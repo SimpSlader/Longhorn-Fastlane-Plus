@@ -1,12 +1,11 @@
 /**
- * The AI's proposed week: a compact calendar of real UT sections, a detail view for the clicked class
- * (with remove / replace / "Ask AI to replace"), highlighted changes between versions, undo, and saving the
- * whole proposal as a new schedule. Nothing here touches existing schedules until the student saves.
+ * The proposed week inside the chat: a compact calendar of real UT sections, the clicked class's details
+ * (remove or ask AI to replace it), undo / redo, and saving the whole proposal as a new schedule. Nothing
+ * here touches existing schedules until the student saves.
  */
 import { lazy, Suspense, useState } from 'react';
 import type { AiCandidate } from '../core/aiCandidates';
 import type { GradeStat } from '../core/grades';
-import { formatMeeting } from '../core/meetings';
 import type { ProposalVersion } from '../core/proposal';
 import { totalHours } from '../core/proposal';
 import type { ScheduleValidation } from '../core/scheduleSolver';
@@ -35,56 +34,51 @@ interface Props {
     grades: Map<number, GradeStat | null>;
     facts: Map<number, AiCandidate>;
     picks: Map<number, AiPick>;
-    sectionsById: Map<number, SectionRecord>;
-    alternatives: (s: SectionRecord) => SectionRecord[];
     onRemove: (s: SectionRecord) => void;
-    onReplace: (from: SectionRecord, to: SectionRecord) => void;
     onAskReplace: (s: SectionRecord) => void;
     onSave: () => void;
     saveNote: string;
     busy: boolean;
 }
 
-const pad = (n: number) => String(n).padStart(5, '0');
-
 export default function ProposalPanel(props: Props) {
-    const { version, index, count, grades, facts, picks, sectionsById } = props;
+    const { version, index, count, grades, facts, picks } = props;
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [popup, setPopup] = useState<SectionRecord | null>(null);
     const selected = version.sections.find(s => s.uniqueId === selectedId) ?? null;
     const changed = new Set(index > 0 ? version.added : []);
-    const removed = version.removed.map(id => sectionsById.get(id)).filter(Boolean) as SectionRecord[];
-    const added = version.added.map(id => sectionsById.get(id)).filter(Boolean) as SectionRecord[];
+    const credits = totalHours(version.sections);
     const valid = props.validation?.ok ?? false;
-    const short = (props.validation?.credits ?? 0) < props.minCredits;
+    const short = (props.validation?.credits ?? credits) < props.minCredits;
 
     return (
-        <section className='glass-card proposal' aria-label='Proposed schedule'>
-            <div className='proposal-head'>
-                <div>
-                    <span className={`eyebrow ${valid ? '' : 'invalid'}`}>
-                        {valid ? 'PROPOSED SCHEDULE · ALL RULES MET' : 'DRAFT · NOT A COMPLETE SCHEDULE YET'}
+        <section className='fl-plan proposal' aria-label='Proposed schedule'>
+            <div className='fl-plan-head'>
+                <div className='fl-plan-total'>
+                    <b>{credits} credits</b>
+                    <span>
+                        {version.sections.length} {version.sections.length === 1 ? 'class' : 'classes'}
                     </span>
-                    <h3>
-                        {version.sections.length} {version.sections.length === 1 ? 'class' : 'classes'} ·{' '}
-                        {totalHours(version.sections)} credits
-                    </h3>
                 </div>
-                <fieldset className='proposal-versions' aria-label='Proposal versions'>
+                <span className={`fl-pill ${valid ? 'ok' : 'warn'}`}>
+                    {valid
+                        ? 'All rules met'
+                        : short
+                          ? `Needs ${props.minCredits - credits} more credits`
+                          : 'Needs a change'}
+                </span>
+                <fieldset className='fl-plan-undo' aria-label='Proposal versions'>
                     <button
                         type='button'
-                        className='btn ghost sm'
+                        title='Undo'
                         disabled={index === 0 || props.busy}
                         onClick={() => props.onVersion(index - 1)}
                     >
                         Undo
                     </button>
-                    <span className='small muted'>
-                        Version {index + 1} of {count}
-                    </span>
                     <button
                         type='button'
-                        className='btn ghost sm'
+                        title='Redo'
                         disabled={index >= count - 1 || props.busy}
                         onClick={() => props.onVersion(index + 1)}
                     >
@@ -92,14 +86,9 @@ export default function ProposalPanel(props: Props) {
                     </button>
                 </fieldset>
             </div>
-            {version.note && <p className='proposal-note small'>{version.note}</p>}
-            {props.validation && props.validation.errors.length > 0 && (
-                <div className='proposal-errors' role='alert'>
-                    <ul className='small'>
-                        {props.validation.errors.map(e => (
-                            <li key={e}>{e}</li>
-                        ))}
-                    </ul>
+            {!valid && props.validation && props.validation.errors.length > 0 && (
+                <div className='fl-plan-alert' role='alert'>
+                    <span>{props.validation.errors.join(' ')}</span>
                     {short && (
                         <button
                             type='button'
@@ -112,27 +101,6 @@ export default function ProposalPanel(props: Props) {
                     )}
                 </div>
             )}
-            {props.validation && props.validation.warnings.length > 0 && (
-                <ul className='proposal-warnings small'>
-                    {props.validation.warnings.map(w => (
-                        <li key={w}>{w}</li>
-                    ))}
-                </ul>
-            )}
-            {index > 0 && (added.length > 0 || removed.length > 0) && (
-                <p className='proposal-diff small' title='Changes in this version'>
-                    {added.map(s => (
-                        <span key={`a${s.uniqueId}`} className='diff-add'>
-                            + {s.courseCode} ({pad(s.uniqueId)})
-                        </span>
-                    ))}
-                    {removed.map(s => (
-                        <span key={`r${s.uniqueId}`} className='diff-remove'>
-                            − {s.courseCode} ({pad(s.uniqueId)})
-                        </span>
-                    ))}
-                </p>
-            )}
             <WeekGrid
                 sections={version.sections}
                 compact
@@ -141,42 +109,33 @@ export default function ProposalPanel(props: Props) {
                 selectedId={selectedId}
                 changed={changed}
             />
-            <p className='small muted'>Click a class to see details, remove it, or ask AI to replace it.</p>
-            {selected && (
+            {selected ? (
                 <ProposalDetail
                     s={selected}
                     grade={grades.get(selected.uniqueId)}
                     fact={facts.get(selected.uniqueId)}
                     pick={picks.get(selected.uniqueId)}
-                    alternatives={props.alternatives(selected)}
                     onRemove={() => {
                         props.onRemove(selected);
                         setSelectedId(null);
-                    }}
-                    onReplace={to => {
-                        props.onReplace(selected, to);
-                        setSelectedId(to.uniqueId);
                     }}
                     onAskReplace={() => props.onAskReplace(selected)}
                     onDescription={() => setPopup(selected)}
                     busy={props.busy}
                 />
+            ) : (
+                <p className='fl-hint'>Tap a class for details.</p>
             )}
-            <div className='row'>
-                <button
-                    type='button'
-                    className='btn primary'
-                    disabled={!version.sections.length || props.busy || !valid}
-                    onClick={props.onSave}
-                >
-                    Save as a new schedule
-                </button>
-                <span className='small muted'>
-                    {valid ? 'Your existing schedules are not changed.' : 'Fix the problems above before saving.'}
-                </span>
-            </div>
+            <button
+                type='button'
+                className='btn primary fl-save'
+                disabled={!version.sections.length || props.busy || !valid}
+                onClick={props.onSave}
+            >
+                Save as a new schedule
+            </button>
             {props.saveNote && (
-                <p role='status' className='notice small'>
+                <p role='status' className='fl-hint'>
                     {props.saveNote}
                 </p>
             )}
@@ -194,9 +153,7 @@ function ProposalDetail({
     grade,
     fact,
     pick,
-    alternatives,
     onRemove,
-    onReplace,
     onAskReplace,
     onDescription,
     busy,
@@ -205,13 +162,12 @@ function ProposalDetail({
     grade: GradeStat | null | undefined;
     fact: AiCandidate | undefined;
     pick: AiPick | undefined;
-    alternatives: SectionRecord[];
     onRemove: () => void;
-    onReplace: (to: SectionRecord) => void;
     onAskReplace: () => void;
     onDescription: () => void;
     busy: boolean;
 }) {
+    const unmet = fact?.prerequisite.status === 'unmet';
     return (
         <section className='proposal-detail' aria-label={`Details for ${s.courseCode}`}>
             <ClassCard section={s} grade={grade}>
@@ -219,73 +175,25 @@ function ProposalDetail({
                     Description
                 </button>
             </ClassCard>
-            <dl className='detail-list small'>
-                <dt>Professor</dt>
-                <dd>{s.instructors.join(', ') || 'Not listed'}</dd>
-                <dt>Meets</dt>
-                <dd>
-                    {s.meetings.length
-                        ? s.meetings.map(formatMeeting).join('; ')
-                        : s.modality === 'async-online'
-                          ? 'Asynchronous online (no meeting times)'
-                          : 'Not listed'}
-                </dd>
-                <dt>Credits</dt>
-                <dd>{s.creditHours}</dd>
-                <dt>Degree requirement</dt>
-                <dd>
-                    {fact?.applies.length ? (
-                        <span className='req-verified'>Matches your IDA: {fact.applies.join(', ')}</span>
-                    ) : (
-                        <span className='muted'>No verified IDA match</span>
-                    )}
-                    {pick?.requirement && (
-                        <span className='req-possible'> · AI says it may count for {pick.requirement} (verify)</span>
-                    )}
-                </dd>
-                {pick?.reason && (
-                    <>
-                        <dt>Why AI picked it</dt>
-                        <dd>{pick.reason}</dd>
-                    </>
+            <p className='fl-detail-line'>
+                {s.instructors.join(', ') || 'Professor not listed'} ·{' '}
+                {fact?.applies.length ? (
+                    <span className='req-verified'>Counts toward {fact.applies.join(', ')}</span>
+                ) : (
+                    <span>Elective (no IDA match)</span>
                 )}
-                {(pick?.warning || fact?.prerequisite.status === 'unmet') && (
-                    <>
-                        <dt>Check</dt>
-                        <dd>
-                            {pick?.warning}
-                            {fact?.prerequisite.status === 'unmet' &&
-                                ' Printed prerequisite not found in your courses.'}
-                        </dd>
-                    </>
-                )}
-            </dl>
-            <div className='row proposal-actions'>
+            </p>
+            {pick?.reason && <p className='fl-detail-line muted'>{pick.reason}</p>}
+            {(pick?.warning || unmet) && (
+                <p className='fl-detail-line warn'>
+                    {pick?.warning}
+                    {unmet && ' Printed prerequisite not found in your courses.'}
+                </p>
+            )}
+            <div className='proposal-actions'>
                 <button type='button' className='btn sm' onClick={onAskReplace} disabled={busy}>
                     Ask AI to replace
                 </button>
-                {alternatives.length > 0 && (
-                    <label className='small'>
-                        Replace with{' '}
-                        <select
-                            value=''
-                            disabled={busy}
-                            aria-label={`Replace ${s.courseCode} with`}
-                            onChange={e => {
-                                const to = alternatives.find(a => a.uniqueId === Number(e.target.value));
-                                if (to) onReplace(to);
-                            }}
-                        >
-                            <option value=''>Choose…</option>
-                            {alternatives.map(a => (
-                                <option key={a.uniqueId} value={a.uniqueId}>
-                                    {a.courseCode} ({pad(a.uniqueId)}) ·{' '}
-                                    {a.meetings.length ? a.meetings.map(formatMeeting).join('; ') : 'online'}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                )}
                 <button type='button' className='btn ghost sm danger-text' onClick={onRemove} disabled={busy}>
                     Remove
                 </button>

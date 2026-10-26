@@ -58,13 +58,7 @@ function FindClassesBody({ initialRequirement }: { initialRequirement?: string |
     const [advancedOpen, setAdvancedOpen] = useState(Boolean(initialRequirement));
     return (
         <div className='stack'>
-            <div className='simple-heading'>
-                <div>
-                    <span className='eyebrow'>YOUR COURSE PLANNER</span>
-                    <h1>Find classes</h1>
-                    <p>Tell Fastlane the days, times, online classes and degree requirements you want.</p>
-                </div>
-            </div>
+            <h1 className='sr-only'>Find classes</h1>
             {/* the planner needs UT's course list; keep the import in view until one exists */}
             {needsCourseList && <InventoryPanel />}
             <AiRecommendations subject={subject} />

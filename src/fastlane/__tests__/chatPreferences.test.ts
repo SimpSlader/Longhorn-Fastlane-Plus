@@ -70,3 +70,55 @@ describe('planning conversation preferences', () => {
         expect(lines.join(' ')).toMatch(/ECO 304L: you plan to take it at ACC \(not counted as UT credit/);
     });
 });
+
+describe('removing subjects and classes in the chat', () => {
+    const subjects = new Set(['ECO', 'GOV', 'HIS', 'C S', 'M', 'UGS']);
+    const names = [
+        { code: 'HIS', name: 'History' },
+        { code: 'ECO', name: 'Economics' },
+        { code: 'C S', name: 'Computer Science' },
+        { code: 'GOV', name: 'Government' },
+        { code: 'M', name: 'Mathematics' },
+    ];
+    const prefs = (...messages: string[]) => planningPreferences(messages, subjects, names);
+
+    it.each([
+        'remove history',
+        'Remove history please',
+        'can you remove the history class',
+        'drop history and keep the rest',
+        'get rid of history.',
+        'no more history',
+        "I don't want history",
+        'take out the history courses',
+        'no history classes',
+    ])('"%s" leaves out HIS', message => {
+        expect(prefs('15 credits Tue/Thu', message).excludedSubjects).toContain('HIS');
+    });
+
+    it('understands several subjects and multi-word names', () => {
+        const p = prefs('remove economics and computer science');
+        expect(p.excludedSubjects).toEqual(expect.arrayContaining(['ECO', 'C S']));
+    });
+
+    it('a specific course can be removed by code', () => {
+        expect(prefs('remove HIS 315K').excludedCourses).toContain('HIS 315K');
+        expect(prefs('drop eco 304l please').excludedCourses).toContain('ECO 304L');
+    });
+
+    it('does not mistake ordinary requests for subject removals', () => {
+        for (const message of [
+            'remove the gaps',
+            'no Fridays',
+            'drop one class',
+            'no online classes',
+            'make it easier',
+        ])
+            expect(prefs(message).excludedSubjects).toEqual([]);
+    });
+
+    it('a subject can be allowed again later', () => {
+        expect(prefs('remove history', 'history is fine actually').excludedSubjects).not.toContain('HIS');
+        expect(prefs('no history classes', 'add history back').excludedSubjects).not.toContain('HIS');
+    });
+});
