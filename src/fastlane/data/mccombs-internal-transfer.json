@@ -1,0 +1,22 @@
+{
+    "label": "McCombs School of Business internal transfer (BBA)",
+    "checked": "2026-10-26",
+    "source": "https://my.mccombs.utexas.edu/bba/internal-transfer/",
+    "cycle": "2026-27: application opens September 15, 2026; deadline December 1, 2026, 11:59 p.m. CT; decisions in early January",
+    "applyWithin": "Apply within your first four long semesters at UT Austin.",
+    "residenceHours": 24,
+    "residenceNote": "At least 24 hours in residence at UT Austin. Credit by exam, correspondence, extension, pass/fail, PED and transfer hours (including ACC) do not count toward the in-residence requirement.",
+    "gpa": "A 3.25 in-residence UT GPA is the minimum to apply; admitted internal transfers averaged about 3.88 (Fall 2026) and 3.84 (Spring 2026). Only UT courses count toward the in-residence GPA.",
+    "prerequisites": [
+        {
+            "name": "Calculus I",
+            "codes": ["M 408C", "M 408K", "M 408N", "M 403K", "M 303K", "M 308K", "M 503K", "M 408R"]
+        },
+        { "name": "Calculus II", "codes": ["M 408D", "M 408L", "M 408S", "M 403L", "M 303L", "M 308L", "M 503L"] },
+        { "name": "Microeconomics", "codes": ["ECO 304K"] },
+        { "name": "Macroeconomics", "codes": ["ECO 304L"] },
+        { "name": "Rhetoric & Writing", "codes": ["RHE 306"] }
+    ],
+    "outsideCoursework": "For the Spring 2027 cycle, only prerequisite coursework taken at UT Austin is considered if it is not finished by December 1; in-progress outside prerequisites are not accepted. For Fall 2027, in-progress prerequisite coursework from outside institutions is permitted. The page does not say how completed outside prerequisites are weighed; confirm with McCombs advising.",
+    "competitive": "Highly competitive; McCombs advises not to enroll elsewhere at UT assuming a transfer. Students with 90+ hours are encouraged to consider other options."
+}

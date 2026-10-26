@@ -5,6 +5,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
 const AI = 'https://longhorn-fastlane-plus.vercel.app/api/recommend';
+const ADVISE = 'https://longhorn-fastlane-plus.vercel.app/api/advise';
 
 async function demoWithAudit(context: BrowserContext, extensionId: string): Promise<Page> {
     const page = await context.newPage();
@@ -245,6 +246,10 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
 
     // clicking a class shows a real UT section; removing it makes a new version and Undo restores it
     await blocks.first().click();
+    // clicking a class opens the course popup, like My schedule; its actions stay below the calendar
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'RateMyProf' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'RateMyProf' })).toBeHidden();
     const detail = proposal.locator('.proposal-detail');
     await expect(detail.locator('.class-code')).toHaveText(/^[A-Z ]+ \d{3}[A-Z]? · \d{5}$/);
     await expect(detail.locator('.class-grade')).toContainText(/% *A or A−|No grade data/);
@@ -264,6 +269,10 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     // "Ask AI to replace" sends that class as context and keeps every other proposed class
     const kept = await proposal.locator('.week-block b, .course-pill').allTextContents();
     await blocks.first().click();
+    // clicking a class opens the course popup, like My schedule; its actions stay below the calendar
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'RateMyProf' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'RateMyProf' })).toBeHidden();
     const targetCode = ((await detail.locator('.class-code').textContent()) ?? '').split('·')[0]!.trim();
     await detail.getByRole('button', { name: 'Ask AI to replace' }).click();
     await expect(page.locator('.focus-chip')).toContainText(`Replacing ${targetCode}`);
@@ -316,6 +325,86 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await page.getByRole('button', { name: 'New chat' }).click();
     await expect(proposal).toHaveCount(0);
     await expect(log.locator('.bubble.me')).toHaveCount(0);
+});
+
+test('the chat fills the page, remembers preferences and answers graduate-early questions', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const advised: Array<Record<string, unknown>> = [];
+    await page.route(ADVISE, async route => {
+        advised.push(route.request().postDataJSON() as Record<string, unknown>);
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+            body: JSON.stringify({ answer: 'At 15 UT hours a semester plus 6 hours at ACC, you could finish sooner.' }),
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    const chat = page.locator('.fl-chat');
+    await expect(chat).toBeVisible();
+    // like a chat app: the chat fills the space beside the sidebar
+    const box = await chat.boundingBox();
+    const viewport = page.viewportSize()!;
+    const side = await page.locator('aside.side').boundingBox();
+    expect(box!.height).toBeGreaterThan(viewport.height * 0.9);
+    expect(box!.x + box!.width).toBeGreaterThan(viewport.width - 40);
+    expect(box!.x).toBeLessThan(side!.x + side!.width + 40);
+
+    // "remember …" works before AI setup and never calls the AI
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const send = page.getByRole('button', { name: 'Send message' });
+    for (const text of [
+        'Remember that I want to graduate early',
+        'remember I want to internally transfer to McCombs',
+        "from now on prioritize classes that are mostly A's",
+    ]) {
+        await input.fill(text);
+        await send.click();
+    }
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    await expect(log).toContainText('I’ll remember: “I want to internally transfer to McCombs”');
+    await page.getByRole('button', { name: 'Memory · 3' }).click();
+    const memory = page.getByRole('region', { name: 'What Fastlane remembers' });
+    await expect(memory.getByRole('listitem')).toHaveCount(3);
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-memory.png' });
+    await memory.getByRole('button', { name: /Forget “I want to graduate early”/ }).click();
+    await expect(memory.getByRole('listitem')).toHaveCount(2);
+    await memory.getByRole('textbox', { name: 'Something for Fastlane to remember' }).fill('I want to graduate early');
+    await memory.getByRole('button', { name: 'Remember' }).click();
+    await expect(memory.getByRole('listitem')).toHaveCount(3);
+    await page.getByRole('button', { name: 'Memory · 3' }).click();
+    // memory is kept after a reload
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Memory · 3' })).toBeVisible();
+
+    // degree questions go to the advisor with computed facts, memory and no grades
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    await page
+        .getByRole('group', { name: 'Quick replies' })
+        .getByRole('button', { name: 'Plan my path to graduate early' })
+        .click();
+    await expect.poll(() => advised.length).toBe(1);
+    const sent = advised[0] as {
+        question: string;
+        memory: string[];
+        facts: { hoursRemaining: number | null; scenarios: unknown[]; mccombs: { source: string } | null };
+    };
+    expect(sent.question).toBe('Plan my path to graduate early');
+    expect(sent.memory).toContain('I want to internally transfer to McCombs');
+    expect(sent.facts.mccombs?.source).toBe('https://my.mccombs.utexas.edu/bba/internal-transfer/');
+    expect(JSON.stringify(sent)).not.toMatch(/"grade"|"gpa"/i);
+    await expect(log.locator('.bubble.bot').last()).toContainText('At 15 UT hours a semester');
+    // nothing about the schedule changed
+    await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-advisor.png' });
+    // "forget everything" clears memory
+    await input.fill('forget everything');
+    await send.click();
+    await expect(page.getByRole('button', { name: 'Memory', exact: true })).toBeVisible();
 });
 
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
