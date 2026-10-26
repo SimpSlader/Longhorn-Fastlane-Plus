@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
 import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
-import { accSuggestions, TCCN_SOURCE, tccnFor } from '../core/acc';
+import { accCandidateUtCodes, accSuggestions, TCCN_SOURCE } from '../core/acc';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
 import type { PlanningPreferences } from '../core/chatPreferences';
@@ -163,6 +163,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         room: AccRoom;
         residency: ProgramResidency | null;
         blocked: string[];
+        notes: string[];
     } | null>(null);
 
     const taken = useMemo(
@@ -228,7 +229,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         return {
             minCredits,
             maxCredits,
-            creditsRequested: !!requested || overrides.minCredits != null || overrides.maxCredits != null,
+            // a floor ("at least 12") keeps the usual 15-credit sweet spot; an exact range is followed as given
+            creditsRequested:
+                (!!requested && !requested.floor) || overrides.minCredits != null || overrides.maxCredits != null,
             avoidDays: overrides.avoidDays ?? [
                 ...new Set([...p.avoidDays, ...(settings.avoidFriday ? (['F'] as const) : [])]),
             ],
@@ -320,7 +323,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
 
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
     const run = async (override?: string) => {
-        if (!consent || busy) return;
+        if (busy) return;
+        if (!consent) {
+            setError('Check “I agree to send…” below first; Fastlane only contacts its AI after you agree.');
+            return;
+        }
         const message = (override ?? request).trim();
         if (!message) {
             setError(
@@ -397,34 +404,26 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         try {
             // ACC ideas come first (from UT's official TCCN table), so the UT schedule doesn't duplicate them
             let acc: typeof accPlan = null;
-            if (nowPrefs.accSuggest || nowPrefs.accPlanned) {
+            if (audit) {
                 setProgress('Checking UT’s official ACC transfer table…');
                 const firstSection = new Map<string, SectionRecord>();
                 for (const sec of catalog) {
                     const key = normalizeCourseCode(sec.courseCode);
                     if (sec.course && !firstSection.has(key)) firstSection.set(key, sec);
                 }
-                const needed = [
-                    ...new Set(
-                        outstandingTags(audit)
-                            .map(t => t.match(/^COURSE (.+)$/i)?.[1])
-                            .filter((x): x is string => !!x && tccnFor(x).length > 0)
-                            .map(normalizeCourseCode)
-                    ),
-                ];
                 const utGrades = new Map<string, { percent: number; sample: number }>();
-                for (const code of needed) {
+                for (const code of accCandidateUtCodes(audit)) {
                     const sec = firstSection.get(code);
                     const stat = sec ? await gradeForSection(sec) : null;
                     if (stat) utGrades.set(code, { percent: stat.result.percent, sample: stat.result.graded });
                 }
                 acc = accSuggestions({ audit, planned: [], gradeOf: code => utGrades.get(code) ?? null });
-                if (!nowPrefs.accSuggest) acc = { ...acc, suggestions: [] };
             }
-            setAccPlan(acc);
-            const rules = acc?.suggestions.length
-                ? constraintsFor(nowPrefs, [...extraExcluded, ...acc.suggestions.map(x => x.ut)])
-                : c;
+            // only when asked ("take those at ACC") do ACC courses leave the UT schedule
+            const rules =
+                nowPrefs.accSuggest && acc?.suggestions.length
+                    ? constraintsFor(nowPrefs, [...extraExcluded, ...acc.suggestions.map(x => x.ut)])
+                    : c;
             // hard rules are applied to the whole catalog before anything is ranked
             const removedBy = hardFilterCounts(catalog, rules);
             // replacing one class: the other proposed courses stay as they are (they're already in the pool)
@@ -615,6 +614,24 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 });
                 why = `Built from ${nextPool.size} real UT sections that follow your rules.`;
             }
+            if (acc && !nowPrefs.accSuggest && result.best) {
+                // not asked: don't suggest ACC for something the UT schedule already covers
+                const inPlan = new Set(result.best.sections.map(x => normalizeCourseCode(x.courseCode)));
+                const covered = new Set(
+                    result.best.sections.flatMap(x => nextPool.get(x.uniqueId)?.applies ?? []).map(t => t.toUpperCase())
+                );
+                acc = {
+                    ...acc,
+                    suggestions: acc.suggestions.filter(
+                        x =>
+                            !inPlan.has(x.ut) &&
+                            !covered.has(
+                                x.requirement.match(/^Core (\d{3})/)?.[1] ? `CORE ${x.requirement.slice(5, 8)}` : ''
+                            )
+                    ),
+                };
+            }
+            setAccPlan(acc);
             const summary = showResult(result, proposal?.sections ?? null, why, rules, acc, nowPrefs.accSuggest);
             setHistory(previous => [...previous, { id: Date.now(), request: message, context, summary }].slice(-6));
             setRequest('');
@@ -729,6 +746,13 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 </p>
             </div>
             <div className='chat-history' role='log' aria-label='Planning conversation'>
+                {history.length === 0 && (
+                    <p className='chat-answer greeting'>
+                        Hi! Tell me what kind of semester you want, like how many credits, which days, easy or
+                        challenging, online classes, and anything you plan to take at ACC. I’ll build a real schedule
+                        from UT’s listed classes and your IDA, and you can keep replying to change it.
+                    </p>
+                )}
                 {history.map(turn => (
                     <div key={turn.id} className='chat-turn'>
                         <p className='chat-user'>{turn.request}</p>
@@ -764,26 +788,44 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     </button>
                 </p>
             )}
-            <label className='field'>
-                {proposal ? 'Ask for changes' : 'Tell Fastlane what you need'}
+            <div className='chat-composer'>
                 <textarea
                     ref={textRef}
-                    rows={3}
+                    rows={2}
                     value={request}
                     onChange={e => setRequest(e.target.value)}
                     onKeyDown={e => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void run();
+                        // Enter sends, Shift+Enter adds a line (like any chat)
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            void run();
+                        }
                     }}
                     placeholder={
                         focus
                             ? `Why replace ${focus.courseCode}?`
                             : proposal
-                              ? 'e.g. "HIS 314K is too late in the day", "I’d rather have an online class", "I plan to take ECO 304L through ACC"'
-                              : 'Find me 12–13 credits that count for my degree, no Monday/Wednesday/Friday classes, and 1–2 fully asynchronous online classes. I plan to take Macro through ACC.'
+                              ? 'Reply to Fastlane… e.g. “make it easier”, “no Fridays”, “take the hard ones at ACC”'
+                              : 'Message Fastlane… e.g. “at least 12 credits of easy core classes, Tue/Thu only”'
                     }
                     aria-label='Ask Fastlane for class recommendations'
                 />
-            </label>
+                {busy ? (
+                    <button type='button' className='btn' onClick={() => abortRef.current?.abort()}>
+                        Cancel
+                    </button>
+                ) : (
+                    <button
+                        type='button'
+                        className='btn primary chat-send'
+                        disabled={!consent || !audit || !catalog.length || !request.trim()}
+                        title={!consent ? 'Check the consent box below first' : undefined}
+                        onClick={() => void run()}
+                    >
+                        {proposal ? 'Update plan' : 'Ask Fastlane'}
+                    </button>
+                )}
+            </div>
             <details className='more-filters'>
                 <summary className='small muted'>Time and grade filters</summary>
                 <div className='ai-quick-filters'>
@@ -875,21 +917,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         No name, EID or full IDA file is sent.
                     </span>
                 </label>
-                <div className='row'>
-                    <button
-                        type='button'
-                        className='btn primary'
-                        disabled={!consent || !audit || !catalog.length || busy || !request.trim()}
-                        onClick={() => void run()}
-                    >
-                        {busy ? 'Working…' : proposal ? 'Update plan' : 'Ask Fastlane'}
-                    </button>
-                    {busy && (
-                        <button type='button' className='btn' onClick={() => abortRef.current?.abort()}>
-                            Cancel
-                        </button>
-                    )}
-                </div>
                 {error && (
                     <p className='notice warn' role='alert'>
                         {error}
