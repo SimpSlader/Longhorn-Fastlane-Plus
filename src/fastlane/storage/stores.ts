@@ -69,6 +69,10 @@ export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { acce
 
 /** Preferences the student asked Fastlane to remember ("I want to graduate early"). Only in this Chrome profile;
  * each item is shown in the chat's Memory panel and can be deleted. */
+/** The planner chat and its proposed schedule, so leaving Find classes and coming back keeps the conversation.
+ * Only in this Chrome profile; "New chat" clears it. */
+export const FastlaneChatStore = createLocalStore<{ session: unknown }>('FastlaneChat', { session: null });
+
 export const FastlaneMemoryStore = createLocalStore<{ items: string[] }>('FastlaneMemory', { items: [] });
 
 interface PlanStoreShape {

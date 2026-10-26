@@ -13,6 +13,7 @@ import SparkleIcon from '~icons/ph/sparkle';
 import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
+    FastlaneChatStore,
     FastlaneMemoryStore,
     FastlanePlanStore,
     FastlaneQueueStore,
@@ -121,6 +122,7 @@ function Workspace() {
         FastlaneQueueStore,
         FastlaneAuditStore,
         FastlaneAiAccessStore,
+        FastlaneChatStore,
         FastlaneMemoryStore,
         FastlaneReminderStore,
     ]);

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { courseCodesIn, describePreferences, planningPreferences, requestedDaysOff } from '../core/chatPreferences';
+import {
+    courseCodesIn,
+    describePreferences,
+    planningPreferences,
+    requestedAddition,
+    requestedDaysOff,
+} from '../core/chatPreferences';
 
 describe('natural-language day exclusions', () => {
     it('detects three days in a typical scheduling request', () => {
@@ -120,5 +126,33 @@ describe('removing subjects and classes in the chat', () => {
     it('a subject can be allowed again later', () => {
         expect(prefs('remove history', 'history is fine actually').excludedSubjects).not.toContain('HIS');
         expect(prefs('no history classes', 'add history back').excludedSubjects).not.toContain('HIS');
+    });
+});
+
+describe('adding a class from the chat', () => {
+    const subjects = new Set(['ECO', 'GOV', 'HIS', 'UGS', 'C S']);
+    const names = [
+        { code: 'UGS', name: 'Undergraduate Studies' },
+        { code: 'GOV', name: 'Government' },
+        { code: 'HIS', name: 'History' },
+        { code: 'C S', name: 'Computer Science' },
+    ];
+    it.each([
+        ['add another UGS', { subject: 'UGS' }],
+        ['Add a UGS class please', { subject: 'UGS' }],
+        ['can you add one more government class', { subject: 'GOV' }],
+        ['add ECO 304L', { course: 'ECO 304L' }],
+        ['add a history course', { subject: 'HIS' }],
+    ])('"%s"', (message, expected) => {
+        expect(requestedAddition(message, subjects, names)).toEqual(expected);
+    });
+    it('ignores additions that are not a subject or course', () => {
+        for (const m of [
+            'add an online class',
+            'give me 1 more online class',
+            'add another easy class',
+            'make it easier',
+        ])
+            expect(requestedAddition(m, subjects, names)).toBeNull();
     });
 });

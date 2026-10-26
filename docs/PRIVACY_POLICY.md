@@ -18,6 +18,7 @@ Fastlane Course Planner ("Fastlane") is an independent, student-developed Chrome
 | Schedules, planned classes and ranked backups | `chrome.storage.local` | Planning, calendar, conflicts |
 | Registration priority queue and attempt history | `chrome.storage.local` | The manual registration assistant |
 | Imported degree audit (requirements, course history, transfer credit) | `chrome.storage.local` | Requirement-aware recommendations. The file is parsed in your browser; it is never uploaded. |
+| Planner chat history and the proposed schedule (messages, versions, compared public sections) | `chrome.storage.local` | Lets you leave Find classes and come back to the same conversation. Never uploaded by itself; “New chat” deletes it. |
 | Memory: short preferences you ask the planner chat to remember (up to 12, for example “I want to graduate early”) | `chrome.storage.local` | Applied to every planning chat; shown in the chat’s Memory panel, where each item can be deleted. Sent with optional AI requests (below). |
 | Roadmap, prerequisite rules, setup preference and up to 30 schedule snapshots | `chrome.storage.local` | Future planning and undo; no audit or registration queue in history |
 | Reminder date/time/time zone | `chrome.storage.local` + `chrome.alarms` | Local notifications |

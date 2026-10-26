@@ -306,6 +306,53 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     expect(later.preferences.excludedCourses).toContain(gone);
     expect(later.candidates.every(c => c.code !== gone)).toBe(true);
 
+    // a Backups column sits beside the week: ranked backups for each class, plus general backups
+    const backups = proposal.getByRole('complementary', { name: 'Backups' });
+    await expect(backups).toBeVisible();
+    const firstClass = (
+        await proposal
+            .locator('.week-block b, .course-pill')
+            .evaluateAll(els => [...new Set(els.map(e => (e.textContent ?? '').split(' – ')[0]!.trim()))])
+    )[0]!;
+    const group = backups.getByRole('region', { name: `Backups for ${firstClass}` });
+    await expect(group).toBeVisible();
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/backups.png' });
+    const swap = group.getByRole('button', { name: /^Swap in / });
+    if ((await swap.count()) > 0) {
+        const label = (await swap.first().getAttribute('aria-label')) ?? '';
+        const swappedIn = label.replace(/^Swap in /, '').replace(/ \(\d+\)$/, '');
+        await swap.first().click();
+        await expect(
+            proposal.locator('.week-block b, .course-pill').filter({ hasText: swappedIn }).first()
+        ).toBeVisible();
+        await expect(proposal.locator('.week-block b, .course-pill').filter({ hasText: firstClass })).toHaveCount(0);
+        await proposal.getByRole('button', { name: 'Undo' }).click();
+    }
+
+    // "add a <subject>" adds a listed section of that subject that fits
+    const general = backups.getByRole('region', { name: 'General backups' }).getByRole('button', { name: /^Add / });
+    if ((await general.count()) > 0) {
+        const label = (await general.first().getAttribute('aria-label')) ?? '';
+        const subject = label.replace(/^Add /, '').replace(/ \d.*$/, '');
+        const before = await proposal.locator('.week-block b, .course-pill').filter({ hasText: subject }).count();
+        await box.fill(`add another ${subject}`);
+        await send.click();
+        await expect(log.locator('.bubble.bot').last()).toContainText(/added|couldn’t find/i);
+        await expect
+            .poll(() => proposal.locator('.week-block b, .course-pill').filter({ hasText: subject }).count())
+            .toBeGreaterThan(before);
+    }
+
+    // leaving Find classes and coming back keeps the chat and the schedule
+    const turns = await log.locator('.bubble.me').count();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'My schedule' }).click();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Find classes' }).click();
+    await expect(log.locator('.bubble.me')).toHaveCount(turns);
+    await expect(proposal).toBeVisible();
+    await page.reload();
+    await expect(log.locator('.bubble.me')).toHaveCount(turns);
+    await expect(proposal).toBeVisible();
+
     // saving the proposal creates one new schedule and leaves the others untouched
     const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
     await expect(proposal).toBeVisible();

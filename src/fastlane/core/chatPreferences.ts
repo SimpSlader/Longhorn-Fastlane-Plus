@@ -178,6 +178,29 @@ export function requestedSubjectExclusions(
     return { codes: [...codes], words: [...words] };
 }
 
+/** "add a UGS", "add another government class", "add ECO 304L": the subject or course to add, if any. */
+export function requestedAddition(
+    message: string,
+    subjects: Set<string>,
+    subjectNames: Array<{ code: string; name: string }>
+): { course?: string; subject?: string } | null {
+    const t = message.toLowerCase();
+    const m = t.match(
+        /\b(?:add|include|throw in|put in|squeeze in|give me|i want|i need)\s+(?:another|one more|1 more|an extra|a|an|one|1)?\s*([a-z][a-z0-9 &/-]{0,40}?)\s*(?:\b(?:classes|courses|class|course)\b|[.,!?]|\b(?:to|on|please|too|as well)\b|$)/
+    );
+    if (!m) return null;
+    const phrase = (m[1] ?? '').trim();
+    const course = courseCodesIn(phrase, subjects)[0];
+    if (course) return { course };
+    const word = phrase.replace(/[^a-z ]/g, '').trim();
+    if (!word || /^(?:online|async|asynchronous|in person|easy|easier|hard|harder|elective|more|another)$/.test(word))
+        return null;
+    const byCode = subjectNames.find(s => s.code.toLowerCase() === word);
+    if (byCode) return { subject: byCode.code };
+    const named = subjectNames.filter(s => new RegExp(`\\b${word}\\b`).test(s.name.toLowerCase()));
+    return named.length === 1 ? { subject: named[0]!.code } : null;
+}
+
 const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, a: 1, an: 1 };
 
 /** Course codes in free text, limited to real subject codes ("eco 304l" → "ECO 304L"). */
