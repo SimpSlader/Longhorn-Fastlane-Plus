@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { courseCodesIn, describePreferences, planningPreferences, requestedDaysOff } from '../core/chatPreferences';
+import {
+    courseCodesIn,
+    describePreferences,
+    planningPreferences,
+    requestedAddition,
+    requestedDaysOff,
+} from '../core/chatPreferences';
 
 describe('natural-language day exclusions', () => {
     it('detects three days in a typical scheduling request', () => {
@@ -120,5 +126,77 @@ describe('removing subjects and classes in the chat', () => {
     it('a subject can be allowed again later', () => {
         expect(prefs('remove history', 'history is fine actually').excludedSubjects).not.toContain('HIS');
         expect(prefs('no history classes', 'add history back').excludedSubjects).not.toContain('HIS');
+    });
+});
+
+describe('adding a class from the chat', () => {
+    const subjects = new Set(['ECO', 'GOV', 'HIS', 'UGS', 'C S']);
+    const names = [
+        { code: 'UGS', name: 'Undergraduate Studies' },
+        { code: 'GOV', name: 'Government' },
+        { code: 'HIS', name: 'History' },
+        { code: 'C S', name: 'Computer Science' },
+    ];
+    it.each([
+        ['add another UGS', { subject: 'UGS' }],
+        ['Add a UGS class please', { subject: 'UGS' }],
+        ['can you add one more government class', { subject: 'GOV' }],
+        ['add ECO 304L', { course: 'ECO 304L' }],
+        ['add a history course', { subject: 'HIS' }],
+    ])('"%s"', (message, expected) => {
+        expect(requestedAddition(message, subjects, names)).toEqual(expected);
+    });
+    it('ignores additions that are not a subject or course', () => {
+        for (const m of [
+            'add an online class',
+            'give me 1 more online class',
+            'add another easy class',
+            'make it easier',
+        ])
+            expect(requestedAddition(m, subjects, names)).toBeNull();
+    });
+});
+
+describe('Test C: a follow-up changes only the rule it mentions', () => {
+    const subjects = new Set(['ECO', 'GOV']);
+    it('"Friday mornings are fine" allows Friday before noon and keeps the 15 credits', async () => {
+        const { hardReason } = await import('../core/scheduleSolver');
+        const { sectionFixture } = await import('./factories');
+        const p = planningPreferences(
+            [
+                'Build a 15-credit schedule with no Friday classes, 1-2 online classes',
+                'Actually, Friday mornings are fine',
+            ],
+            subjects
+        );
+        expect(p.avoidDays).not.toContain('F');
+        expect(p.dayLimits.F).toEqual({ to: 12 * 60 });
+        expect(p.credits).toEqual({ min: 15, max: 15 });
+        expect(p.asyncCount).toEqual({ min: 1, max: 2 });
+        const rules = {
+            minCredits: 15,
+            maxCredits: 15,
+            creditsRequested: true,
+            avoidDays: p.avoidDays,
+            excludedSubjects: [],
+            excludedTitleWords: [],
+            excludedCourses: [],
+            term: '',
+            online: null,
+            backToBack: false,
+            dayLimits: p.dayLimits,
+        };
+        const morning = { ...sectionFixture(1, 'ECO 304K', { times: [['MWF', '9:00 a.m.-10:00 a.m.']] }), course: {} };
+        const afternoon = { ...sectionFixture(2, 'GOV 310L', { times: [['MWF', '2:00 p.m.-3:00 p.m.']] }), course: {} };
+        expect(hardReason(morning, rules)).toBeNull();
+        expect(hardReason(afternoon, rules)).toBe('time-window');
+    });
+
+    it('"as long as I\'m done before 1pm" and a later "Fridays are fine" lift the limit step by step', () => {
+        const before = planningPreferences(['No Fridays', "ok with Friday as long as I'm done before 1pm"], subjects);
+        expect(before.dayLimits.F).toEqual({ to: 13 * 60 });
+        const lifted = planningPreferences(['No Fridays', 'Friday mornings are fine', 'Fridays are fine'], subjects);
+        expect(lifted.dayLimits.F).toBeUndefined();
+        expect(lifted.avoidDays).not.toContain('F');
     });
 });

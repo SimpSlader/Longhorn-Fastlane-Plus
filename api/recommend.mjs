@@ -3,38 +3,25 @@
  * GROQ_API_KEY and FASTLANE_AI_ACCESS_CODE are server-only environment variables.
  * No complete IDA files, student identity or browser storage values are accepted.
  */
-import { timingSafeEqual } from 'node:crypto';
+import {
+    safeString as clip,
+    cors,
+    publicMeta,
+    readAuthorized,
+    routingFrom,
+    send,
+    sendUnavailable,
+    tooMany,
+} from './_ai/http.mjs';
+import { routeAI } from './_ai/router.mjs';
+
+const safeString = (value, length = 130) => clip(value, length);
 
 export const maxDuration = 30;
 
-const MODEL = 'openai/gpt-oss-120b';
 const LIMIT = 38;
-const WINDOW_MS = 60_000;
-const hitCounts = new Map();
 const MAX_BODY_BYTES = 45_000;
 
-function send(res, status, data, extra = {}) {
-    res.statusCode = status;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    for (const [name, value] of Object.entries(extra)) res.setHeader(name, value);
-    res.end(JSON.stringify(data));
-}
-function safeString(value, length = 130) {
-    return typeof value === 'string'
-        ? value
-              .slice(0, length)
-              .split('')
-              .map(c => (c.charCodeAt(0) < 32 ? ' ' : c))
-              .join('')
-              .trim()
-        : '';
-}
-function secureEqual(a, b) {
-    const left = Buffer.from(a);
-    const right = Buffer.from(b);
-    return left.length === right.length && timingSafeEqual(left, right);
-}
 function sanitize(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
     if (!Array.isArray(body.requirements) || !Array.isArray(body.candidates)) return null;
@@ -209,112 +196,51 @@ Data notes: "evidence" registrar-listing means the section is in UT’s official
 Return 6–12 candidate IDs (enough to fill a 12–16 credit week with alternatives), each with a concise concrete reason, the requirement it may meet, and a cautious warning when needed, plus a one-sentence summary.`;
 
 export default async function handler(req, res) {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
-    // CORS helps the extension; it is not an authentication mechanism.
-    const allowedOrigin =
-        /^chrome-extension:\/\/[a-p]{32}$/.test(origin) || origin === 'https://longhorn-fastlane-plus.vercel.app';
-    if (allowedOrigin) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-        res.setHeader('Vary', 'Origin');
-    }
-    if (req.method === 'OPTIONS') return send(res, allowedOrigin ? 204 : 403, {});
-    if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
-    if (origin && !allowedOrigin) return send(res, 403, { error: 'Origin not allowed' });
-    const key = process.env.GROQ_API_KEY;
-    if (!key) return send(res, 503, { error: 'Groq is not configured. Add GROQ_API_KEY in Vercel.' });
-
-    // A server-only invite code prevents an unprotected public AI proxy from draining a free API quota.
-    const inviteCode = process.env.FASTLANE_AI_ACCESS_CODE;
-    if (!inviteCode || inviteCode.length < 8)
-        return send(res, 503, {
-            error: 'Owner must configure FASTLANE_AI_ACCESS_CODE (at least 8 characters) in Vercel.',
-        });
-    let body;
-    try {
-        body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    } catch {
-        return send(res, 400, { error: 'Request body must be JSON' });
-    }
-    if (JSON.stringify(body ?? {}).length > MAX_BODY_BYTES) return send(res, 413, { error: 'Request is too large' });
-    if (!body || typeof body.accessCode !== 'string' || !secureEqual(body.accessCode, inviteCode))
-        return send(res, 401, { error: 'Enter the Fastlane AI invite code.' });
-
-    const ip = String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0];
-    const now = Date.now();
-    // A lightweight best-effort guard, NOT a globally reliable rate limit across Vercel instances.
-    for (const [address, entry] of hitCounts) if (now - entry.since > WINDOW_MS) hitCounts.delete(address);
-    const count = hitCounts.get(ip) ?? { since: now, n: 0 };
-    if (count.n >= 6)
-        return send(res, 429, { error: 'Too many AI requests. Retry in one minute.' }, { 'Retry-After': '60' });
-    count.n += 1;
-    hitCounts.set(ip, count);
-
+    if (!cors(req, res)) return;
+    if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY && !process.env.CLOUDFLARE_API_TOKEN)
+        return send(res, 503, { error: 'No AI provider is configured. Add GROQ_API_KEY in Vercel.' });
+    const body = readAuthorized(req, res, MAX_BODY_BYTES);
+    if (!body || tooMany(req, res, 6)) return;
     const data = sanitize(body);
     if (!data || data.candidates.length === 0)
         return send(res, 400, { error: 'Provide verified UT course sections to analyze.' });
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 23_000);
-        let response;
-        try {
-            response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${key}`,
-                    'Content-Type': 'application/json',
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    model: MODEL,
-                    temperature: 0.1,
-                    reasoning_effort: 'low',
-                    max_completion_tokens: 1800,
-                    response_format: {
-                        type: 'json_schema',
-                        json_schema: { name: 'fastlane_recommendations', strict: true, schema: responseSchema },
-                    },
-                    messages: [
-                        {
-                            role: 'system',
-                            content: SYSTEM_PROMPT,
-                        },
-                        {
-                            role: 'user',
-                            content: JSON.stringify(data),
-                        },
-                    ],
-                }),
-            });
-        } finally {
-            clearTimeout(timeout);
-        }
-        if (!response.ok) {
-            if (response.status === 429)
-                return send(res, 429, { error: 'Groq free-tier limit reached. Try again later.' });
-            return send(res, 502, { error: 'AI service could not process this request.' });
-        }
-        const responseBody = await response.json();
-        const parsed = JSON.parse(responseBody?.choices?.[0]?.message?.content ?? '{}');
-        const candidates = new Set(data.candidates.map(c => c.id));
-        const used = new Set();
-        const recommendations = (Array.isArray(parsed.recommendations) ? parsed.recommendations : [])
-            .filter(r => r && Number.isSafeInteger(r.id) && candidates.has(r.id) && !used.has(r.id) && used.add(r.id))
-            .slice(0, 12)
-            .map(r => ({
-                id: r.id,
-                reason: safeString(r.reason, 250),
-                requirement: safeString(r.requirement, 110),
-                confidence: ['high', 'possible', 'unlikely'].includes(r.confidence) ? r.confidence : 'possible',
-                warning: safeString(r.warning, 200),
-            }));
-        return send(res, 200, {
-            recommendations,
-            summary: safeString(parsed.summary, 350),
-            source: 'Verified locally cached UT sections; degree applicability is advisory',
-        });
-    } catch {
-        return send(res, 502, { error: 'AI request timed out or returned an invalid response. Try again later.' });
-    }
+    const candidates = new Set(data.candidates.map(c => c.id));
+    const result = await routeAI({
+        task: 'recommend',
+        system: SYSTEM_PROMPT,
+        user: JSON.stringify(data),
+        schema: responseSchema,
+        schemaName: 'fastlane_recommendations',
+        maxTokens: 1800,
+        temperature: 0.1,
+        containsStudentData: true,
+        routing: routingFrom(body),
+        cache: true,
+        // a reply that mostly names sections we never sent is a hallucination: ask another model
+        validate: out => {
+            const recs = out.json?.recommendations;
+            if (!Array.isArray(recs)) return 'missing recommendations';
+            const unknown = recs.filter(r => !candidates.has(r?.id)).length;
+            return recs.length && unknown > recs.length / 2 ? 'named sections that were not supplied' : null;
+        },
+    });
+    if (!result.ok) return sendUnavailable(res, result);
+    const parsed = result.json ?? {};
+    const used = new Set();
+    const recommendations = (Array.isArray(parsed.recommendations) ? parsed.recommendations : [])
+        .filter(r => r && Number.isSafeInteger(r.id) && candidates.has(r.id) && !used.has(r.id) && used.add(r.id))
+        .slice(0, 12)
+        .map(r => ({
+            id: r.id,
+            reason: safeString(r.reason, 250),
+            requirement: safeString(r.requirement, 110),
+            confidence: ['high', 'possible', 'unlikely'].includes(r.confidence) ? r.confidence : 'possible',
+            warning: safeString(r.warning, 200),
+        }));
+    return send(res, 200, {
+        recommendations,
+        summary: safeString(parsed.summary, 350),
+        source: 'Verified locally cached UT sections; degree applicability is advisory',
+        meta: publicMeta(result.meta),
+    });
 }

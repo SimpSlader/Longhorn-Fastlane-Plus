@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetMemoryStore } from './_ai/store.mjs';
 import handler, { supportedTag } from './audit-review.mjs';
 
 const initialKey = process.env.GROQ_API_KEY;
 const initialInvite = process.env.FASTLANE_AI_ACCESS_CODE;
 afterEach(() => {
+    resetMemoryStore();
     vi.unstubAllGlobals();
     if (initialKey === undefined) delete process.env.GROQ_API_KEY;
     else process.env.GROQ_API_KEY = initialKey;

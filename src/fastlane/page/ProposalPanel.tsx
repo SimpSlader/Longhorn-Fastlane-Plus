@@ -5,7 +5,9 @@
  */
 import { lazy, Suspense, useState } from 'react';
 import type { AiCandidate } from '../core/aiCandidates';
+import type { Backup, BackupPlan } from '../core/backups';
 import type { GradeStat } from '../core/grades';
+import { formatMeeting } from '../core/meetings';
 import type { ProposalVersion } from '../core/proposal';
 import { totalHours } from '../core/proposal';
 import type { ScheduleValidation } from '../core/scheduleSolver';
@@ -39,6 +41,10 @@ interface Props {
     onSave: () => void;
     saveNote: string;
     busy: boolean;
+    backups: BackupPlan | null;
+    backupGrade: (s: SectionRecord) => number | null;
+    onSwap: (from: SectionRecord, to: SectionRecord) => void;
+    onAddBackup: (s: SectionRecord) => void;
 }
 
 export default function ProposalPanel(props: Props) {
@@ -101,18 +107,64 @@ export default function ProposalPanel(props: Props) {
                     )}
                 </div>
             )}
-            <WeekGrid
-                sections={version.sections}
-                compact
-                label='Proposed weekly calendar'
-                onSelect={s => {
-                    // like My schedule: the course popup opens, and the actions stay below the calendar
-                    setSelectedId(s.uniqueId);
-                    setPopup(s);
-                }}
-                selectedId={selectedId}
-                changed={changed}
-            />
+            <div className='fl-plan-body'>
+                <div className='fl-plan-week'>
+                    <WeekGrid
+                        sections={version.sections}
+                        compact
+                        label='Proposed weekly calendar'
+                        onSelect={s => {
+                            // like My schedule: the course popup opens, and the actions stay below the calendar
+                            setSelectedId(s.uniqueId);
+                            setPopup(s);
+                        }}
+                        selectedId={selectedId}
+                        changed={changed}
+                    />
+                </div>
+                {props.backups && (
+                    <aside className='fl-backups' aria-label='Backups'>
+                        <h4>Backups</h4>
+                        <p className='fl-hint'>Ranked by historical A rate. None overlap the rest of your week.</p>
+                        {props.backups.perClass.map(group => (
+                            <section key={group.for.uniqueId} aria-label={`Backups for ${group.for.courseCode}`}>
+                                <h5>For {group.for.courseCode}</h5>
+                                {group.backups.length ? (
+                                    group.backups.map(b => (
+                                        <BackupRow
+                                            key={b.section.uniqueId}
+                                            b={b}
+                                            grade={props.backupGrade(b.section)}
+                                            action='Swap in'
+                                            busy={props.busy}
+                                            onAction={() => props.onSwap(group.for, b.section)}
+                                            onOpen={() => setPopup(b.section)}
+                                        />
+                                    ))
+                                ) : (
+                                    <p className='fl-hint'>No listed backup fits around your other classes.</p>
+                                )}
+                            </section>
+                        ))}
+                        {props.backups.general.length > 0 && (
+                            <section aria-label='General backups'>
+                                <h5>General backups</h5>
+                                {props.backups.general.map(b => (
+                                    <BackupRow
+                                        key={b.section.uniqueId}
+                                        b={b}
+                                        grade={props.backupGrade(b.section)}
+                                        action='Add'
+                                        busy={props.busy}
+                                        onAction={() => props.onAddBackup(b.section)}
+                                        onOpen={() => setPopup(b.section)}
+                                    />
+                                ))}
+                            </section>
+                        )}
+                    </aside>
+                )}
+            </div>
             {selected ? (
                 <ProposalDetail
                     s={selected}
@@ -203,5 +255,46 @@ function ProposalDetail({
                 </button>
             </div>
         </section>
+    );
+}
+
+function BackupRow({
+    b,
+    grade,
+    action,
+    busy,
+    onAction,
+    onOpen,
+}: {
+    b: Backup;
+    grade: number | null;
+    action: string;
+    busy: boolean;
+    onAction: () => void;
+    onOpen: () => void;
+}) {
+    const s = b.section;
+    return (
+        <div className={`fl-backup ${b.kind === 'safe' ? 'safe' : ''}`}>
+            <button type='button' className='fl-backup-main' onClick={onOpen} title='Course details'>
+                <b>{s.courseCode}</b>
+                <span>
+                    {s.meetings.length ? s.meetings.map(formatMeeting).join('; ') : 'Online, on your own schedule'}
+                </span>
+                <span className='fl-backup-why'>{b.why}</span>
+            </button>
+            <span className='fl-backup-grade' title='Historical A/A− rate'>
+                {grade != null ? `${Math.round(grade)}% A` : '—'}
+            </span>
+            <button
+                type='button'
+                className='btn sm'
+                disabled={busy}
+                onClick={onAction}
+                aria-label={`${action} ${s.courseCode} (${s.uniqueId})`}
+            >
+                {action}
+            </button>
+        </div>
     );
 }

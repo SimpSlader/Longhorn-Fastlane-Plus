@@ -97,11 +97,13 @@ function finalizeRequirement(
     return { ...base, status, tags, category: classifyCategory(base.section, base.text, tags), confidence, issues };
 }
 
-function courseStatusFromCell(cell: Element | undefined, type: string, grade: string): AuditCourseStatus {
+function courseStatusFromCell(cell: Element | undefined, type: string, grade: string, school = ''): AuditCourseStatus {
     const icons = [...(cell?.querySelectorAll('img') ?? [])].map(i => i.getAttribute('alt') ?? '');
     if (PENDING_PATTERN.test(`${type} ${grade}`)) return 'pending-transfer';
     if (icons.some(a => /in progress/i.test(a))) return 'in-progress';
-    if (icons.some(a => /planned|future/i.test(a))) return 'planned';
+    if (icons.some(a => /planned|future/i.test(a)) || /^plan$/i.test(school)) return 'planned';
+    // a course on the record without a grade yet is one the student is taking now
+    if (!grade) return 'in-progress';
     return 'completed';
 }
 
@@ -126,18 +128,41 @@ function parseCourseRows(doc: Document): AuditCourse[] {
         if (!/\d/.test(code)) continue;
         const type = clean(cells[4]!.textContent);
         const grade = clean(cells[2]!.textContent);
+        const unique = clean(cells[3]!.textContent);
+        const school = clean(cells[6]?.textContent);
+        const hoursText = clean(cells[5]!.textContent);
+        const status: AuditCourseStatus = /pending/i.test(semester)
+            ? 'pending-transfer'
+            : courseStatusFromCell(cells[0], type, grade, school);
         courses.push({
             code,
             name: clean(cells[1]!.textContent),
             grade,
-            unique: clean(cells[3]!.textContent),
+            unique,
             type,
-            hours: Number(clean(cells[5]!.textContent).match(/\d+(\.\d+)?/)?.[0] ?? 0),
+            hours: Number(hoursText.match(/\d+(\.\d+)?/)?.[0] ?? 0),
             semester,
-            status: /pending/i.test(semester) ? 'pending-transfer' : courseStatusFromCell(cells[0], type, grade),
+            status,
+            // UT lists equivalent and cross-listed numbers under each real course with unique 00000
+            // (planned courses have no unique number yet, so they are not equivalents)
+            ...(/^0+$/.test(unique) && status !== 'planned' ? { equivalent: true } : {}),
+            // hours shown as "- 3" are excluded from the degree ("Total Hours Excluded")
+            ...(/^-/.test(hoursText) ? { excluded: true } : {}),
         });
     }
     return courses;
+}
+
+/** "Total Hours Taken: 85", "Total Hours Excluded: 3" printed under the IDA's course list. */
+function readHourTotals(doc: Document): ParsedAudit['hourTotals'] {
+    const text = clean(doc.querySelector('#coursework')?.textContent);
+    const taken = text.match(/Total Hours Taken:\s*(\d+(?:\.\d+)?)/i)?.[1];
+    const excluded = text.match(/Total Hours Excluded:\s*(\d+(?:\.\d+)?)/i)?.[1];
+    if (!taken && !excluded) return undefined;
+    return {
+        ...(taken ? { taken: Number(taken) } : {}),
+        ...(excluded ? { excluded: Number(excluded) } : {}),
+    };
 }
 
 function splitTransfer(courses: AuditCourse[]): ParsedAudit['transfer'] {
@@ -251,6 +276,7 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         courses,
         transfer,
         creditHours: deriveCreditHours(requirements),
+        hourTotals: readHourTotals(doc),
         restrictions: collectRestrictions(requirements.map(r => r.text)),
         warnings,
     };

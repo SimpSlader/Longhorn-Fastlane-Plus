@@ -99,7 +99,8 @@ export function composeReply(input: ReplyInput): string {
         lines.push(
             `Keep ${acc.blocked.join(', ')} at UT: your program requires ${acc.blocked.length === 1 ? 'it' : 'them'} in residence.`
         );
-    lines.push(input.sections ? 'Want any changes? Just tell me.' : 'Tell me what to relax, or tap an option below.');
+    // no stock sign-off after every plan; only an impossible request needs a pointer to the options
+    if (!input.sections) lines.push('Tell me what to relax, or tap an option below.');
     return lines.join('\n');
 }
 

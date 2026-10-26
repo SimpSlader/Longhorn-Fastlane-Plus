@@ -76,8 +76,12 @@ export function requestedDaysAllowed(request: string): DayCode[] {
     return [...out];
 }
 
+export type DayLimits = Partial<Record<DayCode, { from?: number; to?: number }>>;
+
 export interface PlanningPreferences {
     avoidDays: DayCode[];
+    /** a day allowed only part of the time: "Friday mornings are fine" → Friday classes end by noon */
+    dayLimits: DayLimits;
     /** wanted number of fully asynchronous online classes, if stated */
     asyncCount: { min: number; max: number } | null;
     preferAsync: boolean;
@@ -106,6 +110,7 @@ export interface PlanningPreferences {
 
 export const EMPTY_PREFERENCES: PlanningPreferences = {
     avoidDays: [],
+    dayLimits: {},
     asyncCount: null,
     preferAsync: false,
     easyGrades: false,
@@ -120,6 +125,46 @@ export const EMPTY_PREFERENCES: PlanningPreferences = {
     accPlanned: false,
     accSuggest: false,
 };
+
+/** "12", "12:30", "1pm", "noon" → minutes after midnight (afternoon for 1–7 without am/pm, as classes go). */
+function clockMinutes(text: string): number | null {
+    if (/noon/.test(text)) return 12 * 60;
+    const m = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?/);
+    if (!m) return null;
+    let h = Number(m[1]);
+    const min = Number(m[2] ?? 0);
+    const pm = /p/.test(m[3] ?? '');
+    const am = /a/.test(m[3] ?? '');
+    if (pm && h < 12) h += 12;
+    if (!pm && !am && h >= 1 && h <= 7) h += 12;
+    return h * 60 + min;
+}
+
+/**
+ * Days allowed only part of the time: "Friday mornings are fine", "ok with Friday as long as I'm done before
+ * noon", "Fridays before 1pm are fine", "Monday afternoons only".
+ */
+export function requestedDayLimits(message: string): DayLimits {
+    const out: DayLimits = {};
+    for (const clause of message.toLowerCase().split(/[.;!?]|\bbut\b|\band also\b/)) {
+        const days = daysIn(clause);
+        if (!days.length) continue;
+        let limit: { from?: number; to?: number } | null = null;
+        const until = clause.match(
+            /\b(?:before|by|until|till|done by|out by|done before|finished by|end(?:ing)? by)\s+(noon|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?)/
+        );
+        const after = clause.match(
+            /\b(?:after|from|starting at|not before)\s+(noon|\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?)/
+        );
+        if (until) limit = { to: clockMinutes(until[1] ?? '') ?? undefined };
+        else if (after) limit = { from: clockMinutes(after[1] ?? '') ?? undefined };
+        else if (/\bmornings?\b/.test(clause)) limit = { to: 12 * 60 };
+        else if (/\bafternoons?\b/.test(clause)) limit = { from: 12 * 60, to: 17 * 60 };
+        else if (/\bevenings?\b/.test(clause)) limit = { from: 17 * 60 };
+        if (limit) for (const d of days) out[d] = limit;
+    }
+    return out;
+}
 
 /** Credit-hour range in a message: "12–13 credit hours", "12 to 15 hours", "15 credits", "at least 12 credits". */
 export function requestedCredits(message: string): { min: number; max: number; floor?: boolean } | null {
@@ -138,7 +183,7 @@ export function requestedCredits(message: string): { min: number; max: number; f
         /\b(?:at least|minimum of|min(?:imum)?|no less than)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs)\b/
     );
     if (atLeast) return { min: Number(atLeast[1]), max: Math.max(Number(atLeast[1]), 16), floor: true };
-    const single = t.match(/\b(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs)\b/);
+    const single = t.match(/\b(\d{1,2})[\s-]*(?:credit|credits|credit hours|hours|hrs)\b/);
     // a lone small number ("3 hours") is about a class, not the semester load
     if (single && Number(single[1]) >= 6) return { min: Number(single[1]), max: Number(single[1]) };
     return null;
@@ -178,6 +223,29 @@ export function requestedSubjectExclusions(
     return { codes: [...codes], words: [...words] };
 }
 
+/** "add a UGS", "add another government class", "add ECO 304L": the subject or course to add, if any. */
+export function requestedAddition(
+    message: string,
+    subjects: Set<string>,
+    subjectNames: Array<{ code: string; name: string }>
+): { course?: string; subject?: string } | null {
+    const t = message.toLowerCase();
+    const m = t.match(
+        /\b(?:add|include|throw in|put in|squeeze in|give me|i want|i need)\s+(?:another|one more|1 more|an extra|a|an|one|1)?\s*([a-z][a-z0-9 &/-]{0,40}?)\s*(?:\b(?:classes|courses|class|course)\b|[.,!?]|\b(?:to|on|please|too|as well)\b|$)/
+    );
+    if (!m) return null;
+    const phrase = (m[1] ?? '').trim();
+    const course = courseCodesIn(phrase, subjects)[0];
+    if (course) return { course };
+    const word = phrase.replace(/[^a-z ]/g, '').trim();
+    if (!word || /^(?:online|async|asynchronous|in person|easy|easier|hard|harder|elective|more|another)$/.test(word))
+        return null;
+    const byCode = subjectNames.find(s => s.code.toLowerCase() === word);
+    if (byCode) return { subject: byCode.code };
+    const named = subjectNames.filter(s => new RegExp(`\\b${word}\\b`).test(s.name.toLowerCase()));
+    return named.length === 1 ? { subject: named[0]!.code } : null;
+}
+
 const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, a: 1, an: 1 };
 
 /** Course codes in free text, limited to real subject codes ("eco 304l" → "ECO 304L"). */
@@ -205,8 +273,16 @@ export function applyPlanningMessage(
 ): PlanningPreferences {
     const text = message.toLowerCase();
     const allowed = requestedDaysAllowed(message);
-    const avoid = new Set([...previous.avoidDays.filter(d => !allowed.includes(d)), ...requestedDaysOff(message)]);
-    for (const d of allowed) avoid.delete(d);
+    const limits = requestedDayLimits(message);
+    // a day with a time limit ("Friday mornings are fine") is allowed, only within that time
+    const allowedNow = [...new Set([...allowed, ...(Object.keys(limits) as DayCode[])])];
+    const avoid = new Set([...previous.avoidDays.filter(d => !allowedNow.includes(d)), ...requestedDaysOff(message)]);
+    for (const d of allowedNow) avoid.delete(d);
+    const dayLimits: DayLimits = { ...previous.dayLimits };
+    // allowing a day without a time ("Fridays are fine") lifts an earlier limit; avoiding it drops the limit
+    for (const d of allowed) if (!limits[d]) delete dayLimits[d];
+    for (const d of avoid) delete dayLimits[d];
+    Object.assign(dayLimits, limits);
 
     let asyncCount = previous.asyncCount;
     const count = text.match(
@@ -288,6 +364,7 @@ export function applyPlanningMessage(
             previous.accPlanned ||
             /\b(?:through|at|via)\s+(?:acc|austin community college|a community college)\b/.test(text),
         avoidDays: [...avoid],
+        dayLimits,
         asyncCount,
         preferAsync: (asyncCount?.min ?? 0) > 0 || (previous.preferAsync && asyncCount?.max !== 0),
         easyGrades:

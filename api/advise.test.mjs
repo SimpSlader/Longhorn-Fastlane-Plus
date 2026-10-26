@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetMemoryStore } from './_ai/store.mjs';
 import handler, { SYSTEM_PROMPT, sanitize } from './advise.mjs';
 
 const original = { ...process.env };
 afterEach(() => {
+    resetMemoryStore();
     vi.unstubAllGlobals();
     process.env.GROQ_API_KEY = original.GROQ_API_KEY;
     process.env.FASTLANE_AI_ACCESS_CODE = original.FASTLANE_AI_ACCESS_CODE;

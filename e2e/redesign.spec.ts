@@ -306,6 +306,53 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     expect(later.preferences.excludedCourses).toContain(gone);
     expect(later.candidates.every(c => c.code !== gone)).toBe(true);
 
+    // a Backups column sits beside the week: ranked backups for each class, plus general backups
+    const backups = proposal.getByRole('complementary', { name: 'Backups' });
+    await expect(backups).toBeVisible();
+    const firstClass = (
+        await proposal
+            .locator('.week-block b, .course-pill')
+            .evaluateAll(els => [...new Set(els.map(e => (e.textContent ?? '').split(' – ')[0]!.trim()))])
+    )[0]!;
+    const group = backups.getByRole('region', { name: `Backups for ${firstClass}` });
+    await expect(group).toBeVisible();
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/backups.png' });
+    const swap = group.getByRole('button', { name: /^Swap in / });
+    if ((await swap.count()) > 0) {
+        const label = (await swap.first().getAttribute('aria-label')) ?? '';
+        const swappedIn = label.replace(/^Swap in /, '').replace(/ \(\d+\)$/, '');
+        await swap.first().click();
+        await expect(
+            proposal.locator('.week-block b, .course-pill').filter({ hasText: swappedIn }).first()
+        ).toBeVisible();
+        await expect(proposal.locator('.week-block b, .course-pill').filter({ hasText: firstClass })).toHaveCount(0);
+        await proposal.getByRole('button', { name: 'Undo' }).click();
+    }
+
+    // "add a <subject>" adds a listed section of that subject that fits
+    const general = backups.getByRole('region', { name: 'General backups' }).getByRole('button', { name: /^Add / });
+    if ((await general.count()) > 0) {
+        const label = (await general.first().getAttribute('aria-label')) ?? '';
+        const subject = label.replace(/^Add /, '').replace(/ \d.*$/, '');
+        const before = await proposal.locator('.week-block b, .course-pill').filter({ hasText: subject }).count();
+        await box.fill(`add another ${subject}`);
+        await send.click();
+        await expect(log.locator('.bubble.bot').last()).toContainText(/added|couldn’t find/i);
+        await expect
+            .poll(() => proposal.locator('.week-block b, .course-pill').filter({ hasText: subject }).count())
+            .toBeGreaterThan(before);
+    }
+
+    // leaving Find classes and coming back keeps the chat and the schedule
+    const turns = await log.locator('.bubble.me').count();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'My schedule' }).click();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Find classes' }).click();
+    await expect(log.locator('.bubble.me')).toHaveCount(turns);
+    await expect(proposal).toBeVisible();
+    await page.reload();
+    await expect(log.locator('.bubble.me')).toHaveCount(turns);
+    await expect(proposal).toBeVisible();
+
     // saving the proposal creates one new schedule and leaves the others untouched
     const before = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
     await expect(proposal).toBeVisible();
@@ -405,6 +452,135 @@ test('the chat fills the page, remembers preferences and answers graduate-early 
     await input.fill('forget everything');
     await send.click();
     await expect(page.getByRole('button', { name: 'Memory', exact: true })).toBeVisible();
+});
+
+test('questions about your records are answered from the IDA, accurately and without AI', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const aiCalls: string[] = [];
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/**', async route => {
+        aiCalls.push(route.request().url());
+        const url = route.request().url();
+        if (url.endsWith('/chat'))
+            return route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({
+                    answer: 'UGS courses are **signature courses** for first-years.',
+                    meta: {
+                        provider: 'groq',
+                        model: 'groq:openai/gpt-oss-20b',
+                        cached: false,
+                        fallback: false,
+                        latencyMs: 400,
+                    },
+                }),
+            });
+        if (url.endsWith('/ai-status'))
+            return route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: JSON.stringify({
+                    strictFreeTier: true,
+                    storage: 'memory',
+                    providers: {
+                        groq: { configured: true, eligible: true, reason: '' },
+                        gemini: {
+                            configured: true,
+                            eligible: false,
+                            reason: 'Strict free mode: set GEMINI_BILLING=off …',
+                        },
+                        cloudflare: {
+                            configured: false,
+                            eligible: false,
+                            reason: 'Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in Vercel.',
+                        },
+                        openai: { configured: false, eligible: false, reason: 'Not available' },
+                    },
+                    models: [
+                        {
+                            id: 'groq:openai/gpt-oss-20b',
+                            provider: 'groq',
+                            label: 'GPT-OSS 20B (Groq)',
+                            tier: 'fast',
+                            maxLevel: 3,
+                            limits: { rpd: 1000 },
+                            today: { requests: 3, tokens: 900, neurons: 0 },
+                            stats: { ok: 3, latencyMs: 800, lastOk: Date.now() },
+                            cooldownUntil: 0,
+                            cooldownReason: '',
+                            trainsOnFreeTier: false,
+                        },
+                    ],
+                    decisions: [
+                        {
+                            at: Date.now(),
+                            task: 'chat',
+                            level: 2,
+                            model: 'groq:openai/gpt-oss-20b',
+                            ok: true,
+                            reason: 'best score',
+                        },
+                    ],
+                    totals: { requests: 3, fallbacks: 1 },
+                    openai: { enabled: false, reason: 'Not available: documented for apps that run locally.' },
+                }),
+            });
+        return route.abort();
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const send = page.getByRole('button', { name: 'Send message' });
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    const last = () => log.locator('.bubble.bot').last();
+
+    // a typo-filled question, before any AI setup, gets the exact numbers: completed never includes in-progress
+    await input.fill('hyow many jours do i have compleeted?');
+    await send.click();
+    await expect(last()).toContainText("You've completed 64 credit hours so far");
+    await expect(last()).toContainText('another 12');
+    await expect(last()).toContainText('76 credit hours');
+    await expect(last()).not.toContainText('ACC');
+    await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
+    await expect(last().locator('strong').first()).toHaveText('64 credit hours');
+
+    await input.fill('What classes am I taking this semester?');
+    await send.click();
+    await expect(last().locator('li')).toHaveCount(4);
+    await input.fill("What's my GPA?");
+    await send.click();
+    await expect(last()).not.toContainText('schedule');
+
+    // a correction is acknowledged and kept beside the IDA, not over it
+    await input.fill("That's wrong. I've completed 9 credits, not 64.");
+    await send.click();
+    await expect(last()).toContainText("noted that you've completed 9 credit hours");
+    await expect(last()).toContainText('IDA shows 64');
+    expect(aiCalls).toEqual([]);
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-local-answers.png' });
+
+    // general questions go to the chat endpoint and render as Markdown
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    await input.fill('hi! what can you do?');
+    await send.click();
+    await expect(last().locator('strong')).toHaveText('signature courses');
+    expect(aiCalls.some(u => u.endsWith('/chat'))).toBe(true);
+
+    // Settings shows the AI dashboard: providers, why one is off, OpenAI unavailable, router settings
+    await page.getByRole('button', { name: 'Settings & privacy' }).click();
+    const groq = page.getByRole('region', { name: 'Groq' });
+    await expect(groq).toContainText('Connected');
+    await expect(groq).toContainText('Today 3 / 1000 requests');
+    await expect(page.getByRole('region', { name: 'Google Gemini' })).toContainText('GEMINI_BILLING=off');
+    await expect(page.getByRole('region', { name: 'OpenAI (Sign in with ChatGPT)' })).toContainText('Unavailable');
+    await page.getByRole('combobox', { name: 'How Fastlane chooses a model' }).selectOption('preserve');
+    await groq.getByRole('checkbox', { name: 'Use Groq' }).uncheck();
+    await page.locator('.ai-dashboard').screenshot({ path: 'test-results/redesign/ai-dashboard.png' });
 });
 
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
