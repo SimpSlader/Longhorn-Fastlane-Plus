@@ -55,7 +55,7 @@ export function cors(req, res, methods = 'POST, OPTIONS') {
 
 /** Parses the body and checks the invite code; answers the request itself when either fails. */
 export function readAuthorized(req, res, maxBytes) {
-    const inviteCode = process.env.FASTLANE_AI_ACCESS_CODE;
+    const inviteCode = process.env.FASTLANE_AI_ACCESS_CODE?.trim();
     if (!inviteCode || inviteCode.length < 8) {
         send(res, 503, { error: 'Owner must configure FASTLANE_AI_ACCESS_CODE (at least 8 characters) in Vercel.' });
         return null;
@@ -71,7 +71,7 @@ export function readAuthorized(req, res, maxBytes) {
         send(res, 413, { error: 'Request is too large' });
         return null;
     }
-    if (!body || typeof body.accessCode !== 'string' || !secureEqual(body.accessCode, inviteCode)) {
+    if (!body || typeof body.accessCode !== 'string' || !secureEqual(body.accessCode.trim(), inviteCode)) {
         send(res, 401, { error: 'Enter the Fastlane AI invite code.' });
         return null;
     }

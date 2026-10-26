@@ -15,13 +15,16 @@ export default async function handler(req, res) {
     const body = readAuthorized(req, res, 2000);
     if (!body || tooMany(req, res, 20)) return;
     if (typeof body.test === 'string') {
-        const model = MODELS.find(m => m.provider === body.test);
+        const model =
+            MODELS.find(m => m.provider === body.test && m.tier === 'fast') ??
+            MODELS.find(m => m.provider === body.test);
         if (!model) return send(res, 400, { error: 'Unknown provider.' });
         const result = await routeAI({
             task: 'test',
             system: 'You are a connection check.',
             user: 'Reply with the single word OK.',
-            maxTokens: 20,
+            // Leave room for reasoning as well as the visible connection reply.
+            maxTokens: 1024,
             routing: { mode: 'manual', model: body.model || model.id },
         });
         return send(res, 200, {

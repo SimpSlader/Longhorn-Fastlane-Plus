@@ -23,12 +23,11 @@ them from the imported IDA (`src/fastlane/core/academic.ts`, `intent.ts`, `local
 |---|---|---|
 | Groq `openai/gpt-oss-20b` | quick tasks (level ≤ 3) | 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD |
 | Groq `openai/gpt-oss-120b` | planning (any level) | same |
-| Gemini `gemini-2.5-flash` | large-context planning | 10 RPM, 250 RPD |
-| Gemini `gemini-2.5-flash-lite` | quick tasks (≤ 3) | 15 RPM, 1,000 RPD |
+| Gemini `gemini-3.8-flash` | large-context planning | 10 RPM, 250 RPD |
+| Gemini `gemini-3.1-flash-lite` | quick tasks (≤ 3) | 15 RPM, 1,000 RPD |
 | Cloudflare `@cf/meta/llama-3.1-8b-instruct-fp8` | simple chat (≤ 2) | 10,000 Neurons/day (estimated per request) |
 
-These were the published figures on 2026-10-26, and providers change them. The limits in each provider's
-console are the real ones.
+These are starting safety ceilings, not guarantees of quota. The limits in each provider's console are the real ones.
 
 ## Configuration (Vercel environment variables; never in the extension or Git)
 
@@ -44,7 +43,7 @@ console are the real ones.
 | `GROQ_PLAN=paid` | Set only if the Groq org has a card on file; strict mode then stops using Groq |
 | `AI_DISABLE_GROQ` / `_GEMINI` / `_CLOUDFLARE` | `true` turns a provider off server-wide |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_*`) | Optional. Keeps quota counts, cooldowns and quality across restarts and instances. Without them, they live in each instance's memory |
-| `AI_LIMITS_JSON` | Optional per-model limit overrides, e.g. `{"gemini:gemini-2.5-flash":{"rpd":500}}` |
+| `AI_LIMITS_JSON` | Optional per-model limit overrides, e.g. `{"gemini:gemini-3.8-flash":{"rpd":500}}` |
 | `OPENAI_CHATGPT_OAUTH_ENABLED` | Ignored: see below |
 
 ## Routing and scoring
@@ -98,3 +97,7 @@ Settings → **AI assistant** shows, without keys or prompts:
 - cooldowns, totals, recent routing decisions, the router mode, and per-provider switches.
 
 **Test connection** sends one tiny request through a provider.
+
+### Model availability
+
+Gemini 2.5 Flash is no longer available to new API users. Fastlane uses Gemini 3.8 Flash and Gemini 3.1 Flash-Lite, with their supported reasoning levels. Both have a free tier; project-specific limits in AI Studio take precedence over the router's starting ceilings. See https://ai.google.dev/gemini-api/docs/pricing and https://ai.google.dev/gemini-api/docs/openai.

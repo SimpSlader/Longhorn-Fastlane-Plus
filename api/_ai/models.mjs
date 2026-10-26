@@ -1,6 +1,6 @@
 /**
  * Every model the router may use, with what it is good for and the free-tier limits it must stay under.
- * Limits are the published free-tier figures as checked on 2026-10-26 (Groq per organization; Gemini per
+ * Limits are starting safety ceilings (Groq per organization; Gemini per
  * project; Cloudflare 10,000 Neurons a day per account). Providers change them: the live values in each
  * console win, and AI_LIMITS_JSON can override any of them without a code change.
  */
@@ -36,10 +36,10 @@ export const MODELS = [
         limits: { rpm: 30, rpd: 1000, tpm: 8000, tpd: 200000 },
     },
     {
-        id: 'gemini:gemini-2.5-flash',
+        id: 'gemini:gemini-3.8-flash',
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        label: 'Gemini 2.5 Flash',
+        model: 'gemini-3.8-flash',
+        label: 'Gemini 3.8 Flash',
         tier: 'reasoning',
         maxLevel: 5,
         context: 1000000,
@@ -51,10 +51,10 @@ export const MODELS = [
         trainsOnFreeTier: true,
     },
     {
-        id: 'gemini:gemini-2.5-flash-lite',
+        id: 'gemini:gemini-3.1-flash-lite',
         provider: 'gemini',
-        model: 'gemini-2.5-flash-lite',
-        label: 'Gemini 2.5 Flash-Lite',
+        model: 'gemini-3.1-flash-lite',
+        label: 'Gemini 3.1 Flash-Lite',
         tier: 'fast',
         maxLevel: 3,
         context: 1000000,
@@ -92,7 +92,7 @@ export const PROVIDERS = {
 export const OPENAI_UNAVAILABLE =
     'Not available: OpenAI’s ChatGPT plan sharing is documented for open-source apps that run locally (sign-in returns to 127.0.0.1 and tokens must stay out of browser storage). Fastlane is a browser extension with a hosted server, which OpenAI routes to its interest form for approval first. It stays off until OpenAI approves it.';
 
-/** Limits after any AI_LIMITS_JSON override, e.g. {"gemini:gemini-2.5-flash":{"rpd":500}}. */
+/** Limits after any AI_LIMITS_JSON override, e.g. {"gemini:gemini-3.8-flash":{"rpd":500}}. */
 export function limitsFor(model, env = process.env) {
     try {
         const extra = env.AI_LIMITS_JSON ? JSON.parse(env.AI_LIMITS_JSON)[model.id] : null;
