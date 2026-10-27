@@ -11,6 +11,7 @@ import type { AcademicModel, ConfirmedFacts } from '../core/academicModel';
 import { academicModel } from '../core/academicModel';
 import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
 import { accCandidateUtCodes, accSuggestions, programResidency, TCCN_SOURCE } from '../core/acc';
+import { runTool, TOOL_LABELS, type ToolContext } from '../core/agentTools';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
 import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
@@ -19,7 +20,7 @@ import { courseCodesIn, planningPreferences, requestedAddition } from '../core/c
 import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
 import type { GradeStat } from '../core/grades';
 import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
-import { graduationAnswer, graduationPlan, parseTerm, termName } from '../core/graduation';
+import { graduationAnswer, graduationPlan, parseTerm, termName, currentTerm as termNow } from '../core/graduation';
 import { alsoAsksDegreeQuestions, classifyIntent, isQuestion } from '../core/intent';
 import {
     currentClassesAnswer,
@@ -63,6 +64,7 @@ import {
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
 import { aiErrorMessage, postAi, recordUsage } from '../services/aiClient';
+import { type AgentMessage, runCopilot } from '../services/copilot';
 import { createPlanningSchedule } from '../services/planningService';
 import { sendFastlane } from '../services/runtime';
 import {
@@ -358,7 +360,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const model = useMemo(() => academicModel(audit, confirmed), [audit, confirmed]);
     // read inside async handlers so a correction made earlier in the same send is already applied
     const modelRef = useRef(model);
+    // the schedule on screen as the copilot built it (its rules and candidate pool), for follow-up changes
+    const copilotBuild = useRef<ToolContext['current']>(null);
+    const versionIndexRef = useRef(0);
     modelRef.current = model;
+    versionIndexRef.current = versionIndex;
+    const proposalRef = useRef<ProposalVersion | null>(null);
+    proposalRef.current = versions[versionIndex] ?? null;
+    const history_ = history;
     const [restored, setRestored] = useState(false);
     useEffect(() => {
         let live = true;
@@ -523,7 +532,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         : null,
         };
     };
-    const constraints = constraintsFor(prefs);
+    // a schedule the copilot built is checked against the rules it was built with, not a re-reading of the chat
+    const [copilotRules, setCopilotRules] = useState<ScheduleConstraints | null>(null);
+    const constraints = copilotRules ?? constraintsFor(prefs);
     const easyGrades = overrides.easyGrades ?? prefs.easyGrades;
     const coreFocus = overrides.coreFocus ?? prefs.coreFocus;
     const factsById = useMemo(
@@ -1102,6 +1113,154 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         }
     };
 
+    /** Puts a copilot-built schedule on the calendar as a new version (safe to call several times in a row). */
+    const showPlan = (sections: SectionRecord[], note: string) => {
+        setVersions(prev => {
+            const base = prev[versionIndexRef.current]?.sections ?? [];
+            const kept = prev.length ? prev.slice(0, versionIndexRef.current + 1) : [];
+            const next: ProposalVersion = {
+                id: Date.now() + Math.random(),
+                sections,
+                note,
+                ...diffSections(base, sections),
+            };
+            versionIndexRef.current = kept.length;
+            setVersionIndex(kept.length);
+            return [...kept, next];
+        });
+        setNoSchedule(null);
+        setSaveNote('');
+    };
+
+    /** The copilot: the AI decides which tools to use; they run here over the extension's own data. */
+    const copilot = async (text: string, shown: string, code: string): Promise<boolean> => {
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setBusy(true);
+        setError('');
+        setLastKind('schedule');
+        setFocusId(null);
+        const m = modelRef.current;
+        const history: AgentMessage[] = history_
+            .slice(-8)
+            .flatMap(h => [
+                ...(h.request ? [{ role: 'user' as const, content: h.request }] : []),
+                { role: 'assistant' as const, content: h.summary.slice(0, 1500) },
+            ]);
+        const onScreen = proposalRef.current?.sections ?? [];
+        const ctx: ToolContext = {
+            catalog,
+            term: actualTerm,
+            audit,
+            model: m,
+            taken,
+            outstanding: audit ? outstandingTags(audit) : [],
+            subjectIndex,
+            gradeStat: gradeForSection,
+            rmp: settings.showProfessorRatings
+                ? (first, last) => sendFastlane<RmpRating | null>({ type: 'professorRating', first, last })
+                : null,
+            current: onScreen.length
+                ? {
+                      sections: onScreen,
+                      constraints: copilotBuild.current?.constraints ?? constraintsFor(prefs),
+                      pool: copilotBuild.current?.pool ?? [],
+                  }
+                : null,
+            remember: async fact => {
+                await FastlaneMemoryStore.set('items', addMemory(memory, fact));
+            },
+            signal: controller.signal,
+            onProgress: setProgress,
+        };
+        try {
+            const out = await runCopilot({
+                accessCode: code,
+                history,
+                userText: text,
+                context: {
+                    today: new Date().toDateString(),
+                    currentTerm: termName(termNow()),
+                    planningTerm: actualTerm,
+                    memory,
+                    confirmed: Object.entries(confirmed)
+                        .map(([k, v]) => `${k}: ${(v as { value: unknown }).value}`)
+                        .join('; '),
+                    scheduleOnScreen: onScreen
+                        .map(
+                            s =>
+                                `${s.courseCode} (${pad(s.uniqueId)}) ${s.meetings.length ? s.meetings.map(formatMeeting).join('; ') : 'online'} ${s.instructors.join(', ')}`
+                        )
+                        .join(' | '),
+                },
+                labels: TOOL_LABELS,
+                signal: controller.signal,
+                onProgress: setProgress,
+                execute: async call => {
+                    const outcome = await runTool(call.name, call.arguments, { ...ctx, current: ctx.current });
+                    if (outcome.plan) {
+                        const { sections, note, constraints, pool: planPool } = outcome.plan;
+                        showPlan(sections, note);
+                        copilotBuild.current = { sections, constraints, pool: planPool };
+                        setCopilotRules(constraints);
+                        ctx.current = { sections, constraints, pool: planPool };
+                        proposalRef.current = { sections } as ProposalVersion;
+                        // the calendar, details and backups use the same sections and grades
+                        setKnown(k => ({
+                            ...k,
+                            sections: new Map([...k.sections, ...sections.map(x => [x.uniqueId, x] as const)]),
+                        }));
+                        setPool(prev => {
+                            const next = new Map(prev);
+                            for (const p of planPool)
+                                next.set(p.section.uniqueId, {
+                                    section: p.section,
+                                    applies: p.applies,
+                                    prerequisite: p.prerequisite,
+                                    gradePercent: (p as { grade?: { percent: number } | null }).grade?.percent ?? null,
+                                    gradeSample: (p as { grade?: { sample: number } | null }).grade?.sample ?? 0,
+                                    aiPicked: false,
+                                    possibleCore: false,
+                                });
+                            return next;
+                        });
+                    }
+                    return outcome.result;
+                },
+            });
+            say(
+                shown,
+                out.text,
+                shown,
+                'chat',
+                diagnose(
+                    `copilot: ${[...new Set(out.tools)].join(', ') || 'no tools'}`,
+                    modelRef.current,
+                    out.tools.length ? [...new Set(out.tools)] : ['chat AI'],
+                    undefined,
+                    out.meta
+                )
+            );
+            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            return true;
+        } catch (failure) {
+            if ((failure as { status?: number }).status === 404) return false;
+            if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
+            else {
+                if ((failure as { status?: number }).status === 401 && savedCode) {
+                    await FastlaneAiAccessStore.set('accessCode', '');
+                    setInviteCode('');
+                }
+                setError(failure instanceof Error ? failure.message : 'Fastlane AI is unavailable right now.');
+            }
+        } finally {
+            if (abortRef.current === controller) abortRef.current = null;
+            setBusy(false);
+            setProgress('');
+        }
+        return true;
+    };
+
     const run = async (override?: string) => {
         if (busy) return;
         if (await handleMemory((override ?? request).trim())) return;
@@ -1117,6 +1276,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         const kind = asked
             ? classifyIntent(asked, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal })
             : null;
+        // with AI set up, the copilot reads every message and decides what to look up or do; GPA stays local
+        const copilotCode = savedCode || inviteCode.trim();
+        if (asked && consent && copilotCode && kind?.kind !== 'gpa') {
+            const text = focus ? `About ${focus.courseCode} (unique ${pad(focus.uniqueId)}): ${asked}` : asked;
+            // an older server without the copilot (404) falls back to the previous planner below
+            if (await copilot(text, asked, copilotCode)) return;
+        }
+        setCopilotRules(null);
         const askingSomething = isQuestion(asked);
         const buildsSomething =
             /\b(?:build|make|create|find|give me)\b[^.?!]*\b(?:schedule|classes|courses|plan)\b/i.test(asked);
@@ -1662,6 +1829,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setSaveNote('');
         setRequest('');
         void FastlaneChatStore.set('session', null);
+        setCopilotRules(null);
+        copilotBuild.current = null;
         textRef.current?.focus();
     };
 

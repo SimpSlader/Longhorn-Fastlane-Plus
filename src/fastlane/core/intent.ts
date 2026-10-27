@@ -175,7 +175,10 @@ export function classifyIntent(
         if (/\b(?:completed|complete|finished|earned|done|taken|have i|do i have|so far)\b/.test(t))
             return { kind: 'completed-hours' };
     }
-    if (/\b(?:my )?(?:gpa|grade point average)\b/.test(t) && !/\b(?:protect|boost|raise|help|easy|easier)\b/.test(t))
+    if (
+        /\b(?:my|what'?s my|what is my) (?:current |university |overall )?(?:gpa|grade point average)\b/.test(t) &&
+        !/\b(?:protect|boost|raise|help|easy|easier|how (?:does|do|is)|calculat\w*|work)\b/.test(t)
+    )
         return { kind: 'gpa' };
     if (
         /\b(?:what|which) (?:classes|courses) am i (?:taking|enrolled in)\b|\bmy (?:current|classes this semester)\b|\bwhat am i taking\b/.test(

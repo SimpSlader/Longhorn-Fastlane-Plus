@@ -25,6 +25,15 @@ export const test = base.extend<{ context: BrowserContext; extensionId: string; 
         });
         // Rate My Professors is stubbed for every test (the service worker's requests included), so tests never
         // contact the real site. The stub rates whoever is searched: 4.4/5 from 31 ratings.
+        // the copilot endpoint is off unless a test simulates it (the chat then uses its previous planner)
+        await context.route('https://longhorn-fastlane-plus.vercel.app/api/agent', route =>
+            route.fulfill({
+                status: 404,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: 'Not found' }),
+            })
+        );
         await context.route('https://www.ratemyprofessors.com/**', async route => {
             const body = route.request().postDataJSON() as { variables?: { text?: string } } | null;
             const node = {

@@ -11,6 +11,7 @@ export const MODELS = [
     {
         id: 'groq:openai/gpt-oss-20b',
         provider: 'groq',
+        tools: true,
         model: 'openai/gpt-oss-20b',
         label: 'GPT-OSS 20B (Groq)',
         tier: 'fast',
@@ -25,6 +26,7 @@ export const MODELS = [
     {
         id: 'groq:openai/gpt-oss-120b',
         provider: 'groq',
+        tools: true,
         model: 'openai/gpt-oss-120b',
         label: 'GPT-OSS 120B (Groq)',
         tier: 'reasoning',
@@ -38,6 +40,7 @@ export const MODELS = [
     {
         id: 'gemini:gemini-3.8-flash',
         provider: 'gemini',
+        tools: true,
         model: 'gemini-3.8-flash',
         label: 'Gemini 3.8 Flash',
         tier: 'reasoning',
@@ -53,6 +56,7 @@ export const MODELS = [
     {
         id: 'gemini:gemini-3.1-flash-lite',
         provider: 'gemini',
+        tools: true,
         model: 'gemini-3.1-flash-lite',
         label: 'Gemini 3.1 Flash-Lite',
         tier: 'fast',
@@ -67,6 +71,7 @@ export const MODELS = [
     {
         id: 'cloudflare:@cf/meta/llama-3.1-8b-instruct-fp8',
         provider: 'cloudflare',
+        tools: false,
         model: '@cf/meta/llama-3.1-8b-instruct-fp8',
         label: 'Llama 3.1 8B (Cloudflare)',
         tier: 'fast',
