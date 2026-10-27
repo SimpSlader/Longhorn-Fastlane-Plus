@@ -20,6 +20,7 @@ import { registerHistory } from '../services/history';
 import { bufferToBase64, isFastlaneRequest } from '../services/runtime';
 import { FastlaneReminderStore, FastlaneSettingsStore } from '../storage/stores';
 import { checkForNewLocalBuild, isDevNotification, registerDevAutoReload } from './devAutoReload';
+import { cancelPersonalAi, personalAiRequest, trustedAiSender } from './personalAi';
 import { professorRating } from './rmp';
 
 export const UT_REGISTRATION_URL = 'https://utdirect.utexas.edu/registration/chooseSemester.WBX';
@@ -94,13 +95,30 @@ function openTab(url: string) {
 export function registerFastlaneBackground() {
     if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true') registerDevAutoReload();
     registerHistory();
-    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!isFastlaneRequest(msg)) return false;
         const respond = (p: Promise<unknown>) =>
             p
                 .then(data => sendResponse({ ok: true, data }))
                 .catch((e: Error) => sendResponse({ ok: false, error: e.message }));
         switch (msg.type) {
+            case 'personalAi':
+                if (
+                    !trustedAiSender(sender) ||
+                    typeof msg.requestId !== 'string' ||
+                    typeof msg.path !== 'string' ||
+                    !msg.body ||
+                    JSON.stringify(msg.body).length > 45000
+                ) {
+                    sendResponse({ ok: false, error: 'Personal AI is available only inside FastLane.' });
+                    return false;
+                }
+                respond(personalAiRequest(msg.path, msg.body, msg.requestId));
+                return true;
+            case 'cancelPersonalAi':
+                if (trustedAiSender(sender)) cancelPersonalAi(msg.requestId);
+                sendResponse({ ok: true });
+                return false;
             case 'cacheSections':
                 respond(cacheSections(msg.sections));
                 return true;

@@ -14,6 +14,7 @@ import { FastlaneSettingsStore } from '../storage/stores';
 import AiDashboard from './AiDashboard';
 import { downloadText, PageHead } from './common';
 import { useOnline } from './hooks';
+import PersonalAiSettings from './PersonalAiSettings';
 
 function Toggle({ k, label, help }: { k: keyof FastlaneSettings; label: string; help?: string }) {
     const value = FastlaneSettingsStore.useStore(s => s[k]) as boolean;
@@ -59,10 +60,7 @@ export default function SettingsTab() {
 
     return (
         <div className='stack'>
-            <PageHead
-                title='Settings & privacy'
-                subtitle='Everything is stored in this browser. No account, no backend, no analytics.'
-            />
+            <PageHead title='Settings & privacy' subtitle='Your plans stay in this browser. AI is optional.' />
             <div className='grid2'>
                 <div className='card stack'>
                     <h2>Course listing</h2>
@@ -165,13 +163,15 @@ export default function SettingsTab() {
                     )}
                 </div>
             </div>
+            <PersonalAiSettings />
             <AiDashboard />
             <div className='card stack'>
                 <h2>Your data</h2>
                 <p className='small muted' style={{ margin: 0 }}>
                     Schedules, backups, your registration queue, reminders and any imported degree audit stay in this
-                    Chrome profile. Fastlane never sends your EID, grades, audit, or registration information to any
-                    server, and it does not collect browsing history or credentials.
+                    Chrome profile. Your full audit, EID, personal grades and registration credentials are never sent.
+                    When you ask AI for help and consent, only the selected summaries and public course details are
+                    sent. Personal API keys stay on this device and are excluded from exports.
                 </p>
                 <div className='row'>
                     <button

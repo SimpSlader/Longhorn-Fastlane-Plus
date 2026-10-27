@@ -4,8 +4,13 @@
  * requests were routed, and the student's router settings. No keys or prompts are ever shown or stored here.
  */
 import { useEffect, useState } from 'react';
-import { AI_BASE } from '../services/aiClient';
-import { FastlaneAiAccessStore, FastlaneAiUsageStore, FastlaneSettingsStore } from '../storage/stores';
+import { requestAi } from '../services/aiClient';
+import {
+    FastlaneAiAccessStore,
+    FastlaneAiUsageStore,
+    FastlanePersonalAiStore,
+    FastlaneSettingsStore,
+} from '../storage/stores';
 
 interface ModelStatus {
     id: string;
@@ -67,6 +72,7 @@ const ago = (t?: number) => {
 
 export default function AiDashboard() {
     const code = FastlaneAiAccessStore.useStore(s => s.accessCode);
+    const personal = FastlanePersonalAiStore.useStore(s => s);
     const settings = FastlaneSettingsStore.useStore(s => s);
     const events = FastlaneAiUsageStore.useStore(s => s.events) ?? [];
     const [status, setStatus] = useState<Status | null>(null);
@@ -75,14 +81,10 @@ export default function AiDashboard() {
     const [tests, setTests] = useState<Record<string, string>>({});
 
     const load = async () => {
-        if (!code) return;
+        if (!code || personal.enabled) return;
         setError('');
         try {
-            const res = await fetch(`${AI_BASE}/ai-status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accessCode: code }),
-            });
+            const res = await requestAi('ai-status', { accessCode: code });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
             setStatus(body as Status);
@@ -93,16 +95,12 @@ export default function AiDashboard() {
     // biome-ignore lint/correctness/useExhaustiveDependencies: load once per access code
     useEffect(() => {
         void load();
-    }, [code]);
+    }, [code, personal.enabled]);
 
     const test = async (provider: string) => {
         setTesting(provider);
         try {
-            const res = await fetch(`${AI_BASE}/ai-status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accessCode: code, test: provider }),
-            });
+            const res = await requestAi('ai-status', { accessCode: code, test: provider });
             const body = await res.json();
             setTests(t => ({ ...t, [provider]: body.ok ? `Working. ${body.message}` : (body.message ?? body.error) }));
             await load();
@@ -124,6 +122,21 @@ export default function AiDashboard() {
         acc[k] = (acc[k] ?? 0) + 1;
         return acc;
     }, {});
+
+    if (personal.enabled)
+        return (
+            <div className='card stack ai-dashboard'>
+                <h2>AI assistant</h2>
+                <p className='small muted'>
+                    Your own key is active. Use Test connection above to check it. AI requests go directly to your
+                    selected provider; your provider controls its quota. Questions about your own records are still
+                    answered locally.
+                </p>
+                <p className='small'>
+                    {local} local answers · {remote.filter(e => e.ok).length} successful AI requests
+                </p>
+            </div>
+        );
 
     return (
         <div className='card stack ai-dashboard'>

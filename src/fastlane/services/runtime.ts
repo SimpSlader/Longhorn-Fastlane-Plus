@@ -15,6 +15,8 @@ export type FastlaneRequest =
     | { fastlane: true; type: 'checkDataUpdates'; force?: boolean }
     | { fastlane: true; type: 'openFastlane'; tab?: string }
     | { fastlane: true; type: 'devCheckReload' }
+    | { fastlane: true; type: 'personalAi'; path: string; body: Record<string, unknown>; requestId: string }
+    | { fastlane: true; type: 'cancelPersonalAi'; requestId: string }
     | { fastlane: true; type: 'professorRating'; first: string; last: string };
 
 export function isFastlaneRequest(msg: unknown): msg is FastlaneRequest {

@@ -2933,3 +2933,35 @@ button.course-pill {
     margin: 6px 0 0;
     padding-left: 18px;
 }
+
+.ai-key-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 16px;
+}
+.ai-key-card {
+    padding: 20px;
+    border: 1px solid color-mix(in srgb, var(--border) 22%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--surface) 80%, transparent);
+    backdrop-filter: blur(18px);
+}
+.ai-key-card h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+.ai-key-card details {
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+.ai-key-card summary {
+    cursor: pointer;
+}
+.ai-key-card ol {
+    padding-left: 20px;
+    margin: 10px 0;
+}
+.ai-key-card .field input {
+    min-width: 0;
+    width: 100%;
+}

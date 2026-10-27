@@ -21,6 +21,14 @@ if (manifest.manifest_version !== 3) errors.push('manifest_version must be 3');
 for (const p of manifest.permissions ?? []) if (!ALLOWED_PERMISSIONS.has(p)) errors.push(`unexpected permission: ${p}`);
 const AI_HOST = 'https://longhorn-fastlane-plus.vercel.app/*';
 const RMP_HOST = 'https://www.ratemyprofessors.com/*';
+const PERSONAL_AI_HOSTS = new Set([
+    'https://api.groq.com/*',
+    'https://generativelanguage.googleapis.com/*',
+    'https://api.cloudflare.com/*',
+]);
+for (const h of manifest.optional_host_permissions ?? []) {
+    if (!PERSONAL_AI_HOSTS.has(h)) errors.push(`unexpected optional provider permission: ${h}`);
+}
 for (const h of manifest.host_permissions ?? [])
     if (!HOST_OK.test(h) && h !== AI_HOST && h !== RMP_HOST) errors.push(`unexpected host permission: ${h}`);
 for (const cs of manifest.content_scripts ?? [])

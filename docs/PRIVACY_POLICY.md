@@ -1,6 +1,6 @@
 # Fastlane Course Planner — Privacy Policy
 
-_Last updated: October 21, 2026 (opt-in AI beta)_
+_Last updated: October 26, 2026 (personal API keys)_
 
 Fastlane Course Planner ("Fastlane") is an independent, student-developed Chrome extension. It is not affiliated with The University of Texas at Austin or the UT Registration Plus team.
 
@@ -91,3 +91,11 @@ Changes to this policy will be published with the extension's source code and no
 ## Contact
 
 Open an issue on the project's GitHub repository.
+
+## Use your own API keys (optional)
+
+Settings supports personal Groq and Gemini API keys and a Cloudflare Workers AI token with its Account ID. These credentials stay in `chrome.storage.local` in this Chrome profile. They are masked in the form, never saved in Chrome Sync, never included in schedule/data exports, and can be removed in Settings. Deleting Fastlane data also clears them. Local storage is not an encrypted password vault; only save keys on a device you trust.
+
+Connecting a provider asks Chrome for optional access to that provider's API origin: `api.groq.com`, `generativelanguage.googleapis.com`, or `api.cloudflare.com`. No content script is installed on these domains. Personal-key requests go directly from the extension worker to the selected provider over HTTPS. The key is sent only as authorization to that provider; neither the key nor the request passes through Fastlane's shared Vercel server. There is no automatic fallback to a shared account.
+
+The same whitelist of academic summaries and public course facts, response checks, local schedule validation, and AI consent apply in personal-key mode. Gemini academic summaries additionally require the user's explicit acknowledgement of Google's free-tier data-use policy. The user confirms a free plan or billing-off project; the provider controls the actual quota and billing status. Test connection sends only a one-word connection prompt, without degree or registration information.

@@ -38,6 +38,11 @@ test.describe('Chrome extension permissions & security', () => {
             );
         }
         expect(manifest.host_permissions).not.toContain('<all_urls>');
+        expect([...(manifest.optional_host_permissions ?? [])].sort()).toEqual([
+            'https://api.cloudflare.com/*',
+            'https://api.groq.com/*',
+            'https://generativelanguage.googleapis.com/*',
+        ]);
         expect(JSON.stringify(manifest.host_permissions)).not.toContain('login.utexas.edu');
         expect(manifest.content_security_policy?.extension_pages).toBe(
             "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"

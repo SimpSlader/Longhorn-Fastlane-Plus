@@ -105,3 +105,9 @@ Gemini 2.5 Flash is no longer available to new API users. Fastlane uses Gemini 3
 ### Personal local installation
 
 A private local installation can set the optional `aiInviteCodeFile` path in git-ignored `fastlane.local.json`. The local sync script reads that file into the private installation stamp; the local background helper saves the invite code to the existing access store automatically. This hides the one-time invite field without changing the hosted API authentication or student-data consent. No code value is written to tracked source or public build output. The installer refuses web-accessible stamps, and packaging refuses private installation stamps.
+
+### Personal keys for public users
+
+Settings → Use your own API keys connects Groq, Google Gemini, or Cloudflare Workers AI without a FastLane invite. The selected provider handles requests directly from the extension worker; personal credentials never reach the hosted server. Save & use requests Chrome's optional provider permission. The connection test is separate, and only confirmed free accounts/projects are accepted in this version. Personal mode uses the chosen provider rather than the shared server's multi-provider router, and errors never switch accounts. The same sanitized tasks and response validators are shared with the hosted endpoints.
+
+Official setup links are included in each card: https://console.groq.com/keys, https://aistudio.google.com/api-keys, and Cloudflare's Workers AI dashboard. Cloudflare requires its API token plus Account ID. No provider keys are bundled in public builds or exports.

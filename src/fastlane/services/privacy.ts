@@ -3,6 +3,7 @@
  */
 import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import type { ParsedAudit } from '../audit/types';
+import { DEFAULT_PERSONAL_AI } from '../core/personalAi';
 import type { PlanMeta } from '../core/plans';
 import type { QueueState } from '../core/queue';
 import { emptyQueue, isQueueState } from '../core/queue';
@@ -15,6 +16,7 @@ import {
     FASTLANE_LOCAL_PREFIXES,
     FastlaneAiAccessStore,
     FastlaneAuditStore,
+    FastlanePersonalAiStore,
     FastlanePlanStore,
     FastlaneQueueStore,
     FastlaneReminderStore,
@@ -117,11 +119,15 @@ export async function deleteFastlaneData(): Promise<void> {
     await FastlanePlanStore.set('plans', {} as never);
     await FastlaneAuditStore.set('audit', null as never);
     await FastlaneAiAccessStore.set('accessCode', '');
+    await FastlanePersonalAiStore.set(DEFAULT_PERSONAL_AI);
     await FastlaneQueueStore.set({ queue: emptyQueue(), lastFilled: null } as never);
     await FastlaneReminderStore.set('reminders', defaultReminderConfig() as never);
     await FastlaneSettingsStore.set(DEFAULT_SETTINGS as never);
     // remove any other Fastlane-owned keys (e.g. from older versions)
     const keep = new Set([
+        'FastlaneAiKeys:enabled',
+        'FastlaneAiKeys:provider',
+        'FastlaneAiKeys:providers',
         'FastlanePlanning:roadmap',
         'FastlanePlanning:onboarded',
         'FastlanePlanning:rules',

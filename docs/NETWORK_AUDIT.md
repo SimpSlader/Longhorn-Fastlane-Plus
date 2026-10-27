@@ -28,3 +28,9 @@
 | hosts: collegescheduler.com, my.utexas.edu/student, bluera.com | inherited integrations | unchanged |
 
 No `<all_urls>`, no UT login page match, web-accessible resources limited to UT/collegescheduler/bluera origins, CSP `script-src 'self' 'wasm-unsafe-eval'`.
+
+## Personal provider access (October 26, 2026)
+
+The three personal-key API origins are optional host permissions, granted only by a user's Save & use click. Keys stay in local extension storage and are read by the worker only for requests from trusted extension pages; UT content-script callers are refused. Requests use fixed provider URLs, never a user-supplied endpoint, and strip invite codes and unknown identity/raw-audit fields through the same task sanitizers as the hosted API. Keys are authorization headers only. Personal-key requests never fall back to the shared Vercel server.
+
+`e2e/personal-ai.spec.ts` uses a disposable profile and fake provider responses to verify provider links/instructions, masked inputs, direct authorization, successful audit review without an invite, retention across reloads, export exclusion, failed-key handling, and removal. Unit tests cover all three destinations, missing permissions, free-plan confirmation, Gemini academic opt-in, cancelled requests, and fabricated section rejection.
