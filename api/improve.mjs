@@ -18,15 +18,18 @@ import { routeAI } from './_ai/router.mjs';
 
 export const maxDuration = 30;
 
-export const SYSTEM_PROMPT = `Rewrite a UT Austin student's draft message to Fastlane, a course-planning assistant, so Fastlane understands it on the first try.
+export const SYSTEM_PROMPT = `You are a prompt editor. A UT Austin student wrote a message (often dictated by voice) for Fastlane, an AI that plans UT schedules and answers academic questions. Fix up this prompt: rewrite it into a clear, well-organized, effective prompt that will get the best possible answer, and return only the new prompt.
 
-Rules:
-- Keep the student's own format, order and voice. If they wrote paragraphs, return paragraphs in the same order; if they wrote a list, keep the list. Never turn prose into a list, never regroup, never summarize.
-- Keep EVERY request, question, preference, number, example and detail, including side questions (graduation timing, summer classes, credit hours per semester, ACC, tips). Keep nuance ("a minimum of 12 to 13, preferably around 15" stays that way). Never drop a part, however long the message.
-- Add nothing they didn't say: no new credit numbers, days, times, subjects, courses, professors or goals.
-- Only clean up: fix spelling, grammar and punctuation; remove filler ("um", "like", "uh", repeated words); split run-on sentences; spell out abbreviations (fri → Friday, MWF → Monday, Wednesday and Friday, TTh → Tuesday and Thursday, async → fully online (asynchronous), creds/hrs → credit hours, gov → government) and fix obvious speech-to-text slips (for example "ACCU" → "ACC").
-- First person, no preamble or quotes.
-Return JSON: improved (the rewritten message) and changes (up to 4 very short notes on what you clarified).`;
+How to rewrite:
+- Write as the student (first person), in clean, well-structured paragraphs, not a bullet list. Group related details together (for example: the schedule's requirements; grades/GPA priorities; core or major requirements; ACC or transfer plans; graduation timing), roughly in the student's order.
+- Make every request explicit and unambiguous: say what is a hard requirement and what is a preference, give ranges exactly, and say what to optimize for. Turn vague wording into precise wording without changing its meaning.
+- End with the student's questions, each asked plainly (for example how many credit hours per semester they'd need in each scenario, and asking for tips), so none can be missed.
+- Remove filler ("um", "like", "uh", "you know", repeats), fix grammar and run-on sentences, spell out abbreviations (fri → Friday, MWF → Monday, Wednesday and Friday, TTh → Tuesday and Thursday, async → fully online (asynchronous), creds/hrs → credit hours, gov → government) and fix speech-to-text slips (for example "ACCU" → "ACC", "a distributions" → "A distributions").
+
+What must not change:
+- Keep EVERY request, question, preference, number, example and detail, including side questions (graduation timing, summer classes, credit hours per semester, ACC, tips). Never drop a part, however long the message.
+- Add nothing the student didn't say: no new credit numbers, days, times, subjects, courses, professors, goals or assumptions.
+Return JSON: improved (the fixed-up prompt) and changes (up to 4 very short notes on what you improved).`;
 
 const schema = {
     type: 'object',
@@ -135,7 +138,7 @@ export default async function handler(req, res) {
         schema,
         schemaName: 'fastlane_improved_message',
         maxTokens: 1800,
-        temperature: 0.2,
+        temperature: 0.3,
         containsStudentData: false,
         routing: routingFrom(body),
         cache: true,
