@@ -2,6 +2,7 @@
 """Update only the verified unpacked installation; never remove user files."""
 import datetime
 import hashlib
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -43,6 +44,10 @@ def manifest(folder):
     return data
 
 
+def auto_reload_build(folder):
+    return b'fastlane-dev-build.json' in b''.join(p.read_bytes() for p in (folder / 'assets').glob('*.js'))
+
+
 def main():
     require(TARGET.is_dir() and TARGET.resolve() == TARGET, 'Installation folder missing or redirected')
     require(REPO.resolve() == REPO, 'Source folder redirected')
@@ -54,14 +59,30 @@ def main():
     installed = settings.get(EXTENSION_ID, {})
     require(installed.get('location') == 4 and installed.get('path') == str(TARGET),
             'Chrome no longer associates the expected extension ID with this unpacked folder. Nothing copied.')
+    # Optional personal access is read only from a local file, never source or build output.
+    personal_access = None
+    if _CONFIG.get('aiInviteCodeFile'):
+        personal_access = Path(_CONFIG['aiInviteCodeFile']).read_text().strip()
+        require(8 <= len(personal_access) <= 256 and not any(c.isspace() for c in personal_access),
+                'Personal AI invite file must contain one code without spaces')
     source = REPO / 'dist'
     new, old = manifest(source), manifest(TARGET)
+    if personal_access:
+        require(auto_reload_build(source), 'Personal AI access requires a local development build')
+        require(not any(fnmatch.fnmatch('fastlane-dev-build.json', resource)
+                        for group in new.get('web_accessible_resources', [])
+                        for resource in group.get('resources', [])),
+                'Personal access file must not be web-accessible')
     require(new.get('key') == old.get('key'), 'Manifest identity key changed; refusing installation')
     for field in ['permissions', 'content_security_policy']:
         require(new.get(field) == old.get(field), 'Security configuration changed; review before syncing: ' + field)
     # Explicitly reviewed migrations: the user's requested click-to-import IDA button, and the opt-in
     # Fastlane AI backend (PR #8; called only after the student consents and enters the invite code), and
     # Rate My Professors ratings on course listings (approved by the user 2026-10-22; professor names only).
+    # Personal provider access is optional and granted only by the student's Save & use click.
+    require(set(new.get('optional_host_permissions', [])) <= {
+        'https://api.groq.com/*', 'https://generativelanguage.googleapis.com/*', 'https://api.cloudflare.com/*'
+    }, 'Unexpected optional provider permission')
     old_hosts, new_hosts = set(old.get('host_permissions', [])), set(new.get('host_permissions', []))
     require(old_hosts <= new_hosts and new_hosts - old_hosts <= {
         'https://utdirect.utexas.edu/apps/degree/audits/results/*',
@@ -108,11 +129,13 @@ def main():
         digest.update(str(relative).encode() + b'\0' + hashlib.sha256((TARGET / relative).read_bytes()).digest())
     stamp = {'buildId': digest.hexdigest()[:16] + '-' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'),
              'syncedAt': datetime.datetime.now().astimezone().isoformat()}
+    if personal_access:
+        stamp['aiAccessCode'] = personal_access
     with tempfile.NamedTemporaryFile('w', dir=TARGET, prefix='.fastlane-', delete=False) as temporary:
         json.dump(stamp, temporary)
         stamp_temp = Path(temporary.name)
     os.replace(stamp_temp, TARGET / 'fastlane-dev-build.json')
-    auto = b'fastlane-dev-build.json' in b''.join(p.read_bytes() for p in (source / 'assets').glob('*.js'))
+    auto = auto_reload_build(source)
     print(f'Installed and verified {len(files)} files at {TARGET}')
     print(f'Build stamp: {stamp["buildId"]}' + ('' if auto else ' (auto-reload not compiled into this build)'))
     print(f'Backup: {backup}')

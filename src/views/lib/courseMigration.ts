@@ -1,3 +1,4 @@
+import { fetchUtRegistrar } from '@shared/util/fetchUtRegistrar';
 import { parseHtml } from '@shared/util/parseHtml';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import getCourseTableRows from '@views/lib/getCourseTableRows';
@@ -23,7 +24,7 @@ export const courseMigration = async (links: string[]) => {
 
     // Loop over the links
     for (const link of links) {
-        const response = await fetch(link);
+        const response = await fetchUtRegistrar(link);
         const text = await response.text();
         const doc = parseHtml(text);
 

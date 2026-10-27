@@ -64,6 +64,7 @@ import {
     FastlaneChatStore,
     FastlaneFactsStore,
     FastlaneMemoryStore,
+    FastlanePersonalAiStore,
     FastlaneSettingsStore,
 } from '../storage/stores';
 import { inventorySubjects, useInventory } from './CourseInventory';
@@ -203,6 +204,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
+    const personalAi = FastlanePersonalAiStore.useStore(s => s);
+    const personalEnabled = personalAi.enabled;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     // everything AI has been shown in this conversation, so earlier picks keep their facts and grades
@@ -638,12 +641,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 },
                 controller.signal
             );
-            if (response.status === 401 && savedCode) {
+            if (response.status === 401 && savedCode && !personalEnabled) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInviteCode('');
             }
             if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
-            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            if (!savedCode && code) await FastlaneAiAccessStore.set('accessCode', code);
             say(message, payload.answer, message, 'advice');
             setLastKind('advice');
         } catch (failure) {
@@ -804,12 +807,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 },
                 controller.signal
             );
-            if (response.status === 401 && savedCode) {
+            if (response.status === 401 && savedCode && !personalEnabled) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInviteCode('');
             }
             if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
-            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            if (!savedCode && code) await FastlaneAiAccessStore.set('accessCode', code);
             say(message, payload.answer, '', 'chat');
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
@@ -843,7 +846,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             return;
         }
         const code = savedCode || inviteCode.trim();
-        if (!code) {
+        if (!code && !personalEnabled) {
             setError('Enter the beta invite code once. Fastlane will remember it on this device.');
             return;
         }
@@ -1133,12 +1136,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 },
                 controller.signal
             );
-            if (response.status === 401 && savedCode) {
+            if (response.status === 401 && savedCode && !personalEnabled) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInviteCode('');
             }
             if (!response.ok) throw new Error(aiErrorMessage(response.status, payload));
-            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            if (!savedCode && code) await FastlaneAiAccessStore.set('accessCode', code);
             const sections = new Map(usable.map(x => [x.section.uniqueId, x.section]));
             const recs = (payload.recommendations ?? []).filter(r => sections.has(r.id));
             const picks = new Set(recs.map(r => r.id));
@@ -1331,7 +1334,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
           : !loadingCatalog && !subjectHasSections
             ? `No ${subjectForCode(subject)?.name ?? subject} sections are listed for ${actualTerm || 'this semester'}.`
             : '';
-    const needsSetup = !savedCode || !consent;
+    const needsSetup = (!savedCode && !personalEnabled) || !consent;
     // memory commands and questions about the student's own records never contact the AI, so they work before setup
     const localOnly = (text: string) => {
         if (memoryCommand(text)) return true;
@@ -1350,7 +1353,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
     const canSend =
         !!request.trim() &&
-        (localOnly(request) || (consent && !!audit && catalog.length > 0 && (!!savedCode || !!inviteCode.trim())));
+        (localOnly(request) ||
+            (consent && !!audit && catalog.length > 0 && (personalEnabled || !!savedCode || !!inviteCode.trim())));
     const chips: Array<{ text: string; onClick: () => void }> = busy
         ? []
         : noSchedule
@@ -1589,7 +1593,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
 
             {needsSetup && (
                 <div className='fl-setup'>
-                    {!savedCode && (
+                    {!savedCode && !personalEnabled && (
                         <input
                             type='password'
                             autoComplete='off'
@@ -1604,7 +1608,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         <span className='small'>
                             I agree to send my unfinished requirement descriptions, completed course codes, hour totals
                             computed from my IDA, my saved memory and preferences, my typed request and public course
-                            details to Fastlane's server and Groq. No name, EID, grades or full IDA file is sent.
+                            details{' '}
+                            {personalEnabled
+                                ? 'directly to my selected AI provider'
+                                : 'to FastLane’s server and its AI provider'}
+                            . No name, EID, personal grades or full IDA file is sent.
                         </span>
                     </label>
                 </div>
@@ -1670,7 +1678,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             </div>
             <p className='fl-foot'>
                 AI can be wrong. Confirm requirements and prerequisites with UT.
-                {savedCode && (
+                {savedCode && !personalEnabled && (
                     <button
                         type='button'
                         className='fl-link'

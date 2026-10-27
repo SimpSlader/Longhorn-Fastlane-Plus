@@ -1,3 +1,4 @@
+import { fetchUtRegistrar } from '@shared/util/fetchUtRegistrar';
 import { parseHtml } from '@shared/util/parseHtml';
 import getCourseTableRows from './getCourseTableRows';
 
@@ -61,7 +62,7 @@ export async function loadNextCourseCatalogPage(): Promise<[AutoLoadStatusType, 
     // begin loading the next page
     isLoading = true;
     try {
-        const response = await fetch(nextPageURL);
+        const response = await fetchUtRegistrar(nextPageURL);
         const html = await response.text();
         const newDocument = parseHtml(html);
 

@@ -3,6 +3,7 @@ import { UserScheduleStore } from '@shared/storage/UserScheduleStore';
 import type { Course } from '@shared/types/Course';
 import type { UserSchedule } from '@shared/types/UserSchedule';
 import { validateLoginStatus } from '@shared/util/checkLoginStatus';
+import { fetchUtRegistrar } from '@shared/util/fetchUtRegistrar';
 import { parseHtml } from '@shared/util/parseHtml';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
 import getCourseTableRows from '@views/lib/getCourseTableRows';
@@ -35,7 +36,7 @@ export async function refreshScheduleCourses(schedule: Serialized<UserSchedule>)
     const results = await Promise.all(
         schedule.courses.map(async (course): Promise<Serialized<Course> | null> => {
             try {
-                const response = await fetch(course.url, { credentials: 'include' });
+                const response = await fetchUtRegistrar(course.url);
                 if (!response.ok) return null;
 
                 const htmlText = await response.text();

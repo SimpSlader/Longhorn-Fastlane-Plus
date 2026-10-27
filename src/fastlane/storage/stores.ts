@@ -6,12 +6,12 @@
  *   which never leaves this browser profile.
  */
 import { createLocalStore, createSyncStore } from '@chrome-extension-toolkit';
-
 import type { ParsedAudit } from '../audit/types';
 import type { AutofillSettings } from '../core/autofill';
 import { DEFAULT_AUTOFILL } from '../core/autofill';
 import type { GradeThreshold } from '../core/grades';
 import { DEFAULT_GRADE_THRESHOLD } from '../core/grades';
+import { DEFAULT_PERSONAL_AI, type PersonalAiConfig } from '../core/personalAi';
 import type { PlanMeta } from '../core/plans';
 import type { QueueState } from '../core/queue';
 import { defaultQueue } from '../core/queue';
@@ -75,6 +75,9 @@ export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('Fastlane
  * The invite code is deliberately excluded from exported settings and data backups.
  */
 export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { accessCode: '' });
+
+/** Personal provider keys stay in this Chrome profile and are excluded from every export. */
+export const FastlanePersonalAiStore = createLocalStore<PersonalAiConfig>('FastlaneAiKeys', DEFAULT_PERSONAL_AI);
 
 /** Preferences the student asked Fastlane to remember ("I want to graduate early"). Only in this Chrome profile;
  * each item is shown in the chat's Memory panel and can be deleted. */
@@ -144,6 +147,7 @@ export const FASTLANE_LOCAL_PREFIXES = [
     'FastlaneAudit:',
     'FastlaneReminders:',
     'FastlaneAiAccess:',
+    'FastlaneAiKeys:',
     'FastlanePlanning:',
     'FastlaneHistory:',
 ];

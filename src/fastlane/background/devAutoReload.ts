@@ -14,6 +14,8 @@
  * It reads only a file inside the extension: no network access and no new permissions. Store builds
  * never include it (package.mjs refuses such a build).
  */
+import { FastlaneAiAccessStore } from '../storage/stores';
+
 export const DEV_STAMP_FILE = 'fastlane-dev-build.json';
 export const DEV_NOTIFICATION_PREFIX = 'fastlane-dev-update';
 const LOADED_KEY = 'fastlaneDevLoadedBuild'; // chrome.storage.session: cleared by every extension reload
@@ -67,11 +69,23 @@ export function decideDevReload(input: {
     return { action: 'reload' };
 }
 
+/** Personal access exists only in the private installation stamp, never in a public build. */
+export function personalAccessFromStamp(data: unknown): string | null {
+    const raw = data && typeof data === 'object' && 'aiAccessCode' in data ? data.aiAccessCode : null;
+    if (typeof raw !== 'string') return null;
+    const code = raw.trim();
+    return code.length >= 8 && code.length <= 256 && !/\s/.test(code) ? code : null;
+}
+
 async function readStamp(): Promise<string | null> {
     try {
         const res = await fetch(chrome.runtime.getURL(DEV_STAMP_FILE), { cache: 'no-store' });
         if (!res.ok) return null;
         const data = (await res.json()) as { buildId?: unknown };
+        const code = personalAccessFromStamp(data);
+        if (code && (await FastlaneAiAccessStore.get('accessCode')) !== code) {
+            await FastlaneAiAccessStore.set('accessCode', code);
+        }
         return typeof data.buildId === 'string' ? data.buildId : null;
     } catch {
         return null;

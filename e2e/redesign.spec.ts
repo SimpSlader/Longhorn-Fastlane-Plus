@@ -573,10 +573,10 @@ test('questions about your records are answered from the IDA, accurately and wit
 
     // Settings shows the AI dashboard: providers, why one is off, OpenAI unavailable, router settings
     await page.getByRole('button', { name: 'Settings & privacy' }).click();
-    const groq = page.getByRole('region', { name: 'Groq' });
+    const groq = page.getByRole('region', { name: 'Groq', exact: true });
     await expect(groq).toContainText('Connected');
     await expect(groq).toContainText('Today 3 / 1000 requests');
-    await expect(page.getByRole('region', { name: 'Google Gemini' })).toContainText('GEMINI_BILLING=off');
+    await expect(page.getByRole('region', { name: 'Google Gemini', exact: true })).toContainText('GEMINI_BILLING=off');
     await expect(page.getByRole('region', { name: 'OpenAI (Sign in with ChatGPT)' })).toContainText('Unavailable');
     await page.getByRole('combobox', { name: 'How Fastlane chooses a model' }).selectOption('preserve');
     await groq.getByRole('checkbox', { name: 'Use Groq' }).uncheck();

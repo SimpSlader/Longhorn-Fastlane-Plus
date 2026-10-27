@@ -10,6 +10,7 @@ import switchSchedule from '@pages/background/lib/switchSchedule';
 import type { UserScheduleMessages } from '@shared/messages/UserScheduleMessages';
 import { Course } from '@shared/types/Course';
 import { validateLoginStatus } from '@shared/util/checkLoginStatus';
+import { fetchUtRegistrar, isUtCoursePage } from '@shared/util/fetchUtRegistrar';
 
 const userScheduleHandler: MessageHandler<UserScheduleMessages> = {
     addCourse({ data, sendResponse }) {
@@ -35,12 +36,19 @@ const userScheduleHandler: MessageHandler<UserScheduleMessages> = {
     },
     // Fetch proxy for content scripts that cannot make cross-origin requests.
     fetchFromUrl({ data: { url, method, body, response }, sendResponse }) {
-        fetch(url, {
-            method,
-            body,
-        })
-            .then(res => (response === 'json' ? res.json() : res.text()))
-            .then(sendResponse);
+        const request = isUtCoursePage(url)
+            ? method === 'GET'
+                ? fetchUtRegistrar(url)
+                : Promise.reject(new Error('Course lookups must use GET.'))
+            : fetch(url, { method, body });
+        request
+            .then(res => {
+                if (!res.ok) throw new Error('Could not load course data.');
+                return response === 'json' ? res.json() : res.text();
+            })
+            .then(sendResponse)
+            // Always settle the message; a sign-in redirect must not leave callers waiting forever.
+            .catch(() => sendResponse(''));
     },
     validateLoginStatus({ sendResponse }) {
         validateLoginStatus().then(sendResponse);

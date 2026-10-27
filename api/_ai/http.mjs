@@ -10,16 +10,9 @@ export function send(res, status, data, extra = {}) {
     res.end(JSON.stringify(data));
 }
 
-export function safeString(value, length = 160) {
-    return typeof value === 'string'
-        ? value
-              .slice(0, length)
-              .split('')
-              .map(c => (c.charCodeAt(0) < 32 && c !== '\n' ? ' ' : c))
-              .join('')
-              .trim()
-        : '';
-}
+import { safeString } from './text.mjs';
+
+export { safeString };
 
 export function secureEqual(a, b) {
     const left = Buffer.from(a);

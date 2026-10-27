@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ParsedAudit, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
-import { FastlaneAiAccessStore } from '../storage/stores';
-
-const URL = 'https://longhorn-fastlane-plus.vercel.app/api/audit-review';
+import { requestAi } from '../services/aiClient';
+import { FastlaneAiAccessStore, FastlanePersonalAiStore } from '../storage/stores';
 
 interface Suggestion {
     id: string;
@@ -59,6 +58,7 @@ export default function AiAuditReview({
     const [consent, setConsent] = useState(false);
     const [invite, setInvite] = useState('');
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
+    const personalEnabled = FastlanePersonalAiStore.useStore(s => s.enabled);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [summary, setSummary] = useState('');
@@ -74,7 +74,7 @@ export default function AiAuditReview({
     const analyze = async () => {
         if (!consent || busy) return;
         const code = savedCode || invite.trim();
-        if (!code) {
+        if (!code && !personalEnabled) {
             setError('Enter the beta invite code once. Fastlane will remember it on this device.');
             return;
         }
@@ -85,35 +85,31 @@ export default function AiAuditReview({
         try {
             const requests = audit.requirements.filter(r => !r.reviewed && r.status !== 'completed').slice(0, 25);
             if (!requests.length) throw new Error('There are no remaining unreviewed requirements to analyze.');
-            const result = await fetch(URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    accessCode: code,
-                    requirements: requests.map(r => ({
-                        id: r.id,
-                        text: r.text,
-                        section: r.section,
-                        status: r.status,
-                        tags: r.tags,
-                        remaining: r.remaining?.value ?? null,
-                        applied: r.applied?.value ?? null,
-                        issues: r.issues,
-                        reviewed: r.reviewed === true,
-                    })),
-                    completedCodes: audit.courses
-                        .filter(c => c.status === 'completed' || c.status === 'in-progress')
-                        .map(c => c.code),
-                    pendingTransferCodes: audit.transfer.pending.map(c => c.code),
-                }),
+            const result = await requestAi('audit-review', {
+                accessCode: code,
+                requirements: requests.map(r => ({
+                    id: r.id,
+                    text: r.text,
+                    section: r.section,
+                    status: r.status,
+                    tags: r.tags,
+                    remaining: r.remaining?.value ?? null,
+                    applied: r.applied?.value ?? null,
+                    issues: r.issues,
+                    reviewed: r.reviewed === true,
+                })),
+                completedCodes: audit.courses
+                    .filter(c => c.status === 'completed' || c.status === 'in-progress')
+                    .map(c => c.code),
+                pendingTransferCodes: audit.transfer.pending.map(c => c.code),
             });
             const payload = (await result.json()) as Response;
-            if (result.status === 401 && savedCode) {
+            if (result.status === 401 && savedCode && !personalEnabled) {
                 await FastlaneAiAccessStore.set('accessCode', '');
                 setInvite('');
             }
             if (!result.ok) throw new Error(payload.error ?? 'AI audit review is unavailable.');
-            if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
+            if (!savedCode && code) await FastlaneAiAccessStore.set('accessCode', code);
             setSummary(payload.summary ?? '');
             setSuggestions(
                 (payload.suggestions ?? []).filter(s => audit.requirements.some(r => r.id === s.id && !r.reviewed))
@@ -159,7 +155,9 @@ export default function AiAuditReview({
                         existing tags, course codes and review warnings are shared. No raw IDA file, name, EID or grades
                         are sent.
                     </p>
-                    {savedCode ? (
+                    {personalEnabled ? (
+                        <p className='small muted'>Using your own API key from Settings.</p>
+                    ) : savedCode ? (
                         <p className='small muted'>
                             AI access saved on this device.{' '}
                             <button
@@ -189,7 +187,10 @@ export default function AiAuditReview({
                         <input type='checkbox' checked={consent} onChange={e => setConsent(e.target.checked)} />
                         <span className='small'>
                             I agree to send selected degree requirement text, course codes and parsing details to
-                            Fastlane's Vercel server and Groq for this review.
+                            {personalEnabled
+                                ? 'my selected AI provider directly'
+                                : 'FastLane’s server and its AI provider'}{' '}
+                            for this review.
                         </span>
                     </label>
                     <button

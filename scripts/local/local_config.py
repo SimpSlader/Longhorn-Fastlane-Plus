@@ -29,7 +29,13 @@ def load():
             raise SystemExit(f'{CONFIG_PATH.name}: "{key}" must be an absolute path (placeholder not replaced?)')
     if not re.fullmatch(r'[a-p]{32}', data['extensionId']):
         raise SystemExit(f'{CONFIG_PATH.name}: "extensionId" must be the 32-letter ID shown at chrome://extensions')
-    return {key: data[key] for key in KEYS}
+    result = {key: data[key] for key in KEYS}
+    invite_path = data.get('aiInviteCodeFile')
+    if invite_path:
+        if not isinstance(invite_path, str) or not Path(invite_path).is_absolute():
+            raise SystemExit(f'{CONFIG_PATH.name}: "aiInviteCodeFile" must be an absolute path')
+        result['aiInviteCodeFile'] = invite_path
+    return result
 
 
 if __name__ == '__main__':

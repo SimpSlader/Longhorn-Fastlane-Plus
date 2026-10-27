@@ -56,6 +56,11 @@ const manifest = defineManifest(async env => {
         host_permissions: isDev
             ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION, '<all_urls>']
             : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION],
+        optional_host_permissions: [
+            'https://api.groq.com/*',
+            'https://generativelanguage.googleapis.com/*',
+            'https://api.cloudflare.com/*',
+        ],
         action: {
             default_popup: 'src/pages/popup/index.html',
             default_icon: `icons/icon_${mode}_32.png`,

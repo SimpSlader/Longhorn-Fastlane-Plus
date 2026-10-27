@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { decideDevReload, RELOAD_COOLDOWN_MS } from '../background/devAutoReload';
+import { decideDevReload, personalAccessFromStamp, RELOAD_COOLDOWN_MS } from '../background/devAutoReload';
 import {
     checkExtensionContext,
     ExtensionContextInvalidatedError,
@@ -170,5 +170,24 @@ describe('development self-reload decisions (no loops)', () => {
         ).toEqual({
             action: 'reload',
         });
+    });
+});
+
+describe('private local access configuration', () => {
+    it('accepts a personal invite code from a private installation stamp', () => {
+        expect(personalAccessFromStamp({ buildId: 'test', aiAccessCode: ' personal-local-test-code\n' })).toBe(
+            'personal-local-test-code'
+        );
+    });
+    it('ignores absent, malformed, or too short codes', () => {
+        for (const stamp of [
+            null,
+            {},
+            { aiAccessCode: 12 },
+            { aiAccessCode: 'short' },
+            { aiAccessCode: 'contains a space' },
+        ]) {
+            expect(personalAccessFromStamp(stamp)).toBeNull();
+        }
     });
 });
