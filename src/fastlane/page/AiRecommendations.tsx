@@ -908,7 +908,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setBeforeImprove(request);
         if (!consent || !code) {
             setRequest(tidyMessage(draft));
-            setImproveNote('Tidied the wording. Turn on AI below for a fuller rewrite.');
+            setImproveNote('Only spelled out abbreviations: turn on AI below to have your prompt fixed up by AI.');
             return;
         }
         setImproving(true);
@@ -926,12 +926,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (!response.ok || !payload.improved) throw new Error(aiErrorMessage(response.status, payload));
             setRequest(payload.improved);
             setImproveNote(
-                payload.changes?.length ? `Clarified: ${payload.changes.join('; ')}.` : 'Clarified your message.'
+                payload.changes?.length ? `Fixed up by AI: ${payload.changes.join('; ')}.` : 'Fixed up by AI.'
             );
         } catch (failure) {
             setRequest(tidyMessage(draft));
             setImproveNote(
-                `${failure instanceof Error ? failure.message : 'The AI rewrite is unavailable.'} Tidied the wording instead.`
+                `The AI fix-up didn't work this time (${failure instanceof Error ? failure.message : 'unavailable'}). Only abbreviations were spelled out.`
             );
         } finally {
             setImproving(false);
@@ -1775,7 +1775,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         type='button'
                         className='fl-improve'
                         aria-label='Improve my message'
-                        title='Rewrite your message so Fastlane understands it better (you review it before sending)'
+                        title='Fix up this prompt with AI so Fastlane understands it better (you review it before sending)'
                         disabled={improving || request.trim().split(/\s+/).length < 2}
                         onClick={() => void improve()}
                     >

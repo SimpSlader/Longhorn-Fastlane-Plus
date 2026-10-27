@@ -684,7 +684,7 @@ test('"Improve" rewrites a draft for the planner, can be undone, and never sends
     // before AI is set up it tidies the wording locally
     await improve.click();
     await expect(box).toHaveValue('15 easy credits no Friday, 1-2 fully online (asynchronous).');
-    await expect(page.getByRole('status').filter({ hasText: 'Turn on AI below' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'turn on AI below' })).toBeVisible();
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(box).toHaveValue('15 easy creds no fri, 1-2 async');
     expect(improveCalls).toHaveLength(0);
@@ -694,7 +694,7 @@ test('"Improve" rewrites a draft for the planner, can be undone, and never sends
     await page.getByRole('checkbox', { name: /I agree to send/ }).check();
     await improve.click();
     await expect(box).toHaveValue(/^Build me a 15-credit-hour schedule with no Friday classes/);
-    await expect(page.getByRole('status').filter({ hasText: 'Clarified: Spelled out Friday' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Fixed up by AI: Spelled out Friday' })).toBeVisible();
     expect(improveCalls[0]?.draft).toBe('15 easy creds no fri, 1-2 async');
     // nothing was sent to the planner
     await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.me')).toHaveCount(0);

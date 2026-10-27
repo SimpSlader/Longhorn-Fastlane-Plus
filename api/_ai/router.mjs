@@ -21,7 +21,7 @@ export function complexity(task, inputChars = 0) {
     const base =
         {
             test: 1,
-            improve: 2,
+            improve: 3,
             chat: 2,
             explain: 2,
             'audit-review': 3,
