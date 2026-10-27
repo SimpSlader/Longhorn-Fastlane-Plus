@@ -35,7 +35,7 @@ const CASES: Array<[string, Intent['kind'], { hasPlan?: boolean }?]> = [
     ['Plan my path to graduate early', 'degree-planning'],
     ['How many classes should I take through ACC?', 'degree-planning'],
     ['Am I on track for the McCombs internal transfer?', 'degree-planning'],
-    ['how many semesters do i have left', 'degree-planning'],
+    ['how many semesters do i have left', 'graduation-plan'],
     ['Which UT classes would protect my GPA?', 'degree-planning'],
     // schedule building and changes
     ['Build a 15-credit schedule with no Friday classes', 'schedule'],
@@ -50,7 +50,10 @@ const CASES: Array<[string, Intent['kind'], { hasPlan?: boolean }?]> = [
     ['no classes before 10am', 'schedule'],
     ['keep everything but swap the government class', 'schedule', { hasPlan: true }],
     ['Suggest harder classes I could take at ACC', 'schedule', { hasPlan: true }],
-    ['how many credit hours per semester would I need to graduate in 2029', 'degree-planning'],
+    ['how many credit hours per semester would I need to graduate in 2029', 'graduation-plan'],
+    ['How many credit hours do I need per semester to graduate in Spring 2029?', 'graduation-plan'],
+    ['What if I take 12 summer credits?', 'graduation-plan'],
+    ['what if i did 18 credits over the summers', 'graduation-plan'],
     [
         'Build me a schedule with at least 12 credits, 1-2 online classes. Also I want to graduate a year early in 2029: how many credit hours per semester would I need with only spring and fall, and with one summer? Any tips?',
         'schedule',

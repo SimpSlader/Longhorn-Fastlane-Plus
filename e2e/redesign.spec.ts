@@ -541,12 +541,13 @@ test('questions about your records are answered from the IDA, accurately and wit
     // a typo-filled question, before any AI setup, gets the exact numbers: completed never includes in-progress
     await input.fill('hyow many jours do i have compleeted?');
     await send.click();
-    await expect(last()).toContainText("You've completed 64 credit hours so far");
+    // the IDA counts 82 of 120 with in-progress and planned courses included; Fastlane separates them
+    await expect(last()).toContainText("You've completed 61 credit hours so far");
     await expect(last()).toContainText('another 12');
-    await expect(last()).toContainText('76 credit hours');
+    await expect(last()).toContainText('73 credit hours');
     await expect(last()).not.toContainText('ACC');
     await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
-    await expect(last().locator('strong').first()).toHaveText('64 credit hours');
+    await expect(last().locator('strong').first()).toHaveText('61 credit hours');
 
     await input.fill('What classes am I taking this semester?');
     await send.click();
@@ -556,10 +557,15 @@ test('questions about your records are answered from the IDA, accurately and wit
     await expect(last()).not.toContainText('schedule');
 
     // a correction is acknowledged and kept beside the IDA, not over it
-    await input.fill("That's wrong. I've completed 9 credits, not 64.");
+    await input.fill("That's wrong. I've completed 9 credits, not 61.");
     await send.click();
-    await expect(last()).toContainText("noted that you've completed 9 credit hours");
-    await expect(last()).toContainText('IDA shows 64');
+    await expect(last()).toContainText('Got it. Using 21 credits toward your 120-credit degree, that leaves 99');
+    await expect(last()).toContainText('keep your IDA’s figures separately');
+    // the next question uses the correction, and says where the IDA differs
+    await input.fill('How many hours have I completed?');
+    await send.click();
+    await expect(last()).toContainText("You've completed 9 credit hours so far");
+    await expect(last()).toContainText('your IDA shows 61');
     expect(aiCalls).toEqual([]);
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-local-answers.png' });
 
@@ -654,7 +660,7 @@ test('the microphone keeps listening through pauses until 5 seconds of silence o
     // nothing is sent until the student presses send; this one is answered from the IDA
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.bot').last()).toContainText(
-        "You've completed 64 credit hours"
+        "You've completed 61 credit hours"
     );
 });
 
@@ -751,6 +757,80 @@ test('one long message gets both a schedule and answers to its graduation questi
     expect(advised[0]!.facts.scheduleBuiltSeparately).toBe(true);
     expect(advised[0]!.facts.timeline?.longSemesters).toBeGreaterThan(0);
     expect(advised[0]!.facts.timeline?.plans.length).toBeGreaterThanOrEqual(3);
+});
+
+test('graduation questions are answered by the calculator, corrections stick, and diagnostics show the math', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const aiCalls: string[] = [];
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/**', route => {
+        aiCalls.push(route.request().url());
+        return route.abort();
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#settings`);
+    await page.getByText('Show “How this was answered”').click();
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Find classes' }).click();
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const send = page.getByRole('button', { name: 'Send message' });
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    const last = () => log.locator('.bubble.bot').last();
+    // the student states their figures; they're acknowledged and used from now on
+    await input.fill(
+        "Use what I'm telling you: 120 total hours required, 22 credits counted toward my degree including in-progress, 13 UT in-residence hours, no upper-division hours yet."
+    );
+    await send.click();
+    await expect(last()).toContainText(
+        'Got it. Using 22 credits toward your 120-credit degree, that leaves 98 after this semester'
+    );
+    // the graduation question is answered by deterministic math, not an AI
+    await input.fill('How many credit hours do I need per semester to graduate in Spring 2029?');
+    await send.click();
+    const terms = await page.evaluate(() => {
+        const now = new Date();
+        const m = now.getMonth() + 1;
+        let season = m <= 5 ? 'Spring' : m <= 8 ? 'Summer' : 'Fall';
+        let year = now.getFullYear();
+        let long = 0;
+        for (let i = 0; i < 40; i++) {
+            if (season === 'Spring') season = 'Summer';
+            else if (season === 'Summer') season = 'Fall';
+            else {
+                season = 'Spring';
+                year += 1;
+            }
+            if (year > 2029 || (year === 2029 && season !== 'Spring')) break;
+            if (season !== 'Summer') long += 1;
+        }
+        return long;
+    });
+    await expect(last()).toContainText('22 of your 120 credits');
+    await expect(last()).toContainText('98 left');
+    await expect(last()).toContainText(`${terms} fall/spring semesters`);
+    await expect(last().locator('table').first()).toContainText(String(Math.round((98 / terms) * 10) / 10));
+    await expect(last()).toContainText('assume you pass this semester');
+    await expect(last()).not.toContainText(/\b50\b/);
+    // a follow-up keeps the target term and the figures
+    await input.fill('What if I take 12 summer credits?');
+    await send.click();
+    await expect(last().locator('table').first()).toContainText(String(Math.round(((98 - 12) / terms) * 10) / 10));
+    // diagnostics show where every number came from
+    await last().getByText('How this was answered').click();
+    await expect(last().locator('.fl-diag')).toContainText('graduation calculator');
+    await expect(last().locator('.fl-diag')).toContainText('Spring 2029');
+    await expect(last().locator('.fl-diag')).toContainText('Projected after this semester');
+    await expect(last().locator('.fl-diag')).toContainText('student');
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/graduation-math.png' });
+    expect(aiCalls).toEqual([]);
+    // Degree progress shows the same figures, with sources and the overlap explained
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Degree progress' }).click();
+    const credits = page.getByRole('region', { name: 'Your credits' });
+    await expect(credits).toContainText('Projected toward the degree after this semester');
+    await expect(credits).toContainText('22');
+    await expect(credits).toContainText('as you told me');
+    await expect(page.getByText(/still counts only once toward your degree total/)).toBeVisible();
+    await page.locator('.credits-panel').screenshot({ path: 'test-results/redesign/credits-panel.png' });
 });
 
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {

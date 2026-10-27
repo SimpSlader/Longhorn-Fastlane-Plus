@@ -7,6 +7,8 @@ import remarkGfm from 'remark-gfm';
 import { gradeStatFrom, lookupGrades } from '../adapters/utrp';
 import { outstandingTags } from '../audit/parseAudit';
 import { academicSummary } from '../core/academic';
+import type { AcademicModel, ConfirmedFacts } from '../core/academicModel';
+import { academicModel } from '../core/academicModel';
 import type { AccRoom, AccSuggestion, ProgramResidency } from '../core/acc';
 import { accCandidateUtCodes, accSuggestions, programResidency, TCCN_SOURCE } from '../core/acc';
 import type { AiCandidate, AiCandidateInput } from '../core/aiCandidates';
@@ -14,19 +16,21 @@ import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
+import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
 import type { GradeStat } from '../core/grades';
 import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
+import { graduationAnswer, graduationPlan, parseTerm, termName } from '../core/graduation';
 import { alsoAsksDegreeQuestions, classifyIntent } from '../core/intent';
 import {
-    completedAnswer,
-    correctionAnswer,
     currentClassesAnswer,
+    earnedAnswer,
     easiestAnswer,
+    factsAcknowledgement,
     gpaAnswer,
     inProgressAnswer,
-    remainingAnswer,
+    projectedAnswer,
+    remainingModelAnswer,
     sectionsAnswer,
-    totalAnswer,
 } from '../core/localAnswers';
 import type { DayCode } from '../core/meetings';
 import { formatMeeting } from '../core/meetings';
@@ -163,6 +167,113 @@ interface ChatTurn {
     kind?: 'schedule' | 'advice' | 'local' | 'chat';
     /** the answer suggested ACC courses (show the source table link) */
     acc?: boolean;
+    /** how this answer was produced (shown when AI diagnostics are on in Settings) */
+    diag?: Diagnostics;
+}
+
+/** A structured record of how an answer was produced: no prompts, keys or model reasoning. */
+interface Diagnostics {
+    intent: string;
+    tools: string[];
+    figures: Array<{ name: string; value: number | string | null; source: string; method: string }>;
+    plan?: {
+        current: string;
+        target: string;
+        longTerms: string[];
+        summers: string[];
+        remaining: number;
+        scenarios: Array<{ summerHours: number; perSemester: number }>;
+    };
+    ai?: {
+        provider: string | null;
+        model: string | null;
+        latencyMs?: number;
+        cached?: boolean;
+        fallback?: boolean;
+        attempts?: Array<{ model: string; outcome: string }>;
+    };
+    issues: string[];
+}
+
+const FIGURES: Array<[keyof AcademicModel, string]> = [
+    ['degreeTotalRequired', 'Degree total required'],
+    ['degreeCreditsCountedByIda', 'Counted by the IDA'],
+    ['degreeCreditsEarned', 'Earned'],
+    ['degreeCreditsInProgress', 'In progress'],
+    ['degreeCreditsProjected', 'Projected after this semester'],
+    ['degreeCreditsRemainingProjected', 'Remaining after this semester'],
+    ['utResidentCounted', 'UT residence counted'],
+    ['utResidentRequired', 'UT residence required'],
+    ['upperDivisionCounted', 'Upper-division counted'],
+    ['upperDivisionRequired', 'Upper-division required'],
+];
+
+function diagnose(
+    intent: string,
+    m: AcademicModel,
+    tools: string[],
+    plan?: {
+        current: { season: string; year: number };
+        target: { season: string; year: number };
+        longTerms: Array<{ season: string; year: number }>;
+        summers: Array<{ season: string; year: number }>;
+        remaining: number;
+        scenarios: Array<{ summerHours: number; perSemester: number }>;
+    },
+    meta?: {
+        provider?: string | null;
+        model?: string | null;
+        latencyMs?: number;
+        cached?: boolean;
+        fallback?: boolean;
+        attempts?: Array<{ model: string; outcome: string }>;
+    }
+): Diagnostics {
+    const name = (t: { season: string; year: number }) => `${t.season} ${t.year}`;
+    return {
+        intent,
+        tools,
+        figures: FIGURES.map(([k, label]): Diagnostics['figures'][number] => {
+            const f = m[k] as { value: number | null; source: string; method: string };
+            return { name: label, value: f.value, source: f.source, method: f.method };
+        }).concat(
+            m.targetGraduation
+                ? [
+                      {
+                          name: 'Target graduation',
+                          value: m.targetGraduation.value,
+                          source: m.targetGraduation.source,
+                          method: 'you told me',
+                      },
+                  ]
+                : []
+        ),
+        ...(plan
+            ? {
+                  plan: {
+                      current: name(plan.current),
+                      target: name(plan.target),
+                      longTerms: plan.longTerms.map(name),
+                      summers: plan.summers.map(name),
+                      remaining: plan.remaining,
+                      scenarios: plan.scenarios,
+                  },
+              }
+            : {}),
+        ...(meta
+            ? {
+                  ai: {
+                      provider: meta.provider ?? null,
+                      model: meta.model ?? null,
+                      latencyMs: meta.latencyMs,
+                      cached: meta.cached,
+                      fallback: meta.fallback,
+                      attempts: meta.attempts,
+                  },
+              }
+            : {}),
+        issues: [...m.issues, ...m.discrepancies],
+    };
 }
 
 export default function AiRecommendations({ subject = '' }: { subject?: string }) {
@@ -239,6 +350,20 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     // the conversation and its schedule survive leaving Find classes (restored once, then saved as it changes)
     const activeSchedule = useActiveSchedule();
     const reportedCompleted = FastlaneFactsStore.useStore(s => s.completedHours);
+    const storedFacts = FastlaneFactsStore.useStore(s => s.facts);
+    // what the student told us, newest per field (an older single "I've completed N" counts as earned credits)
+    const confirmed: ConfirmedFacts = useMemo(
+        () => ({
+            ...(reportedCompleted ? { degreeCreditsEarned: reportedCompleted } : {}),
+            ...(storedFacts ?? {}),
+        }),
+        [reportedCompleted, storedFacts]
+    );
+    // the one academic model (same figures as Degree progress), with the student's confirmed figures applied
+    const model = useMemo(() => academicModel(audit, confirmed), [audit, confirmed]);
+    // read inside async handlers so a correction made earlier in the same send is already applied
+    const modelRef = useRef(model);
+    modelRef.current = model;
     const [restored, setRestored] = useState(false);
     useEffect(() => {
         let live = true;
@@ -531,8 +656,19 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Runs only on submit: filters, ranks and grades candidates without blocking the page, then asks AI. */
-    const say = (request: string, summary: string, context = request, kind: ChatTurn['kind'] = 'local') => {
-        setHistory(previous => [...previous, { id: Date.now(), request, context, summary, kind }].slice(-20));
+    const say = (
+        request: string,
+        summary: string,
+        context = request,
+        kind: ChatTurn['kind'] = 'local',
+        diag?: Diagnostics
+    ) => {
+        setHistory(previous =>
+            [
+                ...previous,
+                { id: Date.now() + Math.random(), request, context, summary, kind, ...(diag ? { diag } : {}) },
+            ].slice(-20)
+        );
         setRequest('');
         setError('');
     };
@@ -593,14 +729,22 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         try {
             const goals = [...memory, ...history.map(h => h.request), message];
             const facts = gradFacts(audit, { mccombs: wantsMcCombs(goals) });
-            const asked = requestedTimeline(message);
+            const m = modelRef.current;
+            const target = parseTerm(message) ?? (m.targetGraduation ? parseTerm(m.targetGraduation.value) : null);
+            const planned = target ? graduationPlan(m, target) : null;
             const timeline =
-                asked && facts.hoursRemaining != null
+                planned && !('missing' in planned)
                     ? {
-                          ...asked,
-                          plans: timelinePlans(facts.hoursRemaining, asked.longSemesters, facts.accRoomHours ?? 0),
+                          longSemesters: planned.longTerms.length,
+                          endTerm: termName(planned.target),
+                          plans: planned.scenarios.map(x => ({
+                              summerHours: x.summerHours,
+                              accHours: 0,
+                              perSemester: x.perSemester,
+                          })),
                       }
                     : null;
+            const askedAboutAcc = /\bacc\b|community college/i.test(message);
             setProgress('Checking UT’s official ACC transfer table…');
             const acc = await accForAudit(proposal?.sections.map(s => normalizeCourseCode(s.courseCode)) ?? []);
             setProgress('Thinking about your plan…');
@@ -617,18 +761,24 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     ]),
                     facts: {
                         program: facts.program,
-                        hoursRequired: facts.hoursRequired,
-                        hoursApplied: facts.hoursApplied,
-                        hoursCompleted: facts.hoursCompleted,
-                        hoursRemaining: facts.hoursRemaining,
-                        inProgressHours: facts.inProgressHours,
+                        // the shared academic model: same figures as Degree progress, the student's corrections applied
+                        hoursRequired: m.degreeTotalRequired.value,
+                        hoursApplied: m.degreeCreditsProjected.value,
+                        hoursCompleted: m.degreeCreditsEarned.value,
+                        hoursRemaining: m.degreeCreditsRemainingProjected.value,
+                        inProgressHours: m.degreeCreditsInProgress.value,
+                        upperDivision:
+                            m.upperDivisionRequired.value != null
+                                ? { required: m.upperDivisionRequired.value, counted: m.upperDivisionCounted.value }
+                                : null,
+                        confirmedByStudent: Object.keys(confirmed),
                         residenceRemaining: facts.residenceRemaining,
                         accRoomHours: facts.accRoomHours,
                         scenarios: facts.scenarios,
                         residency: programResidency(audit)?.note ?? '',
                         timeline,
                         scheduleBuiltSeparately,
-                        accOptions: (acc?.suggestions ?? []).map(x => ({
+                        accOptions: (askedAboutAcc ? (acc?.suggestions ?? []) : []).map(x => ({
                             acc: x.tccn,
                             ut: x.ut,
                             requirement: x.requirement,
@@ -665,8 +815,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             // a follow-up to a schedule answer continues the same turn (no repeated question bubble)
-            if (scheduleBuiltSeparately) say('', payload.answer, '', 'advice');
-            else say(message, payload.answer, message, 'advice');
+            const meta = (payload as { meta?: Parameters<typeof diagnose>[4] }).meta;
+            const d = diagnose(
+                'degree-planning',
+                m,
+                ['academic model', 'graduation calculator', 'advisor AI'],
+                planned && !('missing' in planned) ? planned : undefined,
+                meta
+            );
+            if (scheduleBuiltSeparately) say('', payload.answer, '', 'advice', d);
+            else say(message, payload.answer, message, 'advice', d);
             setLastKind('advice');
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
@@ -694,30 +852,52 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     /** Questions about the student's own records are answered here from the IDA and course data: no AI call,
      *  nothing sent, no schedule built. Returns true when the message was answered. */
     const answerLocally = async (message: string, intent: ReturnType<typeof classifyIntent>): Promise<boolean> => {
-        const summary = academicSummary(audit, reportedCompleted ? { completedHours: reportedCompleted } : {});
-        const simple: Partial<Record<typeof intent.kind, (s: typeof summary) => string>> = {
-            'completed-hours': completedAnswer,
-            'in-progress-hours': inProgressAnswer,
-            'total-hours': totalAnswer,
-            'remaining-hours': remainingAnswer,
-            gpa: gpaAnswer,
-            'current-classes': currentClassesAnswer,
+        const summary = academicSummary(audit);
+        const m = modelRef.current;
+        const simple: Partial<Record<typeof intent.kind, () => string>> = {
+            'completed-hours': () => earnedAnswer(m),
+            'in-progress-hours': () => inProgressAnswer(summary),
+            'total-hours': () => projectedAnswer(m),
+            'remaining-hours': () => remainingModelAnswer(m),
+            gpa: () => gpaAnswer(summary),
+            'current-classes': () => currentClassesAnswer(summary),
         };
         const answer = simple[intent.kind];
         if (answer) {
-            say(message, answer(summary), '');
+            say(message, answer(), '', 'local', diagnose(intent.kind, m, ['academic model']));
             localEvent(intent.kind);
             return true;
         }
-        if (intent.kind === 'correction' && intent.completedHours != null) {
-            const value = { value: intent.completedHours, at: Date.now() };
-            await FastlaneFactsStore.set('completedHours', value);
+        if (intent.kind === 'graduation-plan') {
+            const target = parseTerm(message) ?? (m.targetGraduation ? parseTerm(m.targetGraduation.value) : null);
+            if (!target) {
+                say(
+                    message,
+                    'Which term do you want to graduate in (for example Spring 2029)? I’ll work out the hours per semester from there.',
+                    '',
+                    'local'
+                );
+                return true;
+            }
+            const plan = graduationPlan(
+                m,
+                target,
+                intent.summerHours != null ? { summerHours: [0, intent.summerHours] } : {}
+            );
+            const text = 'missing' in plan ? plan.missing : graduationAnswer(plan, m);
             say(
                 message,
-                correctionAnswer(intent.completedHours, academicSummary(audit, { completedHours: value })),
-                ''
+                text,
+                '',
+                'local',
+                diagnose(
+                    'graduation-plan',
+                    m,
+                    ['academic model', 'academic calendar', 'graduation calculator'],
+                    'missing' in plan ? undefined : plan
+                )
             );
-            localEvent('correction');
+            localEvent('graduation-plan');
             return true;
         }
         if (intent.kind === 'course-sections') {
@@ -889,7 +1069,21 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            say(message, payload.answer, '', 'chat');
+            say(
+                message,
+                payload.answer,
+                '',
+                'chat',
+                diagnose(
+                    'chat',
+                    modelRef.current,
+                    courses.length
+                        ? ['course data', 'grade distributions', 'Rate My Professors', 'chat AI']
+                        : ['chat AI'],
+                    undefined,
+                    (payload as { meta?: Parameters<typeof diagnose>[4] }).meta
+                )
+            );
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
             else setError(failure instanceof Error ? failure.message : 'Fastlane AI is unavailable right now.');
@@ -945,9 +1139,35 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         setImproveNote('');
         if (await handleMemory((override ?? request).trim())) return;
         const asked = (override ?? request).trim();
+        // figures the student states ("22 counted toward my degree", "graduate in Spring 2029") are recorded
+        // first and used from now on, ahead of older records
+        const stated = asked ? statedFacts(asked) : { facts: {}, authoritative: false };
+        if (hasFacts(stated.facts)) {
+            const merged = mergeFacts(confirmed, stated.facts);
+            await FastlaneFactsStore.set('facts', merged);
+            modelRef.current = academicModel(audit, merged);
+        }
         const kind = asked
             ? classifyIntent(asked, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal })
             : null;
+        const isQuestion = /\?|^(?:how|what|which|when|why|can|could|should|do|does|is|are|will|would)\b/i.test(asked);
+        const buildsSomething =
+            /\b(?:build|make|create|find|give me)\b[^.?!]*\b(?:schedule|classes|courses|plan)\b/i.test(asked);
+        if (hasFacts(stated.facts) && !isQuestion && !buildsSomething) {
+            const labels = Object.entries(stated.facts).map(
+                ([k, v]) =>
+                    `${k.replace(/([A-Z])/g, ' $1').toLowerCase()} ${typeof v === 'object' && v ? (v as { value: unknown }).value : ''}`
+            );
+            say(
+                asked,
+                factsAcknowledgement(modelRef.current, labels),
+                '',
+                'local',
+                diagnose('correction', modelRef.current, ['corrections', 'academic model'])
+            );
+            localEvent('correction');
+            return;
+        }
         if (kind && !focus && (await answerLocally(asked, kind))) return;
         if (!consent) {
             setError('Check “I agree to send…” below first; Fastlane only contacts its AI after you agree.');
@@ -1357,6 +1577,13 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         summary,
                         kind: 'schedule' as const,
                         acc: !!acc?.suggestions.length,
+                        diag: diagnose(
+                            'schedule',
+                            modelRef.current,
+                            ['schedule solver', 'course data', 'recommend AI'],
+                            undefined,
+                            (payload as { meta?: Parameters<typeof diagnose>[4] }).meta
+                        ),
                     },
                 ].slice(-20)
             );
@@ -1371,7 +1598,32 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setProgress('');
         }
         // the same message also asked about graduating, summers, ACC strategy or tips: answer that part too
-        if (!focus && !controller.signal.aborted && alsoAsksDegreeQuestions(message)) await advise(message, code, true);
+        if (!focus && !controller.signal.aborted && alsoAsksDegreeQuestions(message)) {
+            const m = modelRef.current;
+            const target = parseTerm(message) ?? (m.targetGraduation ? parseTerm(m.targetGraduation.value) : null);
+            if (target && /\b(?:per|a|each) semester\b|\bsummers?\b|\bgraduat/i.test(message)) {
+                const plan = graduationPlan(m, target);
+                if (!('missing' in plan))
+                    say(
+                        '',
+                        graduationAnswer(plan, m),
+                        '',
+                        'local',
+                        diagnose(
+                            'graduation-plan',
+                            m,
+                            ['academic model', 'academic calendar', 'graduation calculator'],
+                            plan
+                        )
+                    );
+            }
+            if (
+                /\b(?:tips?|tricks?|advice|recommendations?|acc|community college|mccombs|internal(?:ly)? transfer)\b/i.test(
+                    message
+                )
+            )
+                await advise(message, code, true);
+        }
     };
 
     /** Local re-plan from sections already compared (no AI call): after editing the rules, or to fill up. */
@@ -1457,6 +1709,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     // memory commands and questions about the student's own records never contact the AI, so they work before setup
     const localOnly = (text: string) => {
         if (memoryCommand(text)) return true;
+        // stating figures ("22 counted toward my degree") is recorded locally
+        if (
+            hasFacts(statedFacts(text).facts) &&
+            !/\b(?:build|make|create|find|give me)\b[^.?!]*\b(?:schedule|classes|courses|plan)\b/i.test(text)
+        )
+            return true;
         const k = classifyIntent(text, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal }).kind;
         return [
             'completed-hours',
@@ -1468,6 +1726,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             'correction',
             'course-sections',
             'easiest-class',
+            'graduation-plan',
         ].includes(k);
     };
     const canSend =
@@ -1618,6 +1877,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                                     UT’s official ACC transfer table ↗
                                 </a>
                             )}
+                            {settings.aiDiagnostics && turn.diag && <DiagnosticsView d={turn.diag} />}
                         </div>
                     </div>
                 ))}
@@ -1865,5 +2125,54 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 )}
             </p>
         </section>
+    );
+}
+
+/** How an answer was produced: intent, tools, each figure with its source, the calendar math, the model. */
+function DiagnosticsView({ d }: { d: Diagnostics }) {
+    return (
+        <details className='fl-diag'>
+            <summary>How this was answered</summary>
+            <p>
+                <b>Intent:</b> {d.intent} · <b>Tools:</b> {d.tools.join(', ')}
+            </p>
+            {d.ai && (
+                <p>
+                    <b>AI:</b> {d.ai.model ?? 'none'}
+                    {d.ai.latencyMs != null ? ` · ${d.ai.latencyMs} ms` : ''}
+                    {d.ai.cached ? ' · cached' : ''}
+                    {d.ai.fallback
+                        ? ` · fallback (${(d.ai.attempts ?? []).map(a => `${a.model}: ${a.outcome}`).join('; ')})`
+                        : ''}
+                </p>
+            )}
+            {d.plan && (
+                <p>
+                    <b>Calendar:</b> now {d.plan.current}, target {d.plan.target}; {d.plan.longTerms.length} fall/spring
+                    terms ({d.plan.longTerms.join(', ')})
+                    {d.plan.summers.length ? `; summers ${d.plan.summers.join(', ')}` : ''}. <b>Remaining:</b>{' '}
+                    {d.plan.remaining}. <b>Averages:</b>{' '}
+                    {d.plan.scenarios
+                        .map(
+                            x =>
+                                `(${d.plan!.remaining} − ${x.summerHours} summer) / ${d.plan!.longTerms.length} = ${x.perSemester}`
+                        )
+                        .join('; ')}
+                </p>
+            )}
+            <table>
+                <tbody>
+                    {d.figures.map(f => (
+                        <tr key={f.name}>
+                            <td>{f.name}</td>
+                            <td>{f.value ?? '—'}</td>
+                            <td>{f.source}</td>
+                            <td>{f.method}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            {d.issues.length > 0 && <p className='warn'>{d.issues.join(' ')}</p>}
+        </details>
     );
 }

@@ -4,7 +4,9 @@ import { confirmRequirement, correctRequirement, needsReview } from '../audit/pa
 import type { DegreeTotals, ProgressSummary } from '../audit/progress';
 import { CARD_GROUPS, degreeTotals, hasMinor, summarizeRequirements } from '../audit/progress';
 import type { AuditRequirement, ParsedAudit, RequirementStatus } from '../audit/types';
-import { FastlaneAuditStore } from '../storage/stores';
+import type { AcademicModel, Figure } from '../core/academicModel';
+import { academicModel, sourceLabel } from '../core/academicModel';
+import { FastlaneAuditStore, FastlaneFactsStore } from '../storage/stores';
 import AiAuditReview from './AiAuditReview';
 import { PageHead } from './common';
 
@@ -103,6 +105,8 @@ export default function AuditTab({
     const review = audit ? needsReview(audit) : [];
     const reqs = audit?.requirements ?? [];
     const totals = audit ? degreeTotals(audit) : null;
+    const facts = FastlaneFactsStore.useStore(st => st.facts);
+    const model = audit ? academicModel(audit, facts ?? {}) : null;
     const dropzone = (compact: boolean) => (
         <label
             className={`dropzone${over ? ' over' : ''}${compact ? ' compact' : ''}`}
@@ -185,6 +189,7 @@ export default function AuditTab({
                             </p>
                         )}
                     </section>
+                    {model && <CreditsPanel model={model} />}
                     {(review.length > 0 || audit.transfer.pending.length > 0) && (
                         <p className='small muted quiet-note'>
                             {review.length > 0 && `${review.length} imported items need a quick check (marked below). `}
@@ -192,6 +197,11 @@ export default function AuditTab({
                                 `Pending transfer/exam credit is not counted yet: ${audit.transfer.pending.map(c => c.code).join(', ')}.`}
                         </p>
                     )}
+                    <p className='small muted quiet-note'>
+                        These cards show which requirements your courses satisfy. One course can satisfy a core
+                        requirement and a major requirement and still counts only once toward your degree total, so the
+                        cards don’t add up to the degree hours above.
+                    </p>
                     <div className='progress-cards'>
                         {CARD_GROUPS.filter(g => g.key !== 'minor' || hasMinor(reqs)).map(g => {
                             const group = reqs.filter(r => g.categories.includes(r.category));
@@ -388,5 +398,53 @@ function TotalsCard({
                 />
             </div>
         </details>
+    );
+}
+
+/** Earned, in-progress and projected credits kept apart, each with where it comes from. */
+function CreditsPanel({ model }: { model: AcademicModel }) {
+    const row = (label: string, f: Figure, suffix = '') => (
+        <tr>
+            <th scope='row'>{label}</th>
+            <td>{f.value != null ? `${f.value}${suffix}` : 'Unable to verify'}</td>
+            <td className='muted'>{sourceLabel(f)}</td>
+        </tr>
+    );
+    const pair = (label: string, done: Figure, total: Figure) => (
+        <tr>
+            <th scope='row'>{label}</th>
+            <td>
+                {done.value != null && total.value != null ? `${done.value} of ${total.value}` : 'Unable to verify'}
+            </td>
+            <td className='muted'>{sourceLabel(done)}</td>
+        </tr>
+    );
+    const inc = model.auditIncludes;
+    return (
+        <section className='glass-card credits-panel' aria-label='Your credits'>
+            <h2>Your credits</h2>
+            <table>
+                <tbody>
+                    {row('Earned (graded or credit by exam)', model.degreeCreditsEarned)}
+                    {row('In progress this semester', model.degreeCreditsInProgress)}
+                    {row('Projected toward the degree after this semester', model.degreeCreditsProjected)}
+                    {row('Remaining after this semester', model.degreeCreditsRemainingProjected)}
+                    {pair('In residence at UT', model.utResidentCounted, model.utResidentRequired)}
+                    {pair('Upper-division', model.upperDivisionCounted, model.upperDivisionRequired)}
+                </tbody>
+            </table>
+            <p className='small muted'>
+                {inc
+                    ? `Your IDA was run with ${[inc.inProgress && 'in-progress', inc.future && 'future', inc.planned && 'planned'].filter(Boolean).join(', ') || 'no extra'} courses included, so its “counted” hours include them; Fastlane separates them above.`
+                    : 'The imported file doesn’t say which courses the IDA included.'}
+                {model.catalogYear ? ` Catalog ${model.catalogYear}.` : ''}
+                {model.auditTimestamp ? ` Imported ${new Date(model.auditTimestamp).toLocaleString()}.` : ''}
+            </p>
+            {[...model.discrepancies, ...model.issues].map(t => (
+                <p key={t} className='small notice warn'>
+                    {t}
+                </p>
+            ))}
+        </section>
     );
 }

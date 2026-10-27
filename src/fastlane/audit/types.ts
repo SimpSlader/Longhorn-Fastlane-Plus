@@ -57,6 +57,10 @@ export interface ParsedAudit {
     transfer: { accepted: AuditCourse[]; pending: AuditCourse[] };
     /** total degree hours if a rule states them */
     creditHours: { required?: number; applied?: number; remaining?: number; confidence: Confidence };
+    /** which course kinds the IDA was run with ("Included Courses"); its counted hours include them */
+    included?: { inProgress: boolean; future: boolean; planned: boolean };
+    /** catalog year the audit was run under, when the page states it */
+    catalogYear?: string;
     /** totals the IDA prints under its course list ("Total Hours Taken" includes planned courses) */
     hourTotals?: { taken?: number; excluded?: number };
     /** prerequisite / restriction sentences found in the audit */

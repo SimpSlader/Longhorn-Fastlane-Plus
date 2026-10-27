@@ -5,6 +5,7 @@
  * when the data isn't there instead of guessing.
  */
 import type { AcademicSummary } from './academic';
+import type { AcademicModel } from './academicModel';
 import { formatMeeting } from './meetings';
 import type { SectionRecord } from './sections';
 
@@ -147,4 +148,72 @@ export function correctionAnswer(value: number, s: AcademicSummary): string {
 
 function titleCase(name: string): string {
     return name.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+
+// ---------- answers from the shared academic model (the same figures Degree progress shows) ----------
+
+const NO_FIGURES =
+    "I don't have your degree audit or figures from you yet, so I can't tell you that without guessing. Import your IDA on **Degree progress**, or tell me (for example “I've earned 9 credits and I'm taking 13”).";
+const sourceLine = (m: AcademicModel) =>
+    m.auditTimestamp
+        ? `_From your IDA imported ${new Date(m.auditTimestamp).toLocaleDateString()}${m.discrepancies.length ? ', with the figures you gave me' : ''}._`
+        : '_Using the figures you gave me._';
+
+export function earnedAnswer(m: AcademicModel): string {
+    const earned = m.degreeCreditsEarned.value;
+    if (earned == null) return NO_FIGURES;
+    const inProgress = m.degreeCreditsInProgress.value ?? 0;
+    const projected = m.degreeCreditsProjected.value;
+    const parts = [`You've completed **${hrs(earned)}** so far.`];
+    if (inProgress > 0)
+        parts.push(
+            `You're taking another **${inProgress}** right now, so if you pass them all you'll have **${hrs(projected ?? earned + inProgress)}**.`
+        );
+    const exam = m.examCreditsAccepted.value ?? 0;
+    const transfer = m.transferCreditsAccepted.value ?? 0;
+    if (exam > 0 || transfer > 0)
+        parts.push(
+            `That includes ${[exam ? `${exam} from credit by exam` : '', transfer ? `${transfer} of transfer credit` : ''].filter(Boolean).join(' and ')}.`
+        );
+    return [parts.join(' '), ...m.discrepancies, sourceLine(m)].join('\n\n');
+}
+
+export function projectedAnswer(m: AcademicModel): string {
+    const p = m.degreeCreditsProjected.value;
+    if (p == null) return NO_FIGURES;
+    const e = m.degreeCreditsEarned.value;
+    const i = m.degreeCreditsInProgress.value;
+    return [
+        `${e != null && i != null ? `**${hrs(e)}** completed and **${i}** in progress, so ` : ''}**${hrs(p)}** once this semester's classes are done.`,
+        ...m.discrepancies,
+        sourceLine(m),
+    ].join('\n\n');
+}
+
+export function remainingModelAnswer(m: AcademicModel): string {
+    const total = m.degreeTotalRequired.value;
+    const left = m.degreeCreditsRemainingProjected.value;
+    if (total == null || left == null)
+        return `I don't have your degree's total-hours figure, so I won't guess how many are left.${m.degreeCreditsEarned.value != null ? ` You've completed **${hrs(m.degreeCreditsEarned.value)}**${m.degreeCreditsInProgress.value ? ` with **${m.degreeCreditsInProgress.value}** in progress` : ''}.` : ''} Tell me your degree total (for example “120 hours”) or import your IDA.`;
+    const lines = [
+        `Your degree needs **${total}** hours. With **${m.degreeCreditsProjected.value}** counted after this semester, **${left}** remain${m.degreeCreditsRemainingEarned.value != null ? ` (${m.degreeCreditsRemainingEarned.value} if you count only credits already earned)` : ''}.`,
+    ];
+    if (m.utResidentRequired.value != null && m.utResidentCounted.value != null)
+        lines.push(`In residence at UT: ${m.utResidentCounted.value} of ${m.utResidentRequired.value} required hours.`);
+    if (m.upperDivisionRequired.value != null && m.upperDivisionCounted.value != null)
+        lines.push(
+            `Upper-division: ${m.upperDivisionCounted.value} of ${m.upperDivisionRequired.value} required hours.`
+        );
+    return [...lines, ...m.discrepancies, sourceLine(m)].join('\n\n');
+}
+
+export function factsAcknowledgement(m: AcademicModel, stated: string[]): string {
+    const total = m.degreeTotalRequired.value;
+    const projected = m.degreeCreditsProjected.value;
+    const left = m.degreeCreditsRemainingProjected.value;
+    const core =
+        total != null && projected != null && left != null
+            ? `Got it. Using ${projected} credits toward your ${total}-credit degree, that leaves **${left}** after this semester.`
+            : `Got it. I've noted ${stated.join(', ')}.`;
+    return `${core} I'll use what you told me for planning${m.discrepancies.length ? ' and keep your IDA’s figures separately' : ''}.`;
 }

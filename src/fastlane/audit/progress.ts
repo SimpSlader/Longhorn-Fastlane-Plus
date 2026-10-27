@@ -85,6 +85,12 @@ export interface DegreeTotals {
     official: number | null;
     totalHours: { done: number; total: number; remaining: number } | null;
     residence: { done: number; total: number } | null;
+    /** "At least 39 hours of upper-division coursework is required" */
+    upperDivision: { done: number; total: number } | null;
+    /** upper-division hours that must be taken in residence */
+    upperDivisionResidence: { done: number; total: number } | null;
+    /** the rule texts the figures came from, for explanations */
+    rules: { degree?: string; residence?: string; upperDivision?: string; upperDivisionResidence?: string };
     gpa: Array<{ label: string; value: number; minimum: number }>;
 }
 
@@ -110,7 +116,12 @@ export function degreeTotals(audit: ParsedAudit): DegreeTotals {
             ? { total: required, done: applied, remaining: remaining ?? Math.max(0, required - applied) }
             : null);
     const res = reqs
-        .filter(r => /in residence/i.test(r.text) && hours(r, 'required'))
+        .filter(
+            r =>
+                /in residence/i.test(r.text) &&
+                !/upper[- ]division|advanced|major/i.test(r.text) &&
+                hours(r, 'required')
+        )
         .sort((a, b) => (hours(b, 'required') ?? 0) - (hours(a, 'required') ?? 0))[0];
     // the parser keeps GPA values in the hours slot; they are GPAs (e.g. 3.78 against a 2.00 minimum)
     const gpa = reqs
@@ -124,8 +135,26 @@ export function degreeTotals(audit: ParsedAudit): DegreeTotals {
             value: r.applied?.value ?? 0,
             minimum: r.required?.value ?? 0,
         }));
+    const pick = (re: RegExp, not?: RegExp) =>
+        reqs
+            .filter(r => re.test(r.text) && !(not?.test(r.text) ?? false) && hours(r, 'required'))
+            .sort((a, b) => (hours(b, 'required') ?? 0) - (hours(a, 'required') ?? 0))[0];
+    const ud = pick(/upper[- ]division (?:coursework|hours)[^.]*\brequired\b/i, /\bin residence\b|\bin [A-Z ]{3,}\b/);
+    const udRes = pick(/upper[- ]division[^.]*\b(?:in residence|at the university)\b/i);
+    const counted = (r: AuditRequirement | undefined) =>
+        r
+            ? { done: Math.min(hours(r, 'required') ?? 0, hours(r, 'applied') ?? 0), total: hours(r, 'required') ?? 0 }
+            : null;
     return {
         official: audit.officialProgress?.percent ?? null,
+        upperDivision: counted(ud),
+        upperDivisionResidence: counted(udRes),
+        rules: {
+            degree: degree?.text,
+            residence: res?.text,
+            upperDivision: ud?.text,
+            upperDivisionResidence: udRes?.text,
+        },
         totalHours,
         residence: res
             ? {

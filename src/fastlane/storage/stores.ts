@@ -6,8 +6,8 @@
  *   which never leaves this browser profile.
  */
 import { createLocalStore, createSyncStore } from '@chrome-extension-toolkit';
-
 import type { ParsedAudit } from '../audit/types';
+import type { ConfirmedFacts } from '../core/academicModel';
 import type { AutofillSettings } from '../core/autofill';
 import { DEFAULT_AUTOFILL } from '../core/autofill';
 import type { GradeThreshold } from '../core/grades';
@@ -45,6 +45,8 @@ export interface FastlaneSettings {
     aiManualModel: string;
     /** providers the student turned off */
     aiDisabledProviders: string[];
+    /** show how each chat answer was produced (intent, figures and their sources, tools, model) */
+    aiDiagnostics: boolean;
 }
 
 export const DEFAULT_SETTINGS: FastlaneSettings = {
@@ -66,6 +68,7 @@ export const DEFAULT_SETTINGS: FastlaneSettings = {
     aiRouting: 'auto',
     aiManualModel: '',
     aiDisabledProviders: [],
+    aiDiagnostics: false,
 };
 
 export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('FastlaneSettings', DEFAULT_SETTINGS);
@@ -83,10 +86,12 @@ export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { acce
 export const FastlaneChatStore = createLocalStore<{ session: unknown }>('FastlaneChat', { session: null });
 
 /** Facts the student reported themselves ("I've completed 9 credits"), kept beside, never over, the IDA. */
-export const FastlaneFactsStore = createLocalStore<{ completedHours: { value: number; at: number } | null }>(
-    'FastlaneFacts',
-    { completedHours: null }
-);
+export const FastlaneFactsStore = createLocalStore<{
+    /** older single correction ("I've completed 9"); read as facts.degreeCreditsEarned */
+    completedHours: { value: number; at: number } | null;
+    /** every figure the student confirmed (degree total, counted, remaining, residence, target term…) */
+    facts: ConfirmedFacts;
+}>('FastlaneFacts', { completedHours: null, facts: {} });
 
 /** The last AI requests' routing results (provider, model, cache, fallback) for the AI dashboard. No content. */
 export interface AiUsageEvent {
