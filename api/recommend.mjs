@@ -122,7 +122,7 @@ function sanitize(body) {
               ].slice(0, 7)
             : [],
     };
-    const planningRequest = safeString(body.planningRequest, 900);
+    const planningRequest = safeString(body.planningRequest, 4500);
     const chatHistory = Array.isArray(body.chatHistory)
         ? body.chatHistory.slice(-4).map(entry => ({
               request: safeString(entry?.request, 500),

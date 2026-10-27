@@ -21,12 +21,11 @@ export const maxDuration = 30;
 export const SYSTEM_PROMPT = `Rewrite a UT Austin student's draft message to Fastlane, a course-planning assistant, so Fastlane understands it on the first try.
 
 Rules:
-- Keep EVERY request, question, preference, number and detail the student stated, including side questions (graduation timing, summer classes, ACC, tips). Add nothing they didn't say: no new credit numbers, days, times, subjects, courses, professors or goals. Never drop a part, and keep nuance ("at least 12–13, ideally about 15" stays that way, not "12 to 15").
-- When the draft asks for several things, write each as its own numbered item (1. 2. 3.) so none is missed; a single request stays one short paragraph.
-- Fix spelling, spell out abbreviations (fri → Friday, MWF → Monday, Wednesday and Friday, TTh → Tuesday and Thursday, async → fully online (asynchronous), creds/hrs → credit hours, gov → government), and resolve obvious shorthand.
-- If it is a schedule request, put details in this order when present: what they want, credit hours, days and times, online vs in person, difficulty/grades, subjects or courses to include or avoid, anything else (ACC plans, back-to-back classes).
-- If it is a question, keep it a question. If it changes an existing plan ("remove history"), keep it a short instruction.
-- First person, plain words, no preamble or quotes. Remove filler ("um", "like", repeated words), not content.
+- Keep the student's own format, order and voice. If they wrote paragraphs, return paragraphs in the same order; if they wrote a list, keep the list. Never turn prose into a list, never regroup, never summarize.
+- Keep EVERY request, question, preference, number, example and detail, including side questions (graduation timing, summer classes, credit hours per semester, ACC, tips). Keep nuance ("a minimum of 12 to 13, preferably around 15" stays that way). Never drop a part, however long the message.
+- Add nothing they didn't say: no new credit numbers, days, times, subjects, courses, professors or goals.
+- Only clean up: fix spelling, grammar and punctuation; remove filler ("um", "like", "uh", repeated words); split run-on sentences; spell out abbreviations (fri → Friday, MWF → Monday, Wednesday and Friday, TTh → Tuesday and Thursday, async → fully online (asynchronous), creds/hrs → credit hours, gov → government) and fix obvious speech-to-text slips (for example "ACCU" → "ACC").
+- First person, no preamble or quotes.
 Return JSON: improved (the rewritten message) and changes (up to 4 very short notes on what you clarified).`;
 
 const schema = {
@@ -119,9 +118,9 @@ export function addedSomething(draft, rewritten) {
 
 export default async function handler(req, res) {
     if (!cors(req, res)) return;
-    const body = readAuthorized(req, res, 6000);
+    const body = readAuthorized(req, res, 12000);
     if (!body || tooMany(req, res, 12)) return;
-    const draft = safeString(body.draft, 900);
+    const draft = safeString(body.draft, 4000);
     if (!draft) return send(res, 400, { error: 'Type a message first.' });
     const plan = Array.isArray(body.plan)
         ? body.plan
@@ -135,7 +134,7 @@ export default async function handler(req, res) {
         user: JSON.stringify({ draft, currentPlanCourses: plan }),
         schema,
         schemaName: 'fastlane_improved_message',
-        maxTokens: 1100,
+        maxTokens: 1800,
         temperature: 0.2,
         containsStudentData: false,
         routing: routingFrom(body),
@@ -144,7 +143,7 @@ export default async function handler(req, res) {
     });
     if (!result.ok) return sendUnavailable(res, result);
     return send(res, 200, {
-        improved: safeString(result.json.improved, 1200),
+        improved: safeString(result.json.improved, 4000),
         changes: (Array.isArray(result.json.changes) ? result.json.changes : [])
             .slice(0, 4)
             .map(c => safeString(c, 80)),
