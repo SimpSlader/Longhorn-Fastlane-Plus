@@ -59,6 +59,20 @@ const CASES: Array<[string, Intent['kind'], { hasPlan?: boolean }?]> = [
         'schedule',
     ],
     ['which ECO 304K professor gives the most As?', 'chat'],
+    // the reported failures: a question that doesn't start with a question word, and a follow-up
+    [
+        'Based off my current track of credits and the fact I want to graduate in 2029 how many credits would I need per semester And then if I did one summer and or two summers how many credits would I need including those two Um additionally how many credits can I take Max outside of UT Um while still meeting core requirements.',
+        'graduation-plan',
+    ],
+    [
+        'Well I just asked you how many credits would I need for the Summers and semesters and all that',
+        'graduation-plan',
+        { hasPlan: true },
+    ],
+    ['how many credits would I need for the summers and semesters', 'graduation-plan'],
+    ['what is a signature course?', 'chat', { hasPlan: true }],
+    ['is ECO 304K hard?', 'chat', { hasPlan: true }],
+    ['can I take more than 17 hours?', 'chat'],
     // conversation
     ['hi! what can you do?', 'chat'],
     ['what does UGS stand for', 'chat', { hasPlan: true }],

@@ -162,6 +162,10 @@ describe('corrections (Test 5, Test 12)', () => {
             degreeCreditsInProgress: { value: 13 },
         });
         expect(statedFacts('how many hours do I need per semester?').facts).toEqual({});
+        // a question that mentions the target term records it, and is still answered as a question
+        const q =
+            'Based off my current track of credits and the fact I want to graduate in 2029 how many credits would I need per semester';
+        expect(statedFacts(q).facts.targetGraduation?.value).toBe('Spring 2029');
     });
 
     it('Test 5: a stale record saying 50 remaining is overridden by the student’s 98, and the difference is kept', () => {

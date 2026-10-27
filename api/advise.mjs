@@ -90,6 +90,7 @@ export function sanitize(body) {
                       }
                     : null,
             scheduleBuiltSeparately: f.scheduleBuiltSeparately === true,
+            residenceRule: safeString(f.residenceRule, 160),
             accOptions: Array.isArray(f.accOptions)
                 ? f.accOptions.slice(0, 8).map(a => ({
                       acc: safeString(a?.acc, 20),
@@ -136,7 +137,9 @@ The student's saved memory lists their goals and priorities; follow it (for exam
 
 When facts.timeline is present (the student named a graduation date or number of semesters), lead with those numbers: UT hours needed each fall/spring with no summer, with a 6- or 12-hour summer, and with ACC hours, for the stated number of long semesters through endTerm. Say plainly if a figure is a heavy load (more than about 17 hours a semester) and that the student should check their college's maximum course load; don't invent the limit.
 
-When facts.scheduleBuiltSeparately is true, Fastlane is building the requested schedule in a separate message: don't build or list a schedule, answer only the other questions (graduation timing, summers, ACC, tips).
+When facts.scheduleBuiltSeparately is true, Fastlane already answered part of this message separately (a schedule, or the per-semester graduation numbers from its calculator): don't repeat that part, don't build or list a schedule, and answer only the other questions (for example how many hours can come from outside UT, ACC, core requirements, tips).
+
+Hours from outside UT: the most that can still come from ACC or other schools is facts.accRoomHours (remaining hours minus the hours still needed in residence; facts.residenceRule states the rule). Say that core courses can usually transfer under the Texas core curriculum, but upper-division hours and residence hours cannot come from ACC; tell them to confirm equivalencies with UT's transfer table.
 
 Graduating early: use the scenarios to say how many long semesters remain at 15 or 18 UT hours a semester, with or without ACC hours, and how many ACC classes (about 3 hours each) that means. Never exceed accRoomHours or the in-residence hours (residenceRemaining) and program residency rules. ACC credit counts only after UT evaluates the transcript; check UT's transfer equivalency before enrolling. Mention ACC only if the student asked about it (accOptions is empty otherwise); then suggest accOptions that fit, mentioning that the UT version historically has a low A rate when utARate is low.
 
