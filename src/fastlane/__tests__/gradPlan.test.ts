@@ -81,3 +81,28 @@ describe('memory', () => {
         expect(forgetMemory(items, 'McCombs')).toEqual(['i want to graduate EARLY!']);
     });
 });
+
+describe('graduation timelines', () => {
+    const october2026 = new Date(2026, 9, 26);
+    it('"graduate in 2029" from fall 2026 means five more long semesters, through Spring 2029', async () => {
+        const { requestedTimeline, timelinePlans } = await import('../core/gradPlan');
+        expect(requestedTimeline('I want to graduate a year early in 2029', october2026)).toEqual({
+            longSemesters: 5,
+            endTerm: 'Spring 2029',
+        });
+        expect(requestedTimeline('graduate in five semesters', october2026)).toEqual({
+            longSemesters: 5,
+            endTerm: 'Spring 2029',
+        });
+        expect(requestedTimeline('can I finish by fall 2028', october2026)).toEqual({
+            longSemesters: 4,
+            endTerm: 'Fall 2028',
+        });
+        expect(requestedTimeline('build me a schedule', october2026)).toBeNull();
+        const plans = timelinePlans(80, 5, 9);
+        expect(plans[0]).toEqual({ summerHours: 0, accHours: 0, perSemester: 16 });
+        expect(plans[1]).toEqual({ summerHours: 6, accHours: 0, perSemester: 15 });
+        expect(plans[2]).toEqual({ summerHours: 12, accHours: 0, perSemester: 14 });
+        expect(plans[3]).toEqual({ summerHours: 0, accHours: 9, perSemester: 15 });
+    });
+});

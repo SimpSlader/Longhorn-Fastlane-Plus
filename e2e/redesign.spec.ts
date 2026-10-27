@@ -701,6 +701,58 @@ test('"Improve" rewrites a draft for the planner, can be undone, and never sends
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/improve.png' });
 });
 
+test('one long message gets both a schedule and answers to its graduation questions', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const advised: Array<{
+        question: string;
+        facts: { timeline: { longSemesters: number; plans: unknown[] } | null; scheduleBuiltSeparately: boolean };
+    }> = [];
+    const cors = { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` };
+    await page.route(AI, async route => {
+        const body = route.request().postDataJSON() as { candidates: Array<{ id: number }> };
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: cors,
+            body: JSON.stringify({
+                summary: 'ok',
+                recommendations: body.candidates
+                    .slice(0, 5)
+                    .map(c => ({ id: c.id, reason: 'fits', requirement: '', confidence: 'possible', warning: '' })),
+            }),
+        });
+    });
+    await page.route(ADVISE, async route => {
+        advised.push(route.request().postDataJSON() as (typeof advised)[number]);
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: cors,
+            body: JSON.stringify({
+                answer: 'To finish in 5 semesters you need about **16 hours** each fall and spring.',
+            }),
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    const message =
+        'Build me a schedule with at least 12 credits, 1-2 online classes. Also I want to graduate a year early in 2029: how many credit hours per semester would I need with only spring and fall, and with one summer? Any tips?';
+    await page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' }).fill(message);
+    await page.getByRole('button', { name: 'Send message' }).click();
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    await expect(log.locator('.bubble.bot').last()).toContainText('16 hours');
+    // one question bubble, then the schedule reply and the graduation answer
+    await expect(log.locator('.bubble.me')).toHaveCount(1);
+    expect(advised).toHaveLength(1);
+    expect(advised[0]!.facts.scheduleBuiltSeparately).toBe(true);
+    expect(advised[0]!.facts.timeline?.longSemesters).toBeGreaterThan(0);
+    expect(advised[0]!.facts.timeline?.plans.length).toBeGreaterThanOrEqual(3);
+});
+
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);

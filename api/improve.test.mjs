@@ -42,6 +42,17 @@ describe('improve my message', () => {
         expect(addedSomething('hi', '')).toBe('empty rewrite');
     });
 
+    it('rejects a rewrite that drops part of a long, multi-part message', () => {
+        const draft =
+            'Could you build a schedule with a minimum of 12 to 13 credit hours, preferably 15, one to two classes online, only Tuesdays and Thursdays, back to back. Also find harder classes I could take through ACC. I want to graduate a year early, in five semesters, in 2029: how many credit hours per semester spring and fall only, and with one summer? Any tips?';
+        const dropped =
+            'Please build a class schedule with 12 to 15 credit hours on Tuesdays and Thursdays only, back to back, with one to two online classes.';
+        expect(addedSomething(draft, dropped)).toMatch(/dropped/);
+        const kept =
+            '1. Build me a schedule with at least 12–13 credit hours, ideally about 15, with one to two online classes, only on Tuesdays and Thursdays, all back to back.\n2. Suggest harder classes I could take through ACC.\n3. I want to graduate a year early, in five semesters (2029): how many credit hours per semester would I need with only spring and fall, and with one summer?\n4. Any tips?';
+        expect(addedSomething(draft, kept)).toBeNull();
+    });
+
     it('a rewrite that adds a preference goes to another model; the clean one is returned', async () => {
         process.env.GROQ_API_KEY = 'gsk_test';
         process.env.FASTLANE_AI_ACCESS_CODE = 'beta-invite-123';

@@ -50,6 +50,12 @@ const CASES: Array<[string, Intent['kind'], { hasPlan?: boolean }?]> = [
     ['no classes before 10am', 'schedule'],
     ['keep everything but swap the government class', 'schedule', { hasPlan: true }],
     ['Suggest harder classes I could take at ACC', 'schedule', { hasPlan: true }],
+    ['how many credit hours per semester would I need to graduate in 2029', 'degree-planning'],
+    [
+        'Build me a schedule with at least 12 credits, 1-2 online classes. Also I want to graduate a year early in 2029: how many credit hours per semester would I need with only spring and fall, and with one summer? Any tips?',
+        'schedule',
+    ],
+    ['which ECO 304K professor gives the most As?', 'chat'],
     // conversation
     ['hi! what can you do?', 'chat'],
     ['what does UGS stand for', 'chat', { hasPlan: true }],

@@ -15,8 +15,8 @@ import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
 import type { GradeStat } from '../core/grades';
-import { gradFacts } from '../core/gradPlan';
-import { classifyIntent } from '../core/intent';
+import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
+import { alsoAsksDegreeQuestions, classifyIntent } from '../core/intent';
 import {
     completedAnswer,
     correctionAnswer,
@@ -43,6 +43,8 @@ import {
     resolveTarget,
 } from '../core/proposal';
 import { normalizeCourseCode } from '../core/requirements';
+import type { RmpRating } from '../core/rmp';
+import { splitProfessorName } from '../core/rmp';
 import type { NoScheduleReport, ScheduleConstraints, SolveResult, SolverCandidate } from '../core/scheduleSolver';
 import {
     DEFAULT_MAX_CREDITS,
@@ -59,6 +61,7 @@ import { tidyMessage } from '../core/tidyMessage';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
 import { aiErrorMessage, postAi, recordUsage } from '../services/aiClient';
 import { createPlanningSchedule } from '../services/planningService';
+import { sendFastlane } from '../services/runtime';
 import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
@@ -580,7 +583,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Degree-level questions ("how do I graduate early?"): local numbers, explained by the advisor. */
-    const advise = async (message: string, code: string) => {
+    const advise = async (message: string, code: string, scheduleBuiltSeparately = false) => {
         if (!audit) return;
         const controller = new AbortController();
         abortRef.current = controller;
@@ -590,6 +593,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         try {
             const goals = [...memory, ...history.map(h => h.request), message];
             const facts = gradFacts(audit, { mccombs: wantsMcCombs(goals) });
+            const asked = requestedTimeline(message);
+            const timeline =
+                asked && facts.hoursRemaining != null
+                    ? {
+                          ...asked,
+                          plans: timelinePlans(facts.hoursRemaining, asked.longSemesters, facts.accRoomHours ?? 0),
+                      }
+                    : null;
             setProgress('Checking UT’s official ACC transfer table…');
             const acc = await accForAudit(proposal?.sections.map(s => normalizeCourseCode(s.courseCode)) ?? []);
             setProgress('Thinking about your plan…');
@@ -615,6 +626,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         accRoomHours: facts.accRoomHours,
                         scenarios: facts.scenarios,
                         residency: programResidency(audit)?.note ?? '',
+                        timeline,
+                        scheduleBuiltSeparately,
                         accOptions: (acc?.suggestions ?? []).map(x => ({
                             acc: x.tccn,
                             ut: x.ut,
@@ -651,7 +664,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }
             if (!response.ok || !payload.answer) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
-            say(message, payload.answer, message, 'advice');
+            // a follow-up to a schedule answer continues the same turn (no repeated question bubble)
+            if (scheduleBuiltSeparately) say('', payload.answer, '', 'advice');
+            else say(message, payload.answer, message, 'advice');
             setLastKind('advice');
         } catch (failure) {
             if (controller.signal.aborted) setError('Stopped. Nothing was sent.');
@@ -767,6 +782,59 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         return false;
     };
 
+    /** Public facts about courses named in a message: listed sections, each instructor's historical A rate and,
+     *  when the student has ratings turned on, their Rate My Professors rating. Nothing is guessed. */
+    const courseFactsFor = async (message: string) => {
+        const named = courseCodesIn(message, subjectCodes).slice(0, 3);
+        return Promise.all(
+            named.map(async code => {
+                const sections = catalog.filter(x => normalizeCourseCode(x.courseCode) === code);
+                const byInstructor = new Map<string, SectionRecord>();
+                for (const x of sections) {
+                    const name = x.instructors[0];
+                    if (name && !byInstructor.has(name)) byInstructor.set(name, x);
+                }
+                const instructors = await Promise.all(
+                    [...byInstructor.entries()].slice(0, 6).map(async ([name, section]) => {
+                        const grade = (await gradeForSection(section))?.result;
+                        let rmp: RmpRating | null = null;
+                        const split = splitProfessorName(undefined, undefined, name);
+                        if (settings.showProfessorRatings && split?.last) {
+                            try {
+                                rmp = await sendFastlane<RmpRating | null>({
+                                    type: 'professorRating',
+                                    first: split.first,
+                                    last: split.last,
+                                });
+                            } catch {
+                                rmp = null;
+                            }
+                        }
+                        return {
+                            name,
+                            aRate: grade?.percent ?? null,
+                            gradesCounted: grade?.graded ?? null,
+                            rmpRating: rmp?.numRatings ? rmp.avgRating : null,
+                            rmpDifficulty: rmp?.numRatings ? rmp.avgDifficulty : null,
+                            rmpWouldTakeAgain:
+                                rmp?.numRatings && rmp.wouldTakeAgainPercent >= 0 ? rmp.wouldTakeAgainPercent : null,
+                            rmpCount: rmp?.numRatings ?? null,
+                        };
+                    })
+                );
+                return {
+                    code,
+                    title: sections[0]?.title ?? '',
+                    listedSections: sections.length,
+                    instructors,
+                    source: sections.length
+                        ? "UT's listed sections in Fastlane; grades from UT's public grade distributions"
+                        : 'not in the course data Fastlane has',
+                };
+            })
+        );
+    };
+
     /** General conversation: explanations and follow-ups, with only the context the question needs. */
     const converse = async (message: string, code: string) => {
         const controller = new AbortController();
@@ -778,6 +846,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             // academic numbers go along only when the question is about the degree or credits
             const needsAcademic = /\b(?:hours?|credits?|degree|graduat|semester|progress|transfer)\b/i.test(message);
             const summary = academicSummary(audit);
+            setProgress('Looking up courses you mentioned…');
+            const courses = await courseFactsFor(message);
+            setProgress('Thinking…');
             const { response, payload } = await postAi<{ answer?: string; error?: string; retryAfterSeconds?: number }>(
                 'chat',
                 'chat',
@@ -799,6 +870,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                                       program: audit?.program ?? '',
                                   }
                                 : null,
+                        courses,
                         plan: proposal?.sections.map(x => ({
                             code: x.courseCode,
                             title: x.title,
@@ -1298,6 +1370,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setBusy(false);
             setProgress('');
         }
+        // the same message also asked about graduating, summers, ACC strategy or tips: answer that part too
+        if (!focus && !controller.signal.aborted && alsoAsksDegreeQuestions(message)) await advise(message, code, true);
     };
 
     /** Local re-plan from sections already compared (no AI call): after editing the rules, or to fill up. */
@@ -1525,7 +1599,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 )}
                 {history.map((turn, i) => (
                     <div key={turn.id} className='fl-turn'>
-                        <p className='bubble me'>{turn.request}</p>
+                        {turn.request && <p className='bubble me'>{turn.request}</p>}
                         <div className='bubble bot md'>
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}

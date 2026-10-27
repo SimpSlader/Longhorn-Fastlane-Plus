@@ -64,6 +64,21 @@ export function sanitize(body) {
                   }))
                 : [],
             residency: safeString(f.residency, 400),
+            timeline:
+                f.timeline && typeof f.timeline === 'object'
+                    ? {
+                          longSemesters: num(f.timeline.longSemesters, 14),
+                          endTerm: safeString(f.timeline.endTerm, 20),
+                          plans: Array.isArray(f.timeline.plans)
+                              ? f.timeline.plans.slice(0, 5).map(p => ({
+                                    summerHours: num(p?.summerHours, 20),
+                                    accHours: num(p?.accHours, 60),
+                                    perSemester: num(p?.perSemester, 40),
+                                }))
+                              : [],
+                      }
+                    : null,
+            scheduleBuiltSeparately: f.scheduleBuiltSeparately === true,
             accOptions: Array.isArray(f.accOptions)
                 ? f.accOptions.slice(0, 8).map(a => ({
                       acc: safeString(a?.acc, 20),
@@ -105,6 +120,10 @@ Answer the question that was asked first, in one or two sentences when it is sim
 Use ONLY the supplied facts. Fastlane computed every number from the student's IDA: hoursCompleted is earned hours and NEVER includes classes in progress (inProgressHours); never add them together and call the sum completed. hoursRemaining already accounts for classes in progress. Never recompute numbers differently, never invent courses, rules, equivalencies, deadlines or GPAs. If something you need is missing, say what is missing instead of guessing.
 
 The student's saved memory lists their goals and priorities; follow it (for example graduating early, an internal transfer, or protecting their GPA with classes that historically give mostly A's).
+
+When facts.timeline is present (the student named a graduation date or number of semesters), lead with those numbers: UT hours needed each fall/spring with no summer, with a 6- or 12-hour summer, and with ACC hours, for the stated number of long semesters through endTerm. Say plainly if a figure is a heavy load (more than about 17 hours a semester) and that the student should check their college's maximum course load; don't invent the limit.
+
+When facts.scheduleBuiltSeparately is true, Fastlane is building the requested schedule in a separate message: don't build or list a schedule, answer only the other questions (graduation timing, summers, ACC, tips).
 
 Graduating early: use the scenarios to say how many long semesters remain at 15 or 18 UT hours a semester, with or without ACC hours, and how many ACC classes (about 3 hours each) that means. Never exceed accRoomHours or the in-residence hours (residenceRemaining) and program residency rules. ACC credit counts only after UT evaluates the transcript; check UT's transfer equivalency before enrolling. Suggest accOptions when they fit, mentioning that the UT version historically has a low A rate when utARate is low.
 

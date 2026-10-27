@@ -134,7 +134,13 @@ export function classifyIntent(
     const asks = /\b(?:how many|how much|what(?:'s| is| are)?|do i have|have i|tell me|show me|whats|number of)\b/.test(
         t
     );
-    if (asks && new RegExp(`\\b${HOURS}\\b`).test(t)) {
+    // quick record answers are for simple questions; a request to build something, a per-semester planning
+    // question or a long multi-part message goes to the planner and advisor instead
+    const compound =
+        /\b(?:build|make|create|find|plan)\b[^.?!]*\b(?:schedule|classes|courses)\b/.test(t) ||
+        /\b(?:per|a|each) semester\b|\bsummer\b|\bif i (?:only|took|take)\b/.test(t) ||
+        t.split(/\s+/).length > 30;
+    if (asks && !compound && new RegExp(`\\b${HOURS}\\b`).test(t)) {
         if (/\b(?:left|remaining|still need|to graduate|until i graduate|need to graduate)\b/.test(t))
             return { kind: 'remaining-hours' };
         if (/\b(?:total|altogether|in all|overall|after this semester|by the end of (?:this|the) semester)\b/.test(t))
@@ -173,4 +179,12 @@ export function classifyIntent(
         return { kind: 'schedule' };
     }
     return { kind: 'chat' };
+}
+
+/** A schedule request that also asks degree-level questions (graduation timing, summers, ACC strategy, tips). */
+export function alsoAsksDegreeQuestions(message: string): boolean {
+    const t = normalizeMessage(message);
+    return /\bgraduat|\bsemesters? (?:left|do i)\b|\bper semester\b|\bsummer\b[^.?!]{0,60}\b(?:class|classes|semester|credits?|hours?)\b|\b(?:tips|tricks|advice)\b|\bhow many (?:credits?|hours?|classes) (?:per|a|each) semester\b|\bmccombs\b|\binternal(?:ly)? transfer/.test(
+        t
+    );
 }
