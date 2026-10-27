@@ -20,6 +20,7 @@ const inFlight = new Map();
 export function complexity(task, inputChars = 0) {
     const base =
         {
+            agent: 4,
             test: 1,
             improve: 3,
             chat: 2,
@@ -114,7 +115,10 @@ export function scoreModel(model, s, level, mode, fraction, inputTokens) {
 /** Models that can take this request, best first, with why the others were left out. */
 export async function rankModels(request, env = process.env) {
     const { level, mode = 'auto', manualModel, disabledProviders = [], containsStudentData, needsJson } = request;
-    const inputTokens = Math.ceil(((request.system?.length ?? 0) + (request.user?.length ?? 0)) / 4);
+    const needsTools = !!request.tools?.length;
+    const inputTokens = Math.ceil(
+        ((request.system?.length ?? 0) + (request.user?.length ?? JSON.stringify(request.messages ?? '').length)) / 4
+    );
     // replies are usually far shorter than the maximum allowed, so half of it is a fair estimate
     const estimate = { tokens: inputTokens + Math.round((request.maxTokens ?? 1400) / 2), neurons: 0 };
     const ranked = [];
@@ -144,6 +148,10 @@ export async function rankModels(request, env = process.env) {
         }
         if (containsStudentData && model.trainsOnFreeTier && env.GEMINI_ALLOW_STUDENT_DATA !== 'true') {
             skip('free tier may use inputs for training, so it gets no student data');
+            continue;
+        }
+        if (needsTools && !model.tools) {
+            skip('no reliable tool calling');
             continue;
         }
         if (needsJson && !model.nativeJson && level >= 4) {
@@ -242,7 +250,10 @@ const hash = value => createHash('sha256').update(JSON.stringify(value)).digest(
  */
 export async function routeAI(request, env = process.env) {
     const routing = request.routing ?? {};
-    const level = complexity(request.task, (request.system?.length ?? 0) + (request.user?.length ?? 0));
+    const level = complexity(
+        request.task,
+        (request.system?.length ?? 0) + (request.user?.length ?? JSON.stringify(request.messages ?? '').length)
+    );
     const cacheKey = request.cache
         ? `ai:cache:${hash([request.task, request.system, request.user, request.schema ?? null])}`
         : null;
@@ -345,7 +356,7 @@ async function dispatch(request, routing, level, cacheKey, env) {
                     attempts: attempts.map(a => ({ model: a.model, outcome: a.outcome })),
                     reason: `best score for a level-${level} ${request.task} request${meta.fallback ? ' after fallback' : ''}`,
                 });
-                return { ok: true, text: out.text, json: out.json, meta };
+                return { ok: true, text: out.text, json: out.json, toolCalls: out.toolCalls ?? [], meta };
             } catch (e) {
                 const err = e instanceof ProviderError ? e : new ProviderError('invalid_output', 'Unreadable reply.');
                 attempts.push({ model: model.id, outcome: err.category });

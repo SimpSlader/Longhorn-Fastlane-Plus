@@ -96,11 +96,18 @@ export async function callModel(m, req, env = process.env) {
         model: m.model,
         temperature: req.temperature ?? 0.2,
         max_tokens: req.maxTokens ?? 1400,
-        messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: req.user },
-        ],
+        // a multi-turn conversation (with tool calls and results) or a single prompt
+        messages: req.messages
+            ? [{ role: 'system', content: system }, ...req.messages]
+            : [
+                  { role: 'system', content: system },
+                  { role: 'user', content: req.user },
+              ],
     };
+    if (req.tools?.length) {
+        body.tools = req.tools;
+        body.tool_choice = 'auto';
+    }
     if (m.provider === 'groq') {
         delete body.max_tokens;
         body.max_completion_tokens = req.maxTokens ?? 1400;
@@ -146,16 +153,35 @@ export async function callModel(m, req, env = process.env) {
         throw new ProviderError('server', 'The provider had an error.', { status });
     }
     const payload = await response.json();
-    const text = payload?.choices?.[0]?.message?.content ?? payload?.result?.response ?? '';
-    if (typeof text !== 'string' || !text.trim())
+    const message = payload?.choices?.[0]?.message ?? {};
+    const text = message.content ?? payload?.result?.response ?? '';
+    // tools the model wants run (arguments arrive as JSON text)
+    const toolCalls = (Array.isArray(message.tool_calls) ? message.tool_calls : [])
+        .filter(c => c?.function?.name)
+        .map((c, i) => {
+            let args = {};
+            try {
+                args =
+                    typeof c.function.arguments === 'string'
+                        ? JSON.parse(c.function.arguments || '{}')
+                        : (c.function.arguments ?? {});
+            } catch {
+                args = { _unparsed: String(c.function.arguments).slice(0, 500) };
+            }
+            return { id: String(c.id ?? `call_${i}`), name: String(c.function.name), arguments: args };
+        });
+    if (!toolCalls.length && (typeof text !== 'string' || !text.trim()))
         throw new ProviderError('invalid_output', 'The model returned nothing.');
     const usage = {
-        input: Number(payload?.usage?.prompt_tokens) || Math.ceil((system.length + req.user.length) / 4),
-        output: Number(payload?.usage?.completion_tokens) || Math.ceil(text.length / 4),
+        input:
+            Number(payload?.usage?.prompt_tokens) ||
+            Math.ceil((system.length + (req.user ?? JSON.stringify(req.messages ?? '')).length) / 4),
+        output: Number(payload?.usage?.completion_tokens) || Math.ceil(String(text ?? '').length / 4),
     };
     return {
-        text,
-        json: req.schema ? extractJson(text) : undefined,
+        text: typeof text === 'string' ? text : '',
+        toolCalls,
+        json: req.schema && !toolCalls.length ? extractJson(text) : undefined,
         usage,
         remaining: remainingFrom(response.headers),
         reported: limitsFrom(response.headers),

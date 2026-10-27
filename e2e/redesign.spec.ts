@@ -479,6 +479,13 @@ test('questions about your records are answered from the IDA, accurately and wit
                     },
                 }),
             });
+        if (url.endsWith('/agent'))
+            return route.fulfill({
+                status: 404,
+                contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+                body: '{}',
+            });
         if (url.endsWith('/ai-status'))
             return route.fulfill({
                 status: 200,
@@ -800,6 +807,124 @@ test('graduation questions are answered by the calculator, corrections stick, an
     await expect(credits).toContainText('as you told me');
     await expect(page.getByText(/still counts only once toward your degree total/)).toBeVisible();
     await page.locator('.credits-panel').screenshot({ path: 'test-results/redesign/credits-panel.png' });
+});
+
+test('the copilot understands a long request, uses tools, builds a full schedule, and handles follow-ups', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const cors = { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` };
+    const requests: Array<{
+        messages: Array<{ role: string; content: string; tool_calls?: Array<{ name: string }> }>;
+    }> = [];
+    // a scripted model: it asks for tools, reads their results, then answers
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/agent', async route => {
+        const body = route.request().postDataJSON() as (typeof requests)[number];
+        requests.push(body);
+        const last = body.messages.at(-1)!;
+        const userTurns = body.messages.filter(m => m.role === 'user');
+        const question = userTurns.at(-1)!.content;
+        const reply = (payload: unknown) =>
+            route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                headers: cors,
+                body: JSON.stringify(payload),
+            });
+        if (last.role === 'tool') {
+            const result = JSON.parse(last.content) as { totalCredits?: number; classes?: Array<{ code: string }> };
+            return reply({
+                type: 'answer',
+                text: result.classes
+                    ? `Here's your **${result.totalCredits}-credit** schedule: ${result.classes.map(c => c.code).join(', ')}.`
+                    : 'Done.',
+                meta: { provider: 'groq', model: 'groq:openai/gpt-oss-120b' },
+            });
+        }
+        if (/create me a schedule/i.test(question))
+            return reply({
+                type: 'tool_calls',
+                calls: [
+                    {
+                        id: 'c1',
+                        name: 'build_schedule',
+                        arguments: {
+                            minCredits: 12,
+                            maxCredits: 16,
+                            prioritizeGrades: true,
+                            includeSubjects: ['MUS'],
+                            excludeSubjects: ['HIS'],
+                            onlineMin: 1,
+                        },
+                    },
+                ],
+            });
+        if (/don't like/i.test(question)) {
+            const first = (
+                await page.evaluate(() => document.querySelector('.week-block b, .course-pill')?.textContent ?? '')
+            )
+                .split(' – ')[0]!
+                .trim();
+            return reply({
+                type: 'tool_calls',
+                calls: [
+                    { id: 'c2', name: 'modify_schedule', arguments: { replaceCourse: first, replaceReason: 'any' } },
+                ],
+            });
+        }
+        return reply({
+            type: 'answer',
+            text: 'Your GPA is the average of your grade points, weighted by credit hours.',
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const send = page.getByRole('button', { name: 'Send message' });
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    // the message that used to come back as ECO 304L sections (it mentions "Macro Economics" and "available")
+    await input.fill(
+        "Could you please create me a schedule uh preferably around 15 hours. I won't need history, I might need Macro Economics. I want a UGS and 2 backup UGS and a bigger general class as a backup if no ugs are available."
+    );
+    await send.click();
+    const proposal = page.getByRole('region', { name: 'Proposed schedule' });
+    await expect(proposal).toBeVisible();
+    await expect(log.locator('.bubble.bot').last()).toContainText(/-credit schedule/);
+    await expect(log).not.toContainText('has 3 listed sections');
+    // the tool result the model saw was a real schedule from the solver, with backups
+    const toolResult = JSON.parse(requests.at(-1)!.messages.at(-1)!.content) as {
+        totalCredits: number;
+        classes: Array<{ code: string; unique: string }>;
+        backups: { perClass: unknown[] };
+    };
+    expect(toolResult.totalCredits).toBeGreaterThanOrEqual(12);
+    expect(toolResult.classes.every(c => /^\d{5}$/.test(c.unique))).toBe(true);
+    expect(toolResult.classes.some(c => c.code.startsWith('HIS'))).toBe(false);
+    expect(Array.isArray(toolResult.backups.perClass)).toBe(true);
+    await expect(proposal.getByRole('complementary', { name: 'Backups' })).toBeVisible();
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/copilot-schedule.png' });
+
+    // a follow-up refers to "that" class without naming it; the schedule on screen is in the context
+    const before = await proposal.locator('.week-block b, .course-pill').allTextContents();
+    await input.fill("I don't like that first class");
+    await send.click();
+    await expect(log.locator('.bubble.me')).toHaveCount(2);
+    expect((requests.at(-2) as { context?: { scheduleOnScreen?: string } }).context?.scheduleOnScreen).toBeTruthy();
+    // the change ran through the schedule tool and its result (new week, or why it can't) went back to the model
+    await expect(log.locator('.bubble.bot')).toHaveCount(3);
+    const lastToolTurn = requests.at(-1)!.messages.at(-1)!;
+    expect(lastToolTurn.role).toBe('tool');
+    const modified = JSON.parse(lastToolTurn.content) as { changed?: unknown; error?: string };
+    expect(modified.changed ?? modified.error).toBeTruthy();
+    expect(before.length).toBeGreaterThan(0);
+
+    // a general question needs no tools and doesn't touch the schedule
+    await input.fill('How does GPA calculation work?');
+    await send.click();
+    await expect(log.locator('.bubble.bot').last()).toContainText('weighted by credit hours');
+    await expect(proposal).toBeVisible();
 });
 
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {

@@ -78,7 +78,7 @@ export function gpaAnswer(s: AcademicSummary): string {
         s.gpa
             .map(
                 g =>
-                    `Your **${g.label}** is **${g.value.toFixed(2)}** (the degree requires at least ${g.minimum.toFixed(2)}).`
+                    `Your **${/gpa/i.test(g.label) ? g.label : `${g.label} GPA`}** is **${g.value.toFixed(2)}** (the degree requires at least ${g.minimum.toFixed(2)}).`
             )
             .join('\n'),
         fromIda(s),

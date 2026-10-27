@@ -71,6 +71,7 @@ const CASES: Array<[string, Intent['kind'], { hasPlan?: boolean }?]> = [
     ],
     ['how many credits would I need for the summers and semesters', 'graduation-plan'],
     ['what is a signature course?', 'chat', { hasPlan: true }],
+    ['How does GPA calculation work?', 'chat', { hasPlan: true }],
     ['is ECO 304K hard?', 'chat', { hasPlan: true }],
     ['can I take more than 17 hours?', 'chat'],
     // conversation
