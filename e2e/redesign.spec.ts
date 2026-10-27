@@ -583,6 +583,53 @@ test('questions about your records are answered from the IDA, accurately and wit
     await page.locator('.ai-dashboard').screenshot({ path: 'test-results/redesign/ai-dashboard.png' });
 });
 
+test('the microphone types what you say into the chat box (nothing is sent until you press send)', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    const box = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    await expect(box).toBeVisible();
+    // a stand-in for Chrome's speech recognition that "hears" a sentence in two parts
+    await page.evaluate(() => {
+        class FakeRecognition {
+            lang = '';
+            interimResults = false;
+            continuous = false;
+            onresult: ((e: unknown) => void) | null = null;
+            onerror: ((e: unknown) => void) | null = null;
+            onend: (() => void) | null = null;
+            start() {
+                const say = (parts: string[], final: boolean) =>
+                    this.onresult?.({
+                        resultIndex: 0,
+                        results: parts.map(t => Object.assign([{ transcript: t }], { isFinal: final })),
+                    });
+                setTimeout(() => say(['how many hours'], false), 50);
+                setTimeout(() => say(['how many hours', ' have I completed'], true), 120);
+                setTimeout(() => this.onend?.(), 200);
+            }
+            stop() {
+                this.onend?.();
+            }
+            abort() {}
+        }
+        const w = window as unknown as { SpeechRecognition: unknown; webkitSpeechRecognition: unknown };
+        w.SpeechRecognition = FakeRecognition;
+        w.webkitSpeechRecognition = FakeRecognition;
+    });
+    await page.getByRole('button', { name: 'Speak your message' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Listening' })).toBeVisible();
+    await expect(box).toHaveValue('how many hours have I completed');
+    await expect(page.getByRole('button', { name: 'Speak your message' })).toBeVisible();
+    // the student reviews the words, then sends; this one is answered from the IDA
+    await page.getByRole('button', { name: 'Send message' }).click();
+    await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.bot').last()).toContainText(
+        "You've completed 64 credit hours"
+    );
+});
+
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);

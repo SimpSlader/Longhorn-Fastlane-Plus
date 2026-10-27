@@ -69,6 +69,7 @@ import {
 import { inventorySubjects, useInventory } from './CourseInventory';
 import type { AiPick } from './ProposalPanel';
 import ProposalPanel from './ProposalPanel';
+import { useDictation } from './useDictation';
 
 /** Planning facts computed locally and sent with each candidate (public course data only). */
 function aiFacts(c: AiCandidate | undefined) {
@@ -179,6 +180,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [droppedTags, setDroppedTags] = useState<string[]>([]);
     const [saveNote, setSaveNote] = useState('');
     const textRef = useRef<HTMLTextAreaElement>(null);
+    const voice = useDictation(request, setRequest);
     // preferences carry over between follow-ups; the message being typed is included before it is sent
     // saved memory comes first, so anything said in this chat can still override it
     const memory = FastlaneMemoryStore.useStore(s => s.items) ?? [];
@@ -1646,6 +1648,27 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     }
                     aria-label='Ask Fastlane for class recommendations'
                 />
+                {voice.supported && !busy && (
+                    <button
+                        type='button'
+                        className={`fl-mic ${voice.listening ? 'on' : ''}`}
+                        aria-label={voice.listening ? 'Stop listening' : 'Speak your message'}
+                        aria-pressed={voice.listening}
+                        title={voice.listening ? 'Stop listening' : 'Speak instead of typing'}
+                        onClick={() => (voice.listening ? voice.stop() : void voice.start())}
+                    >
+                        <svg width='18' height='18' viewBox='0 0 24 24' aria-hidden='true'>
+                            <rect x='9' y='3' width='6' height='11' rx='3' fill='currentColor' />
+                            <path
+                                d='M5 11a7 7 0 0 0 14 0M12 18v3'
+                                stroke='currentColor'
+                                strokeWidth='2'
+                                fill='none'
+                                strokeLinecap='round'
+                            />
+                        </svg>
+                    </button>
+                )}
                 {busy ? (
                     <button
                         type='button'
@@ -1668,6 +1691,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     </button>
                 )}
             </div>
+            {(voice.listening || voice.error) && (
+                <p className={`fl-voice ${voice.error ? 'warn' : ''}`} role='status'>
+                    {voice.error ||
+                        (voice.onDevice
+                            ? 'Listening… speech is turned into text on this computer. Tap the microphone to stop.'
+                            : 'Listening… Chrome’s speech service (Google) turns your speech into text. Tap the microphone to stop.')}
+                </p>
+            )}
             <p className='fl-foot'>
                 AI can be wrong. Confirm requirements and prerequisites with UT.
                 {savedCode && (
