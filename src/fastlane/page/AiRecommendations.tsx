@@ -1768,6 +1768,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                               : 'Message Fastlane… e.g. “how do I graduate early?” or “15 easy credits, Tue/Thu only”'
                     }
                     aria-label='Ask Fastlane for class recommendations'
+                    maxLength={4000}
                 />
                 {!busy && (
                     <button

@@ -21,7 +21,7 @@ const MAX_BODY_BYTES = 20_000;
 const num = (v, max = 400) => (Number.isFinite(v) ? Math.min(max, Math.max(0, Math.round(v))) : null);
 
 export function sanitize(body) {
-    const message = safeString(body?.message, 900);
+    const message = safeString(body?.message, 4000);
     if (!message) return null;
     const ctx = body.context && typeof body.context === 'object' ? body.context : {};
     const academic =

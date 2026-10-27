@@ -34,7 +34,7 @@ const PREREQ_STATUS = ['done at UT', 'in progress at UT', 'transfer credit', 'no
 
 export function sanitize(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-    const question = safeString(body.question, 900);
+    const question = safeString(body.question, 4000);
     if (!question) return null;
     const f = body.facts && typeof body.facts === 'object' ? body.facts : {};
     const mc = f.mccombs && typeof f.mccombs === 'object' ? f.mccombs : null;
