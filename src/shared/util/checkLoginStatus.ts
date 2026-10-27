@@ -1,4 +1,5 @@
 import { UTRP_LOGIN_URL } from '@shared/util/appUrls';
+import { fetchUtRegistrar } from '@shared/util/fetchUtRegistrar';
 
 /**
  * Checks whether the user is logged in to the UT Registrar.
@@ -8,15 +9,9 @@ import { UTRP_LOGIN_URL } from '@shared/util/appUrls';
  */
 export async function validateLoginStatus(): Promise<boolean> {
     try {
-        const response = await fetch(UTRP_LOGIN_URL, { credentials: 'include' });
-
-        if (response.redirected || response.status === 401 || response.status === 403) {
-            return false;
-        }
-
+        await fetchUtRegistrar(UTRP_LOGIN_URL);
         return true;
-    } catch (error) {
-        console.error('Error checking login status:', error);
+    } catch {
         return false;
     }
 }

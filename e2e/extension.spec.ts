@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import type { Page } from '@playwright/test';
 
+import { courseScheduleTableHtml } from '../src/pages/demo/fixture';
 import { expect, test } from './fixtures';
 
 const SHOTS = resolve(process.cwd(), 'reports/screenshots');
@@ -308,6 +309,50 @@ test.describe('grade distribution graph (Highcharts replacement)', () => {
         }
         await page.screenshot({ path: `${SHOTS}/9-grade-distribution-popup.png` });
     });
+});
+
+test('an expired UT session shows a sign-in link without fetching the SAML login service', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await context.newPage();
+    const idpRequests: string[] = [];
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await context.route('https://enterprise.login.utexas.edu/**', route => {
+        idpRequests.push(route.request().url());
+        return route.abort();
+    });
+    const listingUrl = 'https://utdirect.utexas.edu/apps/registrar/course_schedule/20272/results/?fos_fl=MUS';
+    const table = courseScheduleTableHtml().replace(
+        /href="#unique-(\d+)"/g,
+        'href="/apps/registrar/course_schedule/20272/$1/"'
+    );
+    let detailRequests = 0;
+    await context.route('https://utdirect.utexas.edu/apps/registrar/course_schedule/**', route => {
+        if (route.request().url() === listingUrl) {
+            return route.fulfill({
+                contentType: 'text/html',
+                body: `<!doctype html><html><body>${table}</body></html>`,
+            });
+        }
+        detailRequests++;
+        return route.fulfill({
+            status: 302,
+            headers: { location: 'https://enterprise.login.utexas.edu/idp/profile/SAML2/Redirect/SSO' },
+        });
+    });
+    await openDemo(page, extensionId);
+    await page.goto(listingUrl);
+    await rowFor(page, '23095').getByRole('button', { name: 'Open historical grade distribution graph' }).click();
+    const signIn = page.getByRole('link', { name: 'Open UT to sign in and view this course' });
+    await expect(signIn).toBeVisible();
+    await expect(signIn).toHaveAttribute('href', /https:\/\/utdirect\.utexas\.edu\/apps\/registrar\/course_schedule\//);
+    await expect(signIn).toHaveAttribute('target', '_blank');
+    await expect(page.locator('svg[aria-label="Grade distribution chart"]')).toBeVisible();
+    expect(detailRequests).toBeGreaterThan(0);
+    expect(idpRequests).toEqual([]);
+    expect(errors).toEqual([]);
 });
 
 test.describe('registration assistant', () => {

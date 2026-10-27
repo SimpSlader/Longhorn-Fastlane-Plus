@@ -1,4 +1,6 @@
 import type { Course } from '@shared/types/Course';
+import { UTRP_LOGIN_URL } from '@shared/util/appUrls';
+import { fetchUtRegistrar, isUtCoursePage } from '@shared/util/fetchUtRegistrar';
 import { parseHtml } from '@shared/util/parseHtml';
 import Text from '@views/components/common/Text/Text';
 import { CourseCatalogScraper } from '@views/lib/CourseCatalogScraper';
@@ -20,7 +22,7 @@ type LoadStatusType = (typeof LoadStatus)[keyof typeof LoadStatus];
 
 const fetchDescription = async (course: Course): Promise<string[]> => {
     if (!course.description?.length) {
-        const response = await fetch(course.url);
+        const response = await fetchUtRegistrar(course.url);
         const text = await response.text();
         const doc = parseHtml(text);
 
@@ -56,7 +58,16 @@ export default function Description({ course }: DescriptionProps): React.JSX.Ele
         <>
             {status === LoadStatus.ERROR && (
                 <Text className='text-theme-red font-bold!'>
-                    Please refresh the page and log back in using your UT EID and password.
+                    Course details could not be loaded.{' '}
+                    <a
+                        href={isUtCoursePage(course.url) ? course.url : UTRP_LOGIN_URL}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='underline'
+                    >
+                        Open UT to sign in and view this course
+                    </a>
+                    , then reopen this popup. Your saved course and grade history are still available.
                 </Text>
             )}
             {status === LoadStatus.LOADING &&
