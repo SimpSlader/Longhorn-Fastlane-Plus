@@ -2987,3 +2987,23 @@ button.course-pill {
     max-width: 880px;
     margin-inline: auto;
 }
+
+/* ---------- Improve my message ---------- */
+.fl-improve {
+    flex: none;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg));
+    color: var(--accent);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.fl-improve:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
