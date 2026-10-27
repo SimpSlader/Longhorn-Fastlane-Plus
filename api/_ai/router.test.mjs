@@ -126,7 +126,7 @@ describe('strict free tier', () => {
         });
         const r = await rankModels({ ...chat, level: 2, mode: 'manual', manualModel: id }, ALL);
         expect(r.ranked).toHaveLength(0);
-        expect(r.skipped.find(s => s.model === id).reason).toMatch(/free quota nearly used/);
+        expect(r.skipped.find(s => s.model === id).reason).toMatch(/daily free limit nearly used/);
     });
 });
 
@@ -242,5 +242,46 @@ describe('caching and concurrency', () => {
         expect(status.decisions.at(-1).ok).toBe(true);
         expect(status.providers.openai.eligible).toBe(false);
         expect(status.models.find(m => m.id === 'groq:openai/gpt-oss-20b').stats.ok).toBe(1);
+    });
+});
+
+describe('no false "no model available"', () => {
+    it('a large request is not refused in advance; Groq decides its own per-minute limit', async () => {
+        const big = { task: 'recommend', system: 'Plan.', user: 'x'.repeat(48000), maxTokens: 1800, needsJson: true };
+        const r = await rankModels({ ...big, level: 4 }, { GROQ_API_KEY: 'k' });
+        expect(r.ranked.map(x => x.model.id)).toContain('groq:openai/gpt-oss-120b');
+        // even right after other requests in the same minute
+        await setJSON('ai:model:groq:openai/gpt-oss-120b', {
+            minute: { at: Math.floor(Date.now() / 60000), requests: 3, tokens: 7000 },
+        });
+        const again = await rankModels({ ...big, level: 4 }, { GROQ_API_KEY: 'k' });
+        expect(again.ranked.map(x => x.model.id)).toContain('groq:openai/gpt-oss-120b');
+    });
+
+    it('learns the real limits Groq reports and uses them', async () => {
+        network({
+            groq: [() => reply('ok', { 'x-ratelimit-limit-requests': '14400', 'x-ratelimit-limit-tokens': '30000' })],
+        });
+        await routeAI(chat, { GROQ_API_KEY: 'k' });
+        const s = await getJSON('ai:model:groq:openai/gpt-oss-20b');
+        expect(s.reported).toMatchObject({ rpd: 14400, tpm: 30000 });
+    });
+
+    it('a too-large request moves on instead of failing', async () => {
+        const calls = network({
+            groq: [
+                b => (b.model === 'openai/gpt-oss-20b' ? failure(413, {}, 'Request too large for model') : reply('ok')),
+            ],
+        });
+        const out = await routeAI(chat, { GROQ_API_KEY: 'k' });
+        expect(out.ok).toBe(true);
+        expect(calls.map(c => c.model)).toEqual(['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+    });
+
+    it('when nothing can run, it says why for each provider', async () => {
+        const out = await routeAI({ ...chat, routing: { disabledProviders: ['groq'] } }, { GROQ_API_KEY: 'k' });
+        expect(out.ok).toBe(false);
+        expect(out.error.message).toMatch(/Groq: turned off in your settings/);
+        expect(out.error.message).toMatch(/Gemini: Add GEMINI_API_KEY in Vercel/);
     });
 });

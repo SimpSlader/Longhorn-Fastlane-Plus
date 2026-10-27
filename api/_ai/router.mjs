@@ -60,16 +60,29 @@ async function stateOf(id) {
 }
 const saveState = (id, s) => setJSON(`ai:model:${id}`, s, 3 * 24 * 3600);
 
-/** Fraction (0–1) of the tightest free limit already used, counting this request's estimate. */
-export function usedFraction(model, s, estimate, env = process.env) {
-    const l = limitsFor(model, env);
+/** Limits the provider itself reported (Groq sends them with every reply) win over published defaults. */
+export function effectiveLimits(model, s, env = process.env) {
+    const l = { ...limitsFor(model, env) };
+    if (s.reported?.rpd) l.rpd = s.reported.rpd;
+    if (s.reported?.tpm) l.tpm = s.reported.tpm;
+    return l;
+}
+
+/**
+ * Fraction (0–1) of the tightest free limit used, counting this request's estimate. Per-minute figures only
+ * shape the ranking: the provider enforces them itself (a 429 then cools the model down), so they never block
+ * a request in advance. Daily caps (requests, tokens, Cloudflare Neurons) do, with headroom kept in reserve.
+ */
+export function usedFraction(model, s, estimate, env = process.env, { daily = false } = {}) {
+    const l = effectiveLimits(model, s, env);
     const parts = [];
-    if (l.rpm) parts.push((s.minute.requests + 1) / l.rpm);
+    if (!daily && l.rpm) parts.push((s.minute.requests + 1) / l.rpm);
+    if (!daily && l.tpm) parts.push((s.minute.tokens + estimate.tokens) / l.tpm);
     if (l.rpd) parts.push((s.day.requests + 1) / l.rpd);
-    if (l.tpm) parts.push((s.minute.tokens + estimate.tokens) / l.tpm);
     if (l.tpd) parts.push((s.day.tokens + estimate.tokens) / l.tpd);
     if (l.neuronsPerDay) parts.push((s.day.neurons + estimate.neurons) / l.neuronsPerDay);
-    if (s.remaining?.requests != null && s.remainingAt === minute()) parts.push(s.remaining.requests <= 1 ? 1 : 0);
+    // the provider said this minute's requests are used up
+    if (s.remaining?.requests != null && s.remainingAt === minute()) parts.push(s.remaining.requests <= 0 ? 1 : 0);
     return parts.length ? Math.max(...parts) : 0;
 }
 
@@ -102,7 +115,8 @@ export function scoreModel(model, s, level, mode, fraction, inputTokens) {
 export async function rankModels(request, env = process.env) {
     const { level, mode = 'auto', manualModel, disabledProviders = [], containsStudentData, needsJson } = request;
     const inputTokens = Math.ceil(((request.system?.length ?? 0) + (request.user?.length ?? 0)) / 4);
-    const estimate = { tokens: inputTokens + (request.maxTokens ?? 1400), neurons: 0 };
+    // replies are usually far shorter than the maximum allowed, so half of it is a fair estimate
+    const estimate = { tokens: inputTokens + Math.round((request.maxTokens ?? 1400) / 2), neurons: 0 };
     const ranked = [];
     const skipped = [];
     for (const model of MODELS) {
@@ -142,11 +156,11 @@ export async function rankModels(request, env = process.env) {
             continue;
         }
         const est = { ...estimate, neurons: neurons(model, inputTokens, request.maxTokens ?? 1400) };
-        const fraction = usedFraction(model, s, est, env);
-        if (fraction > 1 - HEADROOM) {
-            skip('free quota nearly used (kept in reserve)');
+        if (usedFraction(model, s, est, env, { daily: true }) > 1 - HEADROOM) {
+            skip('daily free limit nearly used (15% kept in reserve)');
             continue;
         }
+        const fraction = usedFraction(model, s, est, env);
         ranked.push({
             model,
             state: s,
@@ -186,6 +200,8 @@ async function record(model, update) {
         s.remaining = update.remaining;
         s.remainingAt = minute();
     }
+    if (update.reported && Object.keys(update.reported).length)
+        s.reported = { ...s.reported, ...update.reported, at: Date.now() };
     if (update.cooldownMs) {
         s.cooldownUntil = Date.now() + update.cooldownMs;
         s.cooldownReason =
@@ -287,12 +303,23 @@ async function dispatch(request, routing, level, cacheKey, env) {
                 const problem = request.validate ? request.validate(out) : null;
                 if (problem) {
                     attempts.push({ model: model.id, outcome: 'invalid', detail: problem });
-                    await record(model, { outcome: 'invalid', usage: out.usage, remaining: out.remaining });
+                    await record(model, {
+                        outcome: 'invalid',
+                        usage: out.usage,
+                        remaining: out.remaining,
+                        reported: out.reported,
+                    });
                     break; // try the next model rather than asking the same one again
                 }
                 const latencyMs = Date.now() - t0;
                 attempts.push({ model: model.id, outcome: 'ok', latencyMs });
-                await record(model, { outcome: 'ok', latencyMs, usage: out.usage, remaining: out.remaining });
+                await record(model, {
+                    outcome: 'ok',
+                    latencyMs,
+                    usage: out.usage,
+                    remaining: out.remaining,
+                    reported: out.reported,
+                });
                 const meta = {
                     requestId,
                     task: request.task,
@@ -375,11 +402,29 @@ async function dispatch(request, routing, level, cacheKey, env) {
             category: ranked.length ? 'all_failed' : 'none_available',
             message: ranked.length
                 ? 'Every free AI model is busy or failing right now. Nothing was charged; try again shortly.'
-                : 'No free AI model is available right now (daily free limits reached, cooling down, or not set up). Nothing was charged.',
+                : `No free AI model can take this request right now. ${whyNone(skipped)} Nothing was charged.`,
             retryAfterSeconds,
         },
         meta,
     };
+}
+
+const PROVIDER_LABEL = { groq: 'Groq', gemini: 'Gemini', cloudflare: 'Cloudflare' };
+
+/** One reason per provider, e.g. "Groq: turned off in your settings. Gemini: Add GEMINI_API_KEY in Vercel." */
+export function whyNone(skipped) {
+    const byProvider = new Map();
+    for (const s of skipped) {
+        const provider = s.model.split(':')[0];
+        if (!byProvider.has(provider)) byProvider.set(provider, new Set());
+        byProvider.get(provider).add(s.reason);
+    }
+    return [...byProvider.entries()]
+        .map(
+            ([p, reasons]) =>
+                `${PROVIDER_LABEL[p] ?? p}: ${[...reasons].filter(r => r !== 'manual selection').join('; ') || 'not selected'}.`
+        )
+        .join(' ');
 }
 
 /** Status for the dashboard: never includes keys, prompts or student data. */
