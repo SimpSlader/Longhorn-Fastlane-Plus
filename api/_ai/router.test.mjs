@@ -75,10 +75,10 @@ describe('which model a request goes to', () => {
             { ...plan, level: 4, needsJson: true, containsStudentData: true },
             { ...ALL, GEMINI_ALLOW_STUDENT_DATA: 'true' }
         );
-        expect(allowed.ranked[0].model.id).toBe('gemini:gemini-2.5-flash');
+        expect(allowed.ranked[0].model.id).toBe('gemini:gemini-3.8-flash');
         const protectedRank = await rankModels({ ...plan, level: 4, needsJson: true, containsStudentData: true }, ALL);
         expect(protectedRank.ranked.some(r => r.model.provider === 'gemini')).toBe(false);
-        expect(protectedRank.skipped.find(s => s.model === 'gemini:gemini-2.5-flash').reason).toMatch(/training/);
+        expect(protectedRank.skipped.find(s => s.model === 'gemini:gemini-3.8-flash').reason).toMatch(/training/);
         // Cloudflare's small model is never used for level-4 planning
         expect(protectedRank.ranked.some(r => r.model.provider === 'cloudflare')).toBe(false);
     });
@@ -144,7 +144,7 @@ describe('failover and retries', () => {
         expect(calls.map(c => c.provider)).toEqual(['gemini', 'groq']);
         // Test E: the second provider got exactly the same conversation
         expect(calls[1].body.messages).toEqual(calls[0].body.messages);
-        const s = await getJSON('ai:model:gemini:gemini-2.5-flash');
+        const s = await getJSON('ai:model:gemini:gemini-3.8-flash');
         expect(s.cooldownUntil - Date.now()).toBeGreaterThan(100000);
         // the next request skips Gemini without calling it
         await routeAI({ ...plan, user: '{"x":2}', containsStudentData: true }, env);
@@ -195,7 +195,7 @@ describe('failover and retries', () => {
         network({ gemini: [() => reply('not json at all')], groq: [() => reply('{"ok":true}')] });
         const out = await routeAI(plan, env);
         expect(out.ok).toBe(true);
-        expect(out.meta.attempts[0]).toMatchObject({ model: 'gemini:gemini-2.5-flash', outcome: 'invalid_output' });
+        expect(out.meta.attempts[0]).toMatchObject({ model: 'gemini:gemini-3.8-flash', outcome: 'invalid_output' });
         // (after that invalid reply Gemini already ranks lower, so start the next case fresh)
         resetMemoryStore();
         network({ gemini: [() => reply('{"ok":false}')], groq: [() => reply('{"ok":true}')] });

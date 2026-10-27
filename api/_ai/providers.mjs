@@ -95,7 +95,7 @@ export async function callModel(m, req, env = process.env) {
         body.max_completion_tokens = req.maxTokens ?? 1400;
         body.reasoning_effort = 'low';
     }
-    if (m.provider === 'gemini') body.reasoning_effort = 'low';
+    if (m.provider === 'gemini') body.reasoning_effort = m.model === 'gemini-3.1-flash-lite' ? 'minimal' : 'low';
     if (req.schema && m.nativeJson)
         body.response_format = {
             type: 'json_schema',
