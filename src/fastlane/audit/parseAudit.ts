@@ -153,6 +153,17 @@ function parseCourseRows(doc: Document): AuditCourse[] {
     return courses;
 }
 
+/** The IDA's "Included Courses" checkboxes: whether its counted hours include in-progress, future, planned. */
+function readIncluded(doc: Document): ParsedAudit['included'] {
+    const box = doc.querySelector('#crswk_included, .included-courses-section');
+    if (!box) return undefined;
+    const flag = (label: RegExp) =>
+        [...box.querySelectorAll('div')].some(
+            d => label.test(d.textContent ?? '') && !!d.querySelector('input[type=checkbox][checked]')
+        );
+    return { inProgress: flag(/in progress/i), future: flag(/future/i), planned: flag(/planned/i) };
+}
+
 /** "Total Hours Taken: 85", "Total Hours Excluded: 3" printed under the IDA's course list. */
 function readHourTotals(doc: Document): ParsedAudit['hourTotals'] {
     const text = clean(doc.querySelector('#coursework')?.textContent);
@@ -277,6 +288,8 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         transfer,
         creditHours: deriveCreditHours(requirements),
         hourTotals: readHourTotals(doc),
+        included: readIncluded(doc),
+        catalogYear: clean(doc.body?.textContent).match(/\bcatalog(?: year)?:?\s*(20\d\d(?:\s*-\s*20?\d\d)?)/i)?.[1],
         restrictions: collectRestrictions(requirements.map(r => r.text)),
         warnings,
     };

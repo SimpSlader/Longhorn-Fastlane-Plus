@@ -101,3 +101,22 @@ Settings → **AI assistant** shows, without keys or prompts:
 ### Model availability
 
 Gemini 2.5 Flash is no longer available to new API users. Fastlane uses Gemini 3.8 Flash and Gemini 3.1 Flash-Lite, with their supported reasoning levels. Both have a free tier; project-specific limits in AI Studio take precedence over the router's starting ceilings. See https://ai.google.dev/gemini-api/docs/pricing and https://ai.google.dev/gemini-api/docs/openai.
+
+## Academic model and graduation math (no AI)
+
+- `src/fastlane/core/academicModel.ts` is the single academic record used by Degree progress, the chat, the advisor
+  and graduation planning.
+  - Its figures: degree total; IDA-counted; earned; in progress; future/planned; projected; remaining (earned and
+    projected); residence; upper-division; exam and transfer credit.
+  - Every figure carries a source (IDA rule, IDA course list, student, calculated) and the method used.
+  - The IDA's "Included Courses" flags decide what its counted hours contain.
+  - Course rows that don't reconcile with the IDA's own count are reported, never silently used.
+  - Requirement buckets are never summed into the degree total.
+- Student corrections (`core/corrections.ts`) are stored as confirmed facts in this browser. They are used ahead of
+  records and older chat history, and kept beside the IDA's values with the difference stated.
+- `core/graduation.ts` derives the current term from the date. It lists the remaining fall/spring terms and summers
+  through the target term (never summers after it), and averages the remaining hours exactly (98 / 5 = 19.6).
+  Graduation questions are answered from it locally. The advisor receives the same numbers and is rejected if it
+  states a different "remaining" figure.
+- Settings → AI assistant → "Show How this was answered" adds a per-answer diagnostics view: intent, tools, each
+  figure with its source, the calendar math and the model used. No prompts or reasoning are shown.

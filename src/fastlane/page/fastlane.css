@@ -3007,3 +3007,47 @@ button.course-pill {
     opacity: 0.4;
     cursor: default;
 }
+
+/* ---------- Answer diagnostics and the credits panel ---------- */
+.fl-diag {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+}
+.fl-diag summary {
+    cursor: pointer;
+}
+.fl-diag p {
+    margin: 4px 0;
+    white-space: normal;
+}
+.fl-diag table {
+    font-size: 11.5px;
+}
+.fl-diag .warn {
+    color: var(--warn);
+}
+.credits-panel {
+    padding: 16px 18px;
+}
+.credits-panel h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+.credits-panel table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+.credits-panel th {
+    text-align: left;
+    font-weight: 500;
+    padding: 5px 8px 5px 0;
+}
+.credits-panel td {
+    padding: 5px 8px;
+    border-top: 1px solid var(--border);
+}
+.credits-panel tr:first-child td {
+    border-top: 0;
+}

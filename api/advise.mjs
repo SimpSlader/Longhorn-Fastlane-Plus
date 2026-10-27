@@ -52,6 +52,14 @@ export function sanitize(body) {
             hoursRequired: num(f.hoursRequired),
             hoursApplied: num(f.hoursApplied),
             hoursCompleted: num(f.hoursCompleted),
+            upperDivision:
+                f.upperDivision && typeof f.upperDivision === 'object'
+                    ? { required: num(f.upperDivision.required), counted: num(f.upperDivision.counted) }
+                    : null,
+            // figures the student confirmed in the chat; they override anything older, including chat history
+            confirmedByStudent: Array.isArray(f.confirmedByStudent)
+                ? f.confirmedByStudent.slice(0, 12).map(k => safeString(k, 40))
+                : [],
             hoursRemaining: num(f.hoursRemaining),
             inProgressHours: num(f.inProgressHours, 30),
             residenceRemaining: num(f.residenceRemaining),
@@ -73,7 +81,10 @@ export function sanitize(body) {
                               ? f.timeline.plans.slice(0, 5).map(p => ({
                                     summerHours: num(p?.summerHours, 20),
                                     accHours: num(p?.accHours, 60),
-                                    perSemester: num(p?.perSemester, 40),
+                                    // averages keep one decimal (19.6, not 20)
+                                    perSemester: Number.isFinite(p?.perSemester)
+                                        ? Math.round(Math.min(40, Math.max(0, p.perSemester)) * 10) / 10
+                                        : null,
                                 }))
                               : [],
                       }
@@ -117,6 +128,8 @@ export const SYSTEM_PROMPT = `You are Fastlane, a friendly academic planning ass
 
 Answer the question that was asked first, in one or two sentences when it is simple; add detail only when the question needs it, and don't add unrelated suggestions (for example ACC ideas when the student asked about something else). Markdown is fine: **bold** key numbers, short bullet lists when they help.
 
+The facts are Fastlane's single academic record. Any field named in facts.confirmedByStudent was confirmed by the student and is authoritative: use it, never argue with it, and ignore different numbers that appear in chatHistory (older answers may have been wrong). Never ask for information that is already in the facts.
+
 Use ONLY the supplied facts. Fastlane computed every number from the student's IDA: hoursCompleted is earned hours and NEVER includes classes in progress (inProgressHours); never add them together and call the sum completed. hoursRemaining already accounts for classes in progress. Never recompute numbers differently, never invent courses, rules, equivalencies, deadlines or GPAs. If something you need is missing, say what is missing instead of guessing.
 
 The student's saved memory lists their goals and priorities; follow it (for example graduating early, an internal transfer, or protecting their GPA with classes that historically give mostly A's).
@@ -125,7 +138,7 @@ When facts.timeline is present (the student named a graduation date or number of
 
 When facts.scheduleBuiltSeparately is true, Fastlane is building the requested schedule in a separate message: don't build or list a schedule, answer only the other questions (graduation timing, summers, ACC, tips).
 
-Graduating early: use the scenarios to say how many long semesters remain at 15 or 18 UT hours a semester, with or without ACC hours, and how many ACC classes (about 3 hours each) that means. Never exceed accRoomHours or the in-residence hours (residenceRemaining) and program residency rules. ACC credit counts only after UT evaluates the transcript; check UT's transfer equivalency before enrolling. Suggest accOptions when they fit, mentioning that the UT version historically has a low A rate when utARate is low.
+Graduating early: use the scenarios to say how many long semesters remain at 15 or 18 UT hours a semester, with or without ACC hours, and how many ACC classes (about 3 hours each) that means. Never exceed accRoomHours or the in-residence hours (residenceRemaining) and program residency rules. ACC credit counts only after UT evaluates the transcript; check UT's transfer equivalency before enrolling. Mention ACC only if the student asked about it (accOptions is empty otherwise); then suggest accOptions that fit, mentioning that the UT version historically has a low A rate when utARate is low.
 
 McCombs internal transfer (only when facts.mccombs is present): explain how ACC plans interact with it. Transfer hours do not count toward the required in-residence hours or the in-residence UT GPA, so UT courses with historically high A rates help the application while ACC courses do not; prerequisites should be done (preferably at UT) before the application deadline; they must apply within their first four long semesters. Never promise admission; say it is highly competitive and to confirm with McCombs advising. Cite the source URL once.
 
@@ -161,6 +174,18 @@ export default async function handler(req, res) {
  */
 export function groundingProblem(answer, facts) {
     if (typeof answer !== 'string' || !answer.trim()) return 'empty answer';
+    // a stated "N hours remaining/left" must be one of the computed figures (the old bug: 50 instead of 98)
+    const allowedRemaining = new Set(
+        [
+            facts.hoursRemaining,
+            ...(facts.timeline?.plans ?? []).map(p => (facts.hoursRemaining ?? 0) - (p.summerHours ?? 0)),
+        ].filter(n => Number.isFinite(n))
+    );
+    if (allowedRemaining.size)
+        for (const m of answer.matchAll(
+            /\b(\d{1,3})\s*(?:more\s*)?(?:ut\s*)?(?:credit\s*)?(?:hours?|credits?)\s*(?:remaining|left|to go)\b/gi
+        ))
+            if (!allowedRemaining.has(Number(m[1]))) return `stated ${m[1]} hours remaining`;
     if (facts.hoursCompleted != null) {
         for (const m of answer.matchAll(
             /(?:completed|earned|finished)[^.\n]{0,40}?\b(\d{1,3})\s*(?:credit )?hours?|\b(\d{1,3})\s*(?:credit )?hours?[^.\n]{0,20}?(?:completed|earned)/gi

@@ -85,4 +85,31 @@ describe('advisor API', () => {
         expect(SYSTEM_PROMPT).toMatch(/do not count toward the required in-residence hours/);
         expect(SYSTEM_PROMPT).toMatch(/Never promise admission/);
     });
+
+    it('rejects an answer that states a remaining figure other than the computed one', async () => {
+        const { groundingProblem } = await import('./advise.mjs');
+        const facts = {
+            hoursRemaining: 98,
+            hoursCompleted: 9,
+            inProgressHours: 13,
+            timeline: { plans: [{ summerHours: 12 }] },
+        };
+        expect(groundingProblem('You have 50 UT hours remaining.', facts)).toMatch(/50/);
+        expect(
+            groundingProblem(
+                'You have 98 hours left; with 12 summer credits, 86 credits remaining for fall and spring.',
+                facts
+            )
+        ).toBeNull();
+        const data = sanitize({
+            ...body,
+            facts: {
+                ...body.facts,
+                timeline: { longSemesters: 5, endTerm: 'Spring 2029', plans: [{ summerHours: 0, perSemester: 19.6 }] },
+                confirmedByStudent: ['degreeCreditsProjected'],
+            },
+        });
+        expect(data.facts.timeline.plans[0].perSemester).toBe(19.6);
+        expect(data.facts.confirmedByStudent).toEqual(['degreeCreditsProjected']);
+    });
 });

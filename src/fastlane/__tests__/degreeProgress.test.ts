@@ -32,7 +32,7 @@ describe('degree progress from a real IDA', () => {
     });
 
     it('reads the official percentage, degree hours, residence hours and GPA as the IDA states them', () => {
-        expect(degreeTotals(real)).toEqual({
+        expect(degreeTotals(real)).toMatchObject({
             official: 68,
             totalHours: { total: 120, done: 82, remaining: 38 },
             residence: { done: 60, total: 60 },
@@ -49,6 +49,8 @@ describe('degree progress from a real IDA', () => {
 
     it('never invents an official percentage', () => {
         const basic = audit('dap-audit-results.html');
+        // upper-division rules are read from the IDA too, not hardcoded
+        expect(degreeTotals(real).upperDivision).toEqual({ done: 32, total: 42 });
         expect(degreeTotals(basic).official).toBeNull();
         expect(degreeTotals(basic).totalHours).toBeNull();
     });

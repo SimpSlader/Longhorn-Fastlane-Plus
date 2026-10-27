@@ -167,6 +167,15 @@ export default function AiDashboard() {
                     </select>
                 </label>
             )}
+            <label className='check small'>
+                <input
+                    type='checkbox'
+                    checked={!!settings.aiDiagnostics}
+                    onChange={e => void FastlaneSettingsStore.set('aiDiagnostics', e.target.checked)}
+                />
+                Show “How this was answered” under each chat answer (intent, figures and their sources, calendar math,
+                model used). For checking why an answer said what it did.
+            </label>
             {!code && <p className='notice small'>Enter your beta code in Find classes once to see the AI status.</p>}
             {error && <p className='notice warn small'>{error}</p>}
             {status && (

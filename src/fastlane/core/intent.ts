@@ -16,6 +16,8 @@ export type Intent =
     | { kind: 'easiest-class' }
     | { kind: 'course-sections'; course: string }
     | { kind: 'degree-planning' }
+    /** hours per semester / semesters left to graduate by a term, with or without summers (calculated, no AI) */
+    | { kind: 'graduation-plan'; summerHours?: number }
     | { kind: 'schedule' }
     | { kind: 'chat' };
 
@@ -130,6 +132,23 @@ export function classifyIntent(
     );
     if (/\b(?:wrong|incorrect|not right|that's not|thats not|actually)\b/.test(t) && corrected)
         return { kind: 'correction', completedHours: Number(corrected[1]) };
+
+    // "how many hours per semester to graduate in spring 2029", "what if I take 12 summer credits",
+    // "how many semesters do I have left": answered by the graduation calculator
+    const buildsSomething = /\b(?:build|make|create|find)\b[^.?!]*\b(?:schedule|classes|courses)\b/.test(t);
+    const whatIfSummer =
+        /\bwhat if\b|\bif i (?:take|took|did|do)\b/.test(t) && /\bsummers?\b/.test(t)
+            ? t.match(/\b(\d{1,2}) (?:summer )?(?:credits?|hours?)\b/)
+            : null;
+    if (whatIfSummer && !buildsSomething) return { kind: 'graduation-plan', summerHours: Number(whatIfSummer[1]) };
+    if (
+        !buildsSomething &&
+        (/\b(?:per|a|each) semester\b[^.?!]*\b(?:graduat|finish|spring|fall|summer|20\d\d)/.test(t) ||
+            /\b(?:graduat|finish)\w*\b[^.?!]*\b(?:per|a|each) semester\b/.test(t) ||
+            /\bhow many (?:more )?(?:long |regular )?semesters?\b/.test(t) ||
+            /\bsemesters? (?:left|remain)/.test(t))
+    )
+        return { kind: 'graduation-plan' };
 
     const asks = /\b(?:how many|how much|what(?:'s| is| are)?|do i have|have i|tell me|show me|whats|number of)\b/.test(
         t
