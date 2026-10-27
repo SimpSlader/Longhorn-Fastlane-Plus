@@ -59,6 +59,17 @@ function remainingFrom(headers) {
     };
 }
 
+/** The limits the provider reports for this organization (Groq: requests per day, tokens per minute). */
+function limitsFrom(headers) {
+    const get = name => (headers && typeof headers.get === 'function' ? headers.get(name) : null);
+    const rpd = Number(get('x-ratelimit-limit-requests'));
+    const tpm = Number(get('x-ratelimit-limit-tokens'));
+    return {
+        ...(get('x-ratelimit-limit-requests') != null && Number.isFinite(rpd) && rpd > 0 ? { rpd } : {}),
+        ...(get('x-ratelimit-limit-tokens') != null && Number.isFinite(tpm) && tpm > 0 ? { tpm } : {}),
+    };
+}
+
 /** First JSON object in a reply (for models without a native JSON mode). */
 export function extractJson(text) {
     try {
@@ -127,6 +138,8 @@ export async function callModel(m, req, env = process.env) {
             });
         if (status === 401 || status === 403)
             throw new ProviderError('auth', 'The provider rejected the credentials.', { status });
+        if (status === 413 || /request too large|reduce your message size/i.test(detail))
+            throw new ProviderError('bad_request', 'The request is too large for this model’s free limit.', { status });
         if (status === 400 || status === 404 || status === 422)
             throw new ProviderError('bad_request', 'The provider rejected the request.', { status });
         if (status === 408 || status === 504) throw new ProviderError('timeout', 'The provider timed out.', { status });
@@ -145,5 +158,6 @@ export async function callModel(m, req, env = process.env) {
         json: req.schema ? extractJson(text) : undefined,
         usage,
         remaining: remainingFrom(response.headers),
+        reported: limitsFrom(response.headers),
     };
 }
