@@ -1695,8 +1695,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 <p className={`fl-voice ${voice.error ? 'warn' : ''}`} role='status'>
                     {voice.error ||
                         (voice.onDevice
-                            ? 'Listening… speech is turned into text on this computer. Tap the microphone to stop.'
-                            : 'Listening… Chrome’s speech service (Google) turns your speech into text. Tap the microphone to stop.')}
+                            ? 'Listening… speech is turned into text on this computer. Stops after 5 seconds of silence, or tap the microphone.'
+                            : 'Listening… Chrome’s speech service (Google) turns your speech into text. Stops after 5 seconds of silence, or tap the microphone.')}
                 </p>
             )}
             <p className='fl-foot'>
