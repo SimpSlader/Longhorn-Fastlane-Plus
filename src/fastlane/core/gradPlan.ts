@@ -124,3 +124,80 @@ export function isAdviceQuestion(message: string): boolean {
         );
     return advice && !schedule;
 }
+
+export interface Timeline {
+    /** fall/spring semesters from the next one through the target */
+    longSemesters: number;
+    /** "Spring 2029" */
+    endTerm: string;
+    /** UT hours needed each long semester, with no summer, with a summer, and with ACC hours on top */
+    plans: Array<{ summerHours: number; accHours: number; perSemester: number }>;
+}
+
+const WORD_N: Record<string, number> = { three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+
+/** The next fall or spring term to start after `now` (a semester in progress counts as underway). */
+function nextLongTerm(now: Date): { season: 'Spring' | 'Fall'; year: number } {
+    const m = now.getMonth() + 1;
+    return m >= 9 ? { season: 'Spring', year: now.getFullYear() + 1 } : { season: 'Fall', year: now.getFullYear() };
+}
+
+/** "graduate in 2029", "by spring 2029", "in five semesters": how many long semesters are left, or null. */
+export function requestedTimeline(
+    message: string,
+    now = new Date()
+): { longSemesters: number; endTerm: string } | null {
+    const t = message.toLowerCase();
+    const count = t.match(/\bin (\d{1,2}|three|four|five|six|seven|eight|nine|ten) (?:more |long )?semesters?\b/);
+    const start = nextLongTerm(now);
+    const termName = (i: number) => {
+        let season = start.season;
+        let y = start.year;
+        for (let k = 0; k < i; k++) {
+            if (season === 'Spring') season = 'Fall';
+            else {
+                season = 'Spring';
+                y += 1;
+            }
+        }
+        return `${season} ${y}`;
+    };
+    if (count) {
+        const n = Number(count[1]) || WORD_N[count[1] ?? ''] || 0;
+        if (n > 0 && n <= 12) return { longSemesters: n, endTerm: termName(n - 1) };
+    }
+    const year = t.match(
+        /\b(?:graduat\w*|finish\w*|done)\b[^.?!]{0,40}?\b(?:(spring|fall|may|december) )?(20[2-4]\d)\b/
+    );
+    if (year) {
+        const target = Number(year[2]);
+        const endSeason: 'Spring' | 'Fall' = /fall|december/.test(year[1] ?? '') ? 'Fall' : 'Spring';
+        let n = 0;
+        let season = start.season;
+        let y = start.year;
+        while (n < 14 && (y < target || (y === target && (season === 'Spring' || endSeason === 'Fall')))) {
+            n += 1;
+            if (y === target && season === endSeason) break;
+            if (season === 'Spring') season = 'Fall';
+            else {
+                season = 'Spring';
+                y += 1;
+            }
+        }
+        if (n > 0) return { longSemesters: n, endTerm: `${endSeason} ${target}` };
+    }
+    return null;
+}
+
+/** Hours per long semester to finish `remaining` hours in `longSemesters`, alone or with summer / ACC hours. */
+export function timelinePlans(remaining: number, longSemesters: number, accRoomHours: number): Timeline['plans'] {
+    const per = (summer: number, acc: number) => Math.ceil(Math.max(0, remaining - summer - acc) / longSemesters);
+    const acc = Math.min(accRoomHours, 12);
+    const plans = [
+        { summerHours: 0, accHours: 0, perSemester: per(0, 0) },
+        { summerHours: 6, accHours: 0, perSemester: per(6, 0) },
+        { summerHours: 12, accHours: 0, perSemester: per(12, 0) },
+    ];
+    if (acc > 0) plans.push({ summerHours: 0, accHours: acc, perSemester: per(0, acc) });
+    return plans;
+}
