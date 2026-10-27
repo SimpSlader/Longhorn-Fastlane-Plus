@@ -583,7 +583,7 @@ test('questions about your records are answered from the IDA, accurately and wit
     await page.locator('.ai-dashboard').screenshot({ path: 'test-results/redesign/ai-dashboard.png' });
 });
 
-test('the microphone types what you say into the chat box (nothing is sent until you press send)', async ({
+test('the microphone keeps listening through pauses until 5 seconds of silence or a tap', async ({
     context,
     extensionId,
 }) => {
@@ -591,8 +591,17 @@ test('the microphone types what you say into the chat box (nothing is sent until
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
     const box = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
     await expect(box).toBeVisible();
-    // a stand-in for Chrome's speech recognition that "hears" a sentence in two parts
+    // a stand-in for Chrome's recognizer: the first session hears part of a sentence and then ends on its own
+    // (as Chrome does after a pause); the next session hears the rest and stays open
     await page.evaluate(() => {
+        const w = window as unknown as {
+            SpeechRecognition: unknown;
+            webkitSpeechRecognition: unknown;
+            __sessions: number;
+            __stops: number;
+        };
+        w.__sessions = 0;
+        w.__stops = 0;
         class FakeRecognition {
             lang = '';
             interimResults = false;
@@ -601,29 +610,48 @@ test('the microphone types what you say into the chat box (nothing is sent until
             onerror: ((e: unknown) => void) | null = null;
             onend: (() => void) | null = null;
             start() {
-                const say = (parts: string[], final: boolean) =>
+                w.__sessions += 1;
+                const n = w.__sessions;
+                const say = (text: string) =>
                     this.onresult?.({
                         resultIndex: 0,
-                        results: parts.map(t => Object.assign([{ transcript: t }], { isFinal: final })),
+                        results: [Object.assign([{ transcript: text }], { isFinal: true })],
                     });
-                setTimeout(() => say(['how many hours'], false), 50);
-                setTimeout(() => say(['how many hours', ' have I completed'], true), 120);
-                setTimeout(() => this.onend?.(), 200);
+                if (n === 1) {
+                    setTimeout(() => say('how many hours'), 50);
+                    setTimeout(() => this.onend?.(), 300);
+                } else if (n === 2) setTimeout(() => say('have I completed'), 200);
             }
             stop() {
-                this.onend?.();
+                w.__stops += 1;
+                setTimeout(() => this.onend?.(), 10);
             }
             abort() {}
         }
-        const w = window as unknown as { SpeechRecognition: unknown; webkitSpeechRecognition: unknown };
         w.SpeechRecognition = FakeRecognition;
         w.webkitSpeechRecognition = FakeRecognition;
     });
-    await page.getByRole('button', { name: 'Speak your message' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Listening' })).toBeVisible();
+    const speak = page.getByRole('button', { name: 'Speak your message' });
+    const stopButton = page.getByRole('button', { name: 'Stop listening' });
+    await speak.click();
+    await expect(page.getByRole('status').filter({ hasText: 'Stops after 5 seconds of silence' })).toBeVisible();
+    // Chrome ending the first session doesn't stop dictation; both parts land in the box
     await expect(box).toHaveValue('how many hours have I completed');
-    await expect(page.getByRole('button', { name: 'Speak your message' })).toBeVisible();
-    // the student reviews the words, then sends; this one is answered from the IDA
+    await expect(stopButton).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { __sessions: number }).__sessions)).toBe(2);
+    await page.waitForTimeout(2500);
+    await expect(stopButton).toBeVisible();
+    // after 5 seconds without speech it stops by itself
+    await expect(speak).toBeVisible({ timeout: 6000 });
+    // tapping the microphone again stops at once
+    await page.evaluate(() => {
+        (window as unknown as { __sessions: number }).__sessions = 5;
+    });
+    await speak.click();
+    await expect(stopButton).toBeVisible();
+    await stopButton.click();
+    await expect(speak).toBeVisible();
+    // nothing is sent until the student presses send; this one is answered from the IDA
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.bot').last()).toContainText(
         "You've completed 64 credit hours"
