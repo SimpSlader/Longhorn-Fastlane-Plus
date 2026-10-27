@@ -664,49 +664,6 @@ test('the microphone keeps listening through pauses until 5 seconds of silence o
     );
 });
 
-test('"Improve" rewrites a draft for the planner, can be undone, and never sends it', async ({
-    context,
-    extensionId,
-}) => {
-    const page = await demoWithAudit(context, extensionId);
-    const improveCalls: Array<{ draft: string }> = [];
-    await page.route('https://longhorn-fastlane-plus.vercel.app/api/improve', async route => {
-        improveCalls.push(route.request().postDataJSON() as { draft: string });
-        await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
-            body: JSON.stringify({
-                improved:
-                    'Build me a 15-credit-hour schedule with no Friday classes, 1–2 fully online (asynchronous) classes, and classes with high historical A rates.',
-                changes: ['Spelled out Friday', 'Clarified online classes'],
-            }),
-        });
-    });
-    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
-    const box = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
-    const improve = page.getByRole('button', { name: 'Improve my message' });
-    await box.fill('15 easy creds no fri, 1-2 async');
-    // before AI is set up it tidies the wording locally
-    await improve.click();
-    await expect(box).toHaveValue('15 easy credits no Friday, 1-2 fully online (asynchronous).');
-    await expect(page.getByRole('status').filter({ hasText: 'turn on AI below' })).toBeVisible();
-    await page.getByRole('button', { name: 'Undo' }).click();
-    await expect(box).toHaveValue('15 easy creds no fri, 1-2 async');
-    expect(improveCalls).toHaveLength(0);
-
-    // with AI on, the draft (only) is rewritten by the server and shown for review
-    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
-    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
-    await improve.click();
-    await expect(box).toHaveValue(/^Build me a 15-credit-hour schedule with no Friday classes/);
-    await expect(page.getByRole('status').filter({ hasText: 'Fixed up by AI: Spelled out Friday' })).toBeVisible();
-    expect(improveCalls[0]?.draft).toBe('15 easy creds no fri, 1-2 async');
-    // nothing was sent to the planner
-    await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.me')).toHaveCount(0);
-    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/improve.png' });
-});
-
 test('one long message gets both a schedule and answers to its graduation questions', async ({
     context,
     extensionId,
@@ -784,6 +741,18 @@ test('graduation questions are answered by the calculator, corrections stick, an
     await expect(last()).toContainText(
         'Got it. Using 22 credits toward your 120-credit degree, that leaves 98 after this semester'
     );
+    // the reported messages: a question phrased as a statement, then a follow-up; both get the numbers, no schedule
+    await input.fill(
+        'Based off my current track of credits and the fact I want to graduate in 2029 how many credits would I need per semester And then if I did one summer and or two summers how many credits would I need including those two Um additionally how many credits can I take Max outside of UT Um while still meeting core requirements.'
+    );
+    await send.click();
+    await expect(last()).toContainText('98 left');
+    await expect(last()).toContainText('fall/spring semesters');
+    await input.fill('Well I just asked you how many credits would I need for the Summers and semesters and all that');
+    await send.click();
+    await expect(last()).toContainText('98 left');
+    await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
+    await expect(log).not.toContainText("Here's a");
     // the graduation question is answered by deterministic math, not an AI
     await input.fill('How many credit hours do I need per semester to graduate in Spring 2029?');
     await send.click();

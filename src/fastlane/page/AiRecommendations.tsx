@@ -20,7 +20,7 @@ import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
 import type { GradeStat } from '../core/grades';
 import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
 import { graduationAnswer, graduationPlan, parseTerm, termName } from '../core/graduation';
-import { alsoAsksDegreeQuestions, classifyIntent } from '../core/intent';
+import { alsoAsksDegreeQuestions, classifyIntent, isQuestion } from '../core/intent';
 import {
     currentClassesAnswer,
     earnedAnswer,
@@ -61,7 +61,6 @@ import {
     validateSchedule,
 } from '../core/scheduleSolver';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
-import { tidyMessage } from '../core/tidyMessage';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
 import { aiErrorMessage, postAi, recordUsage } from '../services/aiClient';
 import { createPlanningSchedule } from '../services/planningService';
@@ -296,10 +295,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [saveNote, setSaveNote] = useState('');
     const textRef = useRef<HTMLTextAreaElement>(null);
     const voice = useDictation(request, setRequest);
-    // "Improve my message": the draft before the rewrite (for Undo) and what was clarified
-    const [improving, setImproving] = useState(false);
-    const [beforeImprove, setBeforeImprove] = useState<string | null>(null);
-    const [improveNote, setImproveNote] = useState('');
     // preferences carry over between follow-ups; the message being typed is included before it is sent
     // saved memory comes first, so anything said in this chat can still override it
     const memory = FastlaneMemoryStore.useStore(s => s.items) ?? [];
@@ -744,7 +739,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                           })),
                       }
                     : null;
-            const askedAboutAcc = /\bacc\b|community college/i.test(message);
+            const askedAboutAcc = /\bacc\b|community college|outside (?:of )?ut|transfer credit/i.test(message);
+            // residence from the same model (the student's confirmed figures included)
+            const resRequired = m.utResidentRequired.value;
+            const resCounted = m.utResidentCounted.value;
+            const residenceRemaining =
+                resRequired != null && resCounted != null ? Math.max(0, resRequired - resCounted) : null;
             setProgress('Checking UT’s official ACC transfer table…');
             const acc = await accForAudit(proposal?.sections.map(s => normalizeCourseCode(s.courseCode)) ?? []);
             setProgress('Thinking about your plan…');
@@ -772,8 +772,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                                 ? { required: m.upperDivisionRequired.value, counted: m.upperDivisionCounted.value }
                                 : null,
                         confirmedByStudent: Object.keys(confirmed),
-                        residenceRemaining: facts.residenceRemaining,
-                        accRoomHours: facts.accRoomHours,
+                        residenceRemaining: residenceRemaining ?? facts.residenceRemaining,
+                        // most hours that can still come from outside UT without missing the residence rule
+                        accRoomHours:
+                            residenceRemaining != null && m.degreeCreditsRemainingProjected.value != null
+                                ? Math.max(0, m.degreeCreditsRemainingProjected.value - residenceRemaining)
+                                : facts.accRoomHours,
+                        residenceRule:
+                            resRequired != null
+                                ? `${resRequired} hours must be taken in residence at UT (${resCounted ?? '?'} counted)`
+                                : '',
                         scenarios: facts.scenarios,
                         residency: programResidency(audit)?.note ?? '',
                         timeline,
@@ -1094,49 +1102,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         }
     };
 
-    /** Rewrites the draft so the planner understands it; never sends it, and never adds a preference. */
-    const improve = async () => {
-        const draft = request.trim();
-        if (!draft || improving || busy) return;
-        const code = savedCode || inviteCode.trim();
-        setBeforeImprove(request);
-        if (!consent || !code) {
-            setRequest(tidyMessage(draft));
-            setImproveNote('Only spelled out abbreviations: turn on AI below to have your prompt fixed up by AI.');
-            return;
-        }
-        setImproving(true);
-        try {
-            const { response, payload } = await postAi<{
-                improved?: string;
-                changes?: string[];
-                error?: string;
-                retryAfterSeconds?: number;
-            }>('improve', 'improve', {
-                accessCode: code,
-                draft,
-                plan: proposal?.sections.map(x => x.courseCode) ?? [],
-            });
-            if (!response.ok || !payload.improved) throw new Error(aiErrorMessage(response.status, payload));
-            setRequest(payload.improved);
-            setImproveNote(
-                payload.changes?.length ? `Fixed up by AI: ${payload.changes.join('; ')}.` : 'Fixed up by AI.'
-            );
-        } catch (failure) {
-            setRequest(tidyMessage(draft));
-            setImproveNote(
-                `The AI fix-up didn't work this time (${failure instanceof Error ? failure.message : 'unavailable'}). Only abbreviations were spelled out.`
-            );
-        } finally {
-            setImproving(false);
-            textRef.current?.focus();
-        }
-    };
-
     const run = async (override?: string) => {
         if (busy) return;
-        setBeforeImprove(null);
-        setImproveNote('');
         if (await handleMemory((override ?? request).trim())) return;
         const asked = (override ?? request).trim();
         // figures the student states ("22 counted toward my degree", "graduate in Spring 2029") are recorded
@@ -1150,10 +1117,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         const kind = asked
             ? classifyIntent(asked, { courseCodes: t => courseCodesIn(t, subjectCodes), hasPlan: !!proposal })
             : null;
-        const isQuestion = /\?|^(?:how|what|which|when|why|can|could|should|do|does|is|are|will|would)\b/i.test(asked);
+        const askingSomething = isQuestion(asked);
         const buildsSomething =
             /\b(?:build|make|create|find|give me)\b[^.?!]*\b(?:schedule|classes|courses|plan)\b/i.test(asked);
-        if (hasFacts(stated.facts) && !isQuestion && !buildsSomething) {
+        if (hasFacts(stated.facts) && !askingSomething && !buildsSomething) {
             const labels = Object.entries(stated.facts).map(
                 ([k, v]) =>
                     `${k.replace(/([A-Z])/g, ' $1').toLowerCase()} ${typeof v === 'object' && v ? (v as { value: unknown }).value : ''}`
@@ -1168,7 +1135,15 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             localEvent('correction');
             return;
         }
-        if (kind && !focus && (await answerLocally(asked, kind))) return;
+        if (kind && !focus && (await answerLocally(asked, kind))) {
+            // the calculator answered the per-semester part; anything else in the message goes to the advisor
+            const otherQuestions =
+                /\b(?:outside (?:of )?ut|transfer|acc|community college|max(?:imum)?|core|tips?|tricks?|advice|recommend\w*|mccombs|internal(?:ly)? transfer)\b/i;
+            const code = savedCode || inviteCode.trim();
+            if (kind.kind === 'graduation-plan' && otherQuestions.test(asked) && consent && code && audit)
+                await advise(asked, code, true);
+            return;
+        }
         if (!consent) {
             setError('Check “I agree to send…” below first; Fastlane only contacts its AI after you agree.');
             return;
@@ -2030,18 +2005,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     aria-label='Ask Fastlane for class recommendations'
                     maxLength={4000}
                 />
-                {!busy && (
-                    <button
-                        type='button'
-                        className='fl-improve'
-                        aria-label='Improve my message'
-                        title='Fix up this prompt with AI so Fastlane understands it better (you review it before sending)'
-                        disabled={improving || request.trim().split(/\s+/).length < 2}
-                        onClick={() => void improve()}
-                    >
-                        {improving ? '…' : '✨ Improve'}
-                    </button>
-                )}
                 {voice.supported && !busy && (
                     <button
                         type='button'
@@ -2085,22 +2048,6 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     </button>
                 )}
             </div>
-            {beforeImprove != null && improveNote && (
-                <p className='fl-voice' role='status'>
-                    {improveNote} Review it, then send.{' '}
-                    <button
-                        type='button'
-                        className='fl-link'
-                        onClick={() => {
-                            setRequest(beforeImprove);
-                            setBeforeImprove(null);
-                            setImproveNote('');
-                        }}
-                    >
-                        Undo
-                    </button>
-                </p>
-            )}
             {(voice.listening || voice.error) && (
                 <p className={`fl-voice ${voice.error ? 'warn' : ''}`} role='status'>
                     {voice.error ||

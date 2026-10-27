@@ -135,7 +135,10 @@ export function classifyIntent(
 
     // "how many hours per semester to graduate in spring 2029", "what if I take 12 summer credits",
     // "how many semesters do I have left": answered by the graduation calculator
-    const buildsSomething = /\b(?:build|make|create|find)\b[^.?!]*\b(?:schedule|classes|courses)\b/.test(t);
+    const buildsSomething =
+        /\b(?:build|make|create|find|give me|plan out|put together|suggest|recommend)\b[^.?!]*\b(?:schedule|classes|courses|electives|sections|semester plan)\b/.test(
+            t
+        );
     const whatIfSummer =
         /\bwhat if\b|\bif i (?:take|took|did|do)\b/.test(t) && /\bsummers?\b/.test(t)
             ? t.match(/\b(\d{1,2}) (?:summer )?(?:credits?|hours?)\b/)
@@ -146,6 +149,9 @@ export function classifyIntent(
         (/\b(?:per|a|each) semester\b[^.?!]*\b(?:graduat|finish|spring|fall|summer|20\d\d)/.test(t) ||
             /\b(?:graduat|finish)\w*\b[^.?!]*\b(?:per|a|each) semester\b/.test(t) ||
             /\bhow many (?:more )?(?:long |regular )?semesters?\b/.test(t) ||
+            (/\bhow many (?:credits?|hours?|credit hours?)\b/.test(t) &&
+                (/\bsummers?\b/.test(t) || /\bsemesters\b/.test(message.toLowerCase())) &&
+                !/\bthis semester\b/.test(t)) ||
             /\bsemesters? (?:left|remain)/.test(t))
     )
         return { kind: 'graduation-plan' };
@@ -191,13 +197,27 @@ export function classifyIntent(
         return { kind: 'degree-planning' };
     const scheduleWords =
         /\b(?:schedule|classes|class|courses|course|credits?|hours?|semester|online|async|in[- ]person|mornings?|afternoons?|evenings?|mon|tue|wed|thu|fri|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|mwf|tth|back[- ]to[- ]back|gaps?|easier|harder|remove|drop|add|replace|swap|instead|acc)\b/;
-    if (scheduleWords.test(t) || opts.hasPlan) {
-        // a plain question about something else stays a conversation even with a plan open
-        if (/^(?:what|why|how|who|when|explain|tell me about|can you explain)\b/.test(t) && !scheduleWords.test(t))
-            return { kind: 'chat' };
-        return { kind: 'schedule' };
-    }
+    // a change to the plan on screen ("remove history", "no Fridays", "make it easier", "Wednesdays are fine")
+    const changesPlan =
+        /\b(?:remove|drop|add|replace|swap|instead|easier|harder|keep|only|no (?:classes|class|mon|tue|wed|thu|fri|mornings?|afternoons?|evenings?|online|gaps)|(?:are|is) (?:fine|ok(?:ay)?)|more online|fewer|less|back[- ]to[- ]back)\b/.test(
+            t
+        );
+    // questions are answered, never turned into a schedule, unless they ask for one
+    if (isQuestion(t) && !buildsSomething && !(opts.hasPlan && changesPlan)) return { kind: 'chat' };
+    if (scheduleWords.test(t) || (opts.hasPlan && changesPlan)) return { kind: 'schedule' };
     return { kind: 'chat' };
+}
+
+/** A question, wherever it is phrased ("Based on my credits, how many would I need…"), not only at the start. */
+export function isQuestion(text: string): boolean {
+    const t = text.toLowerCase();
+    return (
+        /\?/.test(t) ||
+        /^(?:how|what|which|when|why|who|where|can|could|should|would|will|do|does|did|is|are|am)\b/.test(t.trim()) ||
+        /\b(?:how (?:many|much|long|do|can|would|should)|what (?:is|are|would|should|if)|can i|could i|should i|would i|do i need|am i|is it|is there|are there)\b/.test(
+            t
+        )
+    );
 }
 
 /** A schedule request that also asks degree-level questions (graduation timing, summers, ACC strategy, tips). */
