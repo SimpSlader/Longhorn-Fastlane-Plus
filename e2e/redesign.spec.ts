@@ -658,6 +658,49 @@ test('the microphone keeps listening through pauses until 5 seconds of silence o
     );
 });
 
+test('"Improve" rewrites a draft for the planner, can be undone, and never sends it', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const improveCalls: Array<{ draft: string }> = [];
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/improve', async route => {
+        improveCalls.push(route.request().postDataJSON() as { draft: string });
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+            body: JSON.stringify({
+                improved:
+                    'Build me a 15-credit-hour schedule with no Friday classes, 1–2 fully online (asynchronous) classes, and classes with high historical A rates.',
+                changes: ['Spelled out Friday', 'Clarified online classes'],
+            }),
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    const box = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    const improve = page.getByRole('button', { name: 'Improve my message' });
+    await box.fill('15 easy creds no fri, 1-2 async');
+    // before AI is set up it tidies the wording locally
+    await improve.click();
+    await expect(box).toHaveValue('15 easy credits no Friday, 1-2 fully online (asynchronous).');
+    await expect(page.getByRole('status').filter({ hasText: 'Turn on AI below' })).toBeVisible();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(box).toHaveValue('15 easy creds no fri, 1-2 async');
+    expect(improveCalls).toHaveLength(0);
+
+    // with AI on, the draft (only) is rewritten by the server and shown for review
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    await improve.click();
+    await expect(box).toHaveValue(/^Build me a 15-credit-hour schedule with no Friday classes/);
+    await expect(page.getByRole('status').filter({ hasText: 'Clarified: Spelled out Friday' })).toBeVisible();
+    expect(improveCalls[0]?.draft).toBe('15 easy creds no fri, 1-2 async');
+    // nothing was sent to the planner
+    await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.me')).toHaveCount(0);
+    await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/improve.png' });
+});
+
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);

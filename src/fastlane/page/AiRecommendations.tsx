@@ -55,6 +55,7 @@ import {
     validateSchedule,
 } from '../core/scheduleSolver';
 import { isConfirmedSection, type SectionRecord, semesterKey, subjectOf } from '../core/sections';
+import { tidyMessage } from '../core/tidyMessage';
 import { subjectForCode, UT_SUBJECTS } from '../data/subjects';
 import { aiErrorMessage, postAi, recordUsage } from '../services/aiClient';
 import { createPlanningSchedule } from '../services/planningService';
@@ -181,6 +182,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [saveNote, setSaveNote] = useState('');
     const textRef = useRef<HTMLTextAreaElement>(null);
     const voice = useDictation(request, setRequest);
+    // "Improve my message": the draft before the rewrite (for Undo) and what was clarified
+    const [improving, setImproving] = useState(false);
+    const [beforeImprove, setBeforeImprove] = useState<string | null>(null);
+    const [improveNote, setImproveNote] = useState('');
     // preferences carry over between follow-ups; the message being typed is included before it is sent
     // saved memory comes first, so anything said in this chat can still override it
     const memory = FastlaneMemoryStore.useStore(s => s.items) ?? [];
@@ -823,8 +828,49 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         }
     };
 
+    /** Rewrites the draft so the planner understands it; never sends it, and never adds a preference. */
+    const improve = async () => {
+        const draft = request.trim();
+        if (!draft || improving || busy) return;
+        const code = savedCode || inviteCode.trim();
+        setBeforeImprove(request);
+        if (!consent || !code) {
+            setRequest(tidyMessage(draft));
+            setImproveNote('Tidied the wording. Turn on AI below for a fuller rewrite.');
+            return;
+        }
+        setImproving(true);
+        try {
+            const { response, payload } = await postAi<{
+                improved?: string;
+                changes?: string[];
+                error?: string;
+                retryAfterSeconds?: number;
+            }>('improve', 'improve', {
+                accessCode: code,
+                draft,
+                plan: proposal?.sections.map(x => x.courseCode) ?? [],
+            });
+            if (!response.ok || !payload.improved) throw new Error(aiErrorMessage(response.status, payload));
+            setRequest(payload.improved);
+            setImproveNote(
+                payload.changes?.length ? `Clarified: ${payload.changes.join('; ')}.` : 'Clarified your message.'
+            );
+        } catch (failure) {
+            setRequest(tidyMessage(draft));
+            setImproveNote(
+                `${failure instanceof Error ? failure.message : 'The AI rewrite is unavailable.'} Tidied the wording instead.`
+            );
+        } finally {
+            setImproving(false);
+            textRef.current?.focus();
+        }
+    };
+
     const run = async (override?: string) => {
         if (busy) return;
+        setBeforeImprove(null);
+        setImproveNote('');
         if (await handleMemory((override ?? request).trim())) return;
         const asked = (override ?? request).trim();
         const kind = asked
@@ -1606,7 +1652,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         <span className='small'>
                             I agree to send my unfinished requirement descriptions, completed course codes, hour totals
                             computed from my IDA, my saved memory and preferences, my typed request and public course
-                            details to Fastlane's server and Groq. No name, EID, grades or full IDA file is sent.
+                            details to Fastlane's server and its free AI providers (Groq, or Cloudflare; Gemini gets no
+                            student data). No name, EID, grades or full IDA file is sent.
                         </span>
                     </label>
                 </div>
@@ -1648,6 +1695,18 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     }
                     aria-label='Ask Fastlane for class recommendations'
                 />
+                {!busy && (
+                    <button
+                        type='button'
+                        className='fl-improve'
+                        aria-label='Improve my message'
+                        title='Rewrite your message so Fastlane understands it better (you review it before sending)'
+                        disabled={improving || request.trim().split(/\s+/).length < 2}
+                        onClick={() => void improve()}
+                    >
+                        {improving ? '…' : '✨ Improve'}
+                    </button>
+                )}
                 {voice.supported && !busy && (
                     <button
                         type='button'
@@ -1691,6 +1750,22 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     </button>
                 )}
             </div>
+            {beforeImprove != null && improveNote && (
+                <p className='fl-voice' role='status'>
+                    {improveNote} Review it, then send.{' '}
+                    <button
+                        type='button'
+                        className='fl-link'
+                        onClick={() => {
+                            setRequest(beforeImprove);
+                            setBeforeImprove(null);
+                            setImproveNote('');
+                        }}
+                    >
+                        Undo
+                    </button>
+                </p>
+            )}
             {(voice.listening || voice.error) && (
                 <p className={`fl-voice ${voice.error ? 'warn' : ''}`} role='status'>
                     {voice.error ||

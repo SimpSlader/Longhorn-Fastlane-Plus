@@ -19,7 +19,17 @@ const inFlight = new Map();
 /** Complexity 1–5 for a task, nudged up for very large inputs. */
 export function complexity(task, inputChars = 0) {
     const base =
-        { test: 1, chat: 2, explain: 2, 'audit-review': 3, filter: 3, advise: 4, recommend: 4, optimize: 5 }[task] ?? 3;
+        {
+            test: 1,
+            improve: 2,
+            chat: 2,
+            explain: 2,
+            'audit-review': 3,
+            filter: 3,
+            advise: 4,
+            recommend: 4,
+            optimize: 5,
+        }[task] ?? 3;
     return Math.min(5, base + (inputChars > 40000 ? 1 : 0));
 }
 
