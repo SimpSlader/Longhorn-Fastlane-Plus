@@ -5,7 +5,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const dist = 'dist';
@@ -13,6 +13,11 @@ const out = 'package';
 const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const name = `${pkg.name}-${pkg.version}.zip`;
+// A personal installation stamp may contain a private invite code. Never distribute it.
+if (existsSync(join(dist, 'fastlane-dev-build.json'))) {
+    console.error('Refusing to package a private local installation stamp. Rebuild with `pnpm build`.');
+    process.exit(1);
+}
 // store packages must never contain the local self-reload helper
 for (const f of readdirSync(join(dist, 'assets'))) {
     if (f.endsWith('.js') && readFileSync(join(dist, 'assets', f), 'utf8').includes('fastlane-dev-build.json')) {

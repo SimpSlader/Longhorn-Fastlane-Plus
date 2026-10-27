@@ -108,3 +108,47 @@ test('local build waits while a UT registration page is open instead of reloadin
         await context.close();
     }
 });
+
+test('personal local installation enables AI without asking for an invite code or opting into data sharing', async () => {
+    test.skip(!isLocalBuild(), 'personal access is only configured by the local installer');
+    const folder = mkdtempSync(join(tmpdir(), 'fastlane-personal-'));
+    cpSync(EXTENSION, folder, { recursive: true });
+    writeFileSync(
+        join(folder, STAMP),
+        JSON.stringify({ buildId: 'personal-test', aiAccessCode: 'personal-local-test-code' })
+    );
+    const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'fastlane-e2e-')), {
+        headless: true,
+        ...(process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : { channel: 'chromium' }),
+        args: [`--disable-extensions-except=${folder}`, `--load-extension=${folder}`],
+    });
+    try {
+        const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+        const id = new URL(sw.url()).host;
+        const page = await context.newPage();
+        await page.goto(`chrome-extension://${id}/fastlane.html#audit`);
+        await expect
+            .poll(async () =>
+                page.evaluate(
+                    async () =>
+                        (await chrome.storage.local.get('FastlaneAiAccess:accessCode'))['FastlaneAiAccess:accessCode']
+                )
+            )
+            .toBe('personal-local-test-code');
+        await page
+            .locator('input[type=file]')
+            .setInputFiles(join(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
+        await page.getByText('Check unclear items with AI (optional)').click();
+        await page.getByRole('button', { name: 'Review with AI' }).click();
+        await expect(page.getByPlaceholder('Enter once to enable AI')).toHaveCount(0);
+        await expect(page.getByText('AI access saved on this device.')).toBeVisible();
+        await expect(page.getByRole('checkbox').last()).not.toBeChecked();
+        await expect(page.getByRole('button', { name: 'Check requirements with AI' })).toBeDisabled();
+        await page.goto(`chrome-extension://${id}/fastlane.html#recommend`);
+        await expect(page.getByLabel('Beta invite code (not your Groq API key)')).toHaveCount(0);
+        await page.reload();
+        await expect(page.getByLabel('Beta invite code (not your Groq API key)')).toHaveCount(0);
+    } finally {
+        await context.close();
+    }
+});

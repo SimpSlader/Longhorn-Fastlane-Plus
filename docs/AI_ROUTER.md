@@ -101,3 +101,7 @@ Settings → **AI assistant** shows, without keys or prompts:
 ### Model availability
 
 Gemini 2.5 Flash is no longer available to new API users. Fastlane uses Gemini 3.8 Flash and Gemini 3.1 Flash-Lite, with their supported reasoning levels. Both have a free tier; project-specific limits in AI Studio take precedence over the router's starting ceilings. See https://ai.google.dev/gemini-api/docs/pricing and https://ai.google.dev/gemini-api/docs/openai.
+
+### Personal local installation
+
+A private local installation can set the optional `aiInviteCodeFile` path in git-ignored `fastlane.local.json`. The local sync script reads that file into the private installation stamp; the local background helper saves the invite code to the existing access store automatically. This hides the one-time invite field without changing the hosted API authentication or student-data consent. No code value is written to tracked source or public build output. The installer refuses web-accessible stamps, and packaging refuses private installation stamps.

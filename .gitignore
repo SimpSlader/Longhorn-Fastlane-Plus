@@ -231,3 +231,6 @@ reports/
 
 # Fastlane local machine configuration (paths, Chrome profile, extension ID) — never commit
 fastlane.local.json
+
+# Private local installation stamp (may contain the owner invite code)
+fastlane-dev-build.json
