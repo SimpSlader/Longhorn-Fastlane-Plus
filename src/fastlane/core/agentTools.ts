@@ -472,17 +472,10 @@ async function describePlan(
             ),
             general: await Promise.all(backups.general.map(brief)),
         },
-        rulesFollowed: {
-            credits: `${c.minCredits}–${c.maxCredits}`,
-            noClassesOn: c.avoidDays,
-            online: c.online,
-            backToBack: c.backToBack,
-            excludedSubjects: c.excludedSubjects,
-        },
         couldNotInclude: missing.length
             ? missing.map(subj => `${subj}: no listed section fits around the rest of the rules`)
             : [],
-        note: 'Seats are not checked live; confirm on UT’s course schedule. Shown on the student’s calendar with backups.',
+        note: 'On the calendar with backups. Seats not checked live.',
     };
 }
 

@@ -927,6 +927,46 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     await expect(proposal).toBeVisible();
 });
 
+test('when the free AI limit is hit for the minute, the chat waits and continues instead of failing', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    const cors = { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` };
+    let calls = 0;
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/agent', route => {
+        calls += 1;
+        return calls === 1
+            ? route.fulfill({
+                  status: 429,
+                  contentType: 'application/json',
+                  headers: { ...cors, 'Retry-After': '2' },
+                  body: JSON.stringify({
+                      error: 'The free AI quota is used up for this minute.',
+                      retryAfterSeconds: 2,
+                  }),
+              })
+            : route.fulfill({
+                  status: 200,
+                  contentType: 'application/json',
+                  headers: cors,
+                  body: JSON.stringify({ type: 'answer', text: 'Summer classes can help you graduate early.' }),
+              });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    await page
+        .getByRole('textbox', { name: 'Ask Fastlane for class recommendations' })
+        .fill('Is it worth taking summer classes?');
+    await page.getByRole('button', { name: 'Send message' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Waiting for the free AI limit to reset' })).toBeVisible();
+    const log = page.getByRole('log', { name: 'Planning conversation' });
+    await expect(log.locator('.bubble.bot').last()).toContainText('Summer classes can help', { timeout: 10_000 });
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(calls).toBe(2);
+});
+
 test('Degree progress shows simple cards built from the real IDA', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#audit`);

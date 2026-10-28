@@ -15,7 +15,7 @@ export const MODELS = [
         model: 'openai/gpt-oss-20b',
         label: 'GPT-OSS 20B (Groq)',
         tier: 'fast',
-        maxLevel: 3,
+        maxLevel: 4,
         context: 131072,
         nativeJson: true,
         latencyMs: 900,

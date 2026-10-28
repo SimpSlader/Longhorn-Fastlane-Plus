@@ -67,7 +67,8 @@ describe('which model a request goes to', () => {
         expect(simple.ranked[0].model.id).toBe('groq:openai/gpt-oss-20b');
         const hard = await rankModels({ ...plan, level: 4, needsJson: true }, env);
         expect(hard.ranked[0].model.id).toBe('groq:openai/gpt-oss-120b');
-        expect(hard.ranked.map(r => r.model.id)).not.toContain('groq:openai/gpt-oss-20b');
+        // the smaller model is a fallback for planning (its own per-minute limit), ranked below
+        expect(hard.ranked.map(r => r.model.id)).toEqual(['groq:openai/gpt-oss-120b', 'groq:openai/gpt-oss-20b']);
     });
 
     it('prefers Gemini for complex planning only when it may see student data', async () => {
@@ -283,5 +284,33 @@ describe('no false "no model available"', () => {
         expect(out.ok).toBe(false);
         expect(out.error.message).toMatch(/Groq: turned off in your settings/);
         expect(out.error.message).toMatch(/Gemini: Add GEMINI_API_KEY in Vercel/);
+    });
+});
+
+describe('per-minute limits', () => {
+    it('waits out a short Groq rate limit and retries the same model', async () => {
+        const calls = network({
+            groq: [() => failure(429, { 'retry-after': '1' }), () => reply('{"ok":true}')],
+        });
+        const out = await routeAI(plan, { GROQ_API_KEY: 'k' });
+        expect(out.ok).toBe(true);
+        expect(calls.map(c => c.model)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-120b']);
+        expect(out.meta.attempts.map(a => a.outcome)).toEqual(['rate_limit_waited', 'ok']);
+    });
+
+    it('a longer limit moves to the other Groq model, and the message says it is the free quota', async () => {
+        const calls = network({
+            groq: [
+                b => (b.model === 'openai/gpt-oss-120b' ? failure(429, { 'retry-after': '40' }) : reply('{"ok":true}')),
+            ],
+        });
+        const out = await routeAI(plan, { GROQ_API_KEY: 'k' });
+        expect(out.ok).toBe(true);
+        expect(out.meta.model).toBe('groq:openai/gpt-oss-20b');
+        expect(calls.map(c => c.model)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+        resetMemoryStore();
+        network({ groq: [() => failure(429, { 'retry-after': '40' })] });
+        const none = await routeAI(plan, { GROQ_API_KEY: 'k' });
+        expect(none.error.message).toMatch(/free AI quota is used up for this minute/);
     });
 });

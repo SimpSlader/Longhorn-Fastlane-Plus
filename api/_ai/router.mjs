@@ -360,6 +360,18 @@ async function dispatch(request, routing, level, cacheKey, env) {
             } catch (e) {
                 const err = e instanceof ProviderError ? e : new ProviderError('invalid_output', 'Unreadable reply.');
                 attempts.push({ model: model.id, outcome: err.category });
+                // a short per-minute limit ("try again in 9 s"): wait it out once and retry the same model
+                if (
+                    err.category === 'rate_limit' &&
+                    tryNo === 0 &&
+                    err.retryAfterMs > 0 &&
+                    err.retryAfterMs <= 12000 &&
+                    Date.now() + err.retryAfterMs < deadline - 6000
+                ) {
+                    attempts[attempts.length - 1].outcome = 'rate_limit_waited';
+                    await sleep(err.retryAfterMs + 300);
+                    continue;
+                }
                 if (err.category === 'rate_limit') {
                     const wait = Math.max(err.retryAfterMs || 60000, 5000);
                     rateLimitedUntil = rateLimitedUntil
@@ -412,7 +424,9 @@ async function dispatch(request, routing, level, cacheKey, env) {
         error: {
             category: ranked.length ? 'all_failed' : 'none_available',
             message: ranked.length
-                ? 'Every free AI model is busy or failing right now. Nothing was charged; try again shortly.'
+                ? attempts.some(a => a.outcome === 'rate_limit' || a.outcome === 'rate_limit_waited')
+                    ? 'The free AI quota is used up for this minute (Groq allows a limited number of words per minute on its free plan). Nothing was charged.'
+                    : 'Every free AI model is failing right now. Nothing was charged; try again shortly.'
                 : `No free AI model can take this request right now. ${whyNone(skipped)} Nothing was charged.`,
             retryAfterSeconds,
         },

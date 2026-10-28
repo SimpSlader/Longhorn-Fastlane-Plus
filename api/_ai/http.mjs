@@ -109,7 +109,9 @@ export function routingFrom(body) {
 
 /** A failed routing becomes 429 (rate limits, with Retry-After) or 503, never a fake success. */
 export function sendUnavailable(res, result) {
-    const rateLimited = result.meta?.attempts?.some(a => a.outcome === 'rate_limit');
+    const rateLimited = result.meta?.attempts?.some(
+        a => a.outcome === 'rate_limit' || a.outcome === 'rate_limit_waited'
+    );
     return send(
         res,
         rateLimited ? 429 : 503,
