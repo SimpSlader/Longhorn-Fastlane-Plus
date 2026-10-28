@@ -26,7 +26,7 @@ interface AgentReply {
 }
 
 const MAX_ROUNDS = 8;
-const MAX_RESULT_CHARS = 7000;
+const MAX_RESULT_CHARS = 4000;
 
 export async function runCopilot(opts: {
     accessCode: string;
@@ -43,12 +43,29 @@ export async function runCopilot(opts: {
     let meta: AiMeta | undefined;
     for (let step = 0; step <= MAX_ROUNDS; step++) {
         opts.onProgress?.(step === 0 ? 'Thinking…' : 'Putting it together…');
-        const { response, payload } = await postAi<AgentReply>(
+        let reply = await postAi<AgentReply>(
             'agent',
             'agent',
             { accessCode: opts.accessCode, messages: transcript, context: { ...opts.context, steps: step } },
             opts.signal
         );
+        // Groq's free plan allows a limited number of words per minute: wait briefly and continue (twice at most)
+        for (let waits = 0; reply.response.status === 429 && waits < 2; waits++) {
+            const seconds = Math.min(20, Math.max(2, Math.ceil(reply.payload.retryAfterSeconds ?? 10)));
+            if ((reply.payload.retryAfterSeconds ?? 10) > 20) break;
+            for (let left = seconds; left > 0; left--) {
+                opts.onProgress?.(`Waiting for the free AI limit to reset (${left} s)…`);
+                await new Promise(ok => setTimeout(ok, 1000));
+                if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+            }
+            reply = await postAi<AgentReply>(
+                'agent',
+                'agent',
+                { accessCode: opts.accessCode, messages: transcript, context: { ...opts.context, steps: step } },
+                opts.signal
+            );
+        }
+        const { response, payload } = reply;
         if (!response.ok)
             throw Object.assign(new Error(aiErrorMessage(response.status, payload)), { status: response.status });
         meta = payload.meta ?? meta;
