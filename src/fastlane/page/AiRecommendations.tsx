@@ -17,6 +17,7 @@ import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
+import { guardReply } from '../core/claimGuard';
 import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
 import type { GradeStat } from '../core/grades';
 import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
@@ -37,6 +38,8 @@ import type { DayCode } from '../core/meetings';
 import { formatMeeting } from '../core/meetings';
 import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/memory';
 import { composeReply, quickReplies } from '../core/plannerReply';
+import { constraintsFromRules, statedRules } from '../core/plannerRules';
+import { type ValidationReport, validatePlan } from '../core/planValidator';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
 import {
@@ -362,6 +365,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const modelRef = useRef(model);
     // the schedule on screen as the copilot built it (its rules and candidate pool), for follow-up changes
     const copilotBuild = useRef<ToolContext['current']>(null);
+    const copilotSeq = useRef(0);
     const versionIndexRef = useRef(0);
     modelRef.current = model;
     versionIndexRef.current = versionIndex;
@@ -563,6 +567,21 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }),
         }));
     const validation = proposal ? validateSchedule(proposal.sections, constraints, factsById) : null;
+    // the independent validator's verdict for what is on screen: the only thing that may say "All rules met"
+    const report = useMemo<ValidationReport | null>(
+        () =>
+            proposal
+                ? (proposal.validation ??
+                  validatePlan(proposal.sections, constraints, {
+                      applies: s => factsById.get(s.uniqueId)?.applies ?? [],
+                      auditAvailable: !!audit,
+                      pendingCredit: audit?.transfer.pending.map(p => p.code) ?? [],
+                      catalog,
+                  }))
+                : null,
+        // biome-ignore lint/correctness/useExhaustiveDependencies: constraints derives from copilotRules and prefs
+        [proposal, constraints, factsById, audit, catalog]
+    );
 
     // --- backups beside the proposed week: same-kind classes, a safe big course, and general backups
     const outstanding = useMemo(() => (audit ? outstandingTags(audit) : []), [audit]);
@@ -1114,7 +1133,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Puts a copilot-built schedule on the calendar as a new version (safe to call several times in a row). */
-    const showPlan = (sections: SectionRecord[], note: string) => {
+    const showPlan = (
+        sections: SectionRecord[],
+        note: string,
+        validationReport?: ValidationReport,
+        rules?: ScheduleConstraints
+    ) => {
         setVersions(prev => {
             const base = prev[versionIndexRef.current]?.sections ?? [];
             const kept = prev.length ? prev.slice(0, versionIndexRef.current + 1) : [];
@@ -1123,6 +1147,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 sections,
                 note,
                 ...diffSections(base, sections),
+                validation: validationReport,
+                constraints: rules,
             };
             versionIndexRef.current = kept.length;
             setVersionIndex(kept.length);
@@ -1136,6 +1162,15 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const copilot = async (text: string, shown: string, code: string): Promise<boolean> => {
         const controller = new AbortController();
         abortRef.current = controller;
+        // a newer instruction makes this answer stale: its schedule and text are dropped, never shown
+        const mySeq = ++copilotSeq.current;
+        const isStale = () => copilotSeq.current !== mySeq || controller.signal.aborted;
+        let lastReport: ValidationReport | null = null;
+        // hard rules in the student's own words (and remembered ones) — the model can add detail, never loosen them
+        const stated = constraintsFromRules(
+            statedRules([...memory, ...history_.map(h => h.context), shown], subjectCodes, UT_SUBJECTS),
+            actualTerm
+        );
         setBusy(true);
         setError('');
         setLastKind('schedule');
@@ -1172,6 +1207,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             },
             signal: controller.signal,
             onProgress: setProgress,
+            stated,
+            isStale,
         };
         try {
             const out = await runCopilot({
@@ -1198,9 +1235,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 onProgress: setProgress,
                 execute: async call => {
                     const outcome = await runTool(call.name, call.arguments, { ...ctx, current: ctx.current });
-                    if (outcome.plan) {
-                        const { sections, note, constraints, pool: planPool } = outcome.plan;
-                        showPlan(sections, note);
+                    if (outcome.plan && !isStale()) {
+                        const { sections, note, constraints, pool: planPool, validation: planReport } = outcome.plan;
+                        lastReport = planReport;
+                        showPlan(sections, note, planReport, constraints);
                         copilotBuild.current = { sections, constraints, pool: planPool };
                         setCopilotRules(constraints);
                         ctx.current = { sections, constraints, pool: planPool };
@@ -1228,9 +1266,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     return outcome.result;
                 },
             });
+            if (isStale()) return true;
             say(
                 shown,
-                out.text,
+                guardReply(out.text, lastReport),
                 shown,
                 'chat',
                 diagnose(
@@ -2028,6 +2067,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 {proposal && (
                     <ProposalPanel
                         validation={validation}
+                        report={report}
                         minCredits={constraints.minCredits}
                         onFill={() => void solveLocally('fill')}
                         canFill={pool.size > 0}
@@ -2035,6 +2075,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         index={versionIndex}
                         count={versions.length}
                         onVersion={i => {
+                            // Undo/Redo restore the rules that version was built under, not just its classes
+                            const restored = versions[i]?.constraints;
+                            if (restored && versions[i]) {
+                                setCopilotRules(restored);
+                                copilotBuild.current = {
+                                    sections: versions[i]!.sections,
+                                    constraints: restored,
+                                    pool: copilotBuild.current?.pool ?? [],
+                                };
+                            }
                             setVersionIndex(i);
                             setSaveNote('');
                         }}

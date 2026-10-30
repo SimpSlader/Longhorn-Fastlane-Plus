@@ -14,9 +14,13 @@
  *  - When no schedule satisfies every hard constraint, it says exactly why and what to change instead of
  *    returning something invalid.
  */
+
+import { type GpaEstimate, gpaScore } from './gpaModel';
 import type { DayCode, Meeting } from './meetings';
+import { assignRequirements, fillableTags } from './requirementFit';
 import { normalizeCourseCode } from './requirements';
 import { type SectionRecord, semesterKey, subjectOf } from './sections';
+import { campusTravelMinutes, type TravelEstimator, travelInfeasible } from './travel';
 
 export const MIN_CREDITS = 12;
 export const DEFAULT_MAX_CREDITS = 16;
@@ -43,6 +47,24 @@ export interface ScheduleConstraints {
     timeWindow?: { from: number; to: number } | null;
     /** one day allowed only part of the time ("Friday mornings are fine"), minutes */
     dayLimits?: Partial<Record<DayCode, { from?: number; to?: number }>>;
+    /**
+     * Hard: every class must fill an outstanding Core requirement of its own (a class that advances nothing, or
+     * repeats a requirement another class already fills, is never added to reach a credit target).
+     */
+    coreOnly?: boolean;
+    /** Hard: exactly this many classes per subject, e.g. { UGS: 1 } */
+    subjectCounts?: Record<string, number>;
+    /** Hard: at most this many fully asynchronous online classes ("up to two online") */
+    maxOnline?: number;
+    /** Hard: specific sections ruled out (e.g. the ones already shown, for "another option") */
+    excludedSections?: number[];
+    /** false skips walking-time checks (default true) */
+    checkTravel?: boolean;
+    /**
+     * Where requirement matches come from: the imported degree audit, or only the section listing's Core column
+     * (then nothing can be called degree-audit-verified).
+     */
+    requirementSource?: 'audit' | 'listing';
 }
 
 export interface SolverCandidate {
@@ -66,6 +88,8 @@ export type HardReason =
     | 'times-unknown'
     | 'no-credit'
     | 'graduate'
+    | 'excluded-section'
+    | 'no-requirement'
     | 'prerequisite';
 
 const DAY_WORD: Record<DayCode, string> = {
@@ -104,6 +128,7 @@ export function hardReason(
     if (c.excludedSubjects.includes(subjectOf(s.courseCode))) return 'excluded-subject';
     if (c.excludedTitleWords.some(w => titleHas(s.title, w))) return 'excluded-title';
     if (c.excludedCourses.includes(normalizeCourseCode(s.courseCode))) return 'excluded-course';
+    if (c.excludedSections?.includes(s.uniqueId)) return 'excluded-section';
     if (!isAsync(s)) {
         // anything that is not fully asynchronous must have known meeting times to be checked at all
         if (!s.meetings.length) return 'times-unknown';
@@ -189,6 +214,8 @@ export function scoreSection(input: {
     creditHours?: number;
     courseCode?: string;
     prerequisite?: SolverCandidate['prerequisite'];
+    /** confidence-aware GPA outlook; replaces the raw A-rate when present */
+    gpa?: GpaEstimate | null;
 }): number {
     let score = 0;
     const verified = input.applies.length > 0;
@@ -198,9 +225,12 @@ export function scoreSection(input: {
     if (input.prerequisite === 'check') score -= 1.5;
     const core = input.applies.some(t => /^core\b/i.test(t));
     if (input.applies.length) score += input.coreFocus ? (core ? 7 : 2.5) : 4.5;
-    const n = Math.max(0, input.gradeSample);
-    const shrunk = input.gradePercent == null ? 60 : (input.gradePercent * n + 65 * 20) / (n + 20);
-    score += (shrunk - 50) * (input.easyGrades ? 0.14 : 0.03);
+    if (input.gpa !== undefined) score += gpaScore(input.gpa, input.easyGrades ? 1 : 0.2);
+    else {
+        const n = Math.max(0, input.gradeSample);
+        const shrunk = input.gradePercent == null ? 60 : (input.gradePercent * n + 65 * 20) / (n + 20);
+        score += (shrunk - 50) * (input.easyGrades ? 0.14 : 0.03);
+    }
     if (input.aiPicked) score += 1.5;
     if (input.coreFocus && !core && input.possibleCore) score += 1.5;
     return score;
@@ -283,7 +313,7 @@ export function validateSchedule(
 export interface ScheduleSuggestion {
     text: string;
     /** the settings change it proposes, applied when the student clicks it */
-    patch: Partial<Pick<ScheduleConstraints, 'avoidDays' | 'maxCredits' | 'online' | 'excludedSubjects'>>;
+    patch: Partial<Pick<ScheduleConstraints, 'avoidDays' | 'maxCredits' | 'online' | 'excludedSubjects' | 'coreOnly'>>;
 }
 
 export interface NoScheduleReport {
@@ -326,6 +356,8 @@ export async function solveSchedule(
         stableWeight?: number;
         maxNodes?: number;
         keep?: number;
+        /** walking-time estimate (injectable for tests); defaults to the campus walkway graph */
+        travel?: TravelEstimator;
         /** counts of sections removed by each hard rule over the whole catalog, for the explanation */
         removedBy?: Partial<Record<HardReason, number>>;
     } = {}
@@ -349,6 +381,28 @@ export async function solveSchedule(
                 (options.stable?.has(b.section.uniqueId) ? stableWeight : 0) -
                 (a.score + (options.stable?.has(a.section.uniqueId) ? stableWeight : 0))
         );
+
+    const estimate: TravelEstimator = options.travel ?? campusTravelMinutes;
+    const travelOn = c.checkTravel !== false;
+    const appliesOf = new Map(candidates.map(x => [x.section.uniqueId, x.applies]));
+    const applies = (s: SectionRecord) => appliesOf.get(s.uniqueId) ?? [];
+    const subjectLimit = c.subjectCounts ?? {};
+    const countOf = (list: SectionRecord[], subj: string) => list.filter(s => subjectOf(s.courseCode) === subj).length;
+    /** requirement + travel rules for adding `s` next to what is already chosen */
+    const addable = (s: SectionRecord, chosenNow: SectionRecord[]): boolean => {
+        const subj = subjectOf(s.courseCode);
+        if (subj in subjectLimit && countOf(chosenNow, subj) + 1 > subjectLimit[subj]!) return false;
+        if (c.maxOnline != null && isAsync(s) && chosenNow.filter(isAsync).length + 1 > c.maxOnline) return false;
+        if (travelOn && travelInfeasible(s, chosenNow, estimate)) return false;
+        if (c.coreOnly && assignRequirements([...chosenNow, s], applies, true).unassigned.length) return false;
+        return true;
+    };
+    const subjectsMet = (list: SectionRecord[]) =>
+        Object.entries(subjectLimit).every(([k, n]) => countOf(list, k) === n);
+    // with core-only on, a class must be able to fill a core requirement at all
+    const pool0 = pool.filter(x => !c.coreOnly || fillableTags(x.applies, true).length > 0);
+    pool.length = 0;
+    pool.push(...pool0.filter(x => addable(x.section, fixed)));
 
     const fixedCredits = fixed.reduce((n, s) => n + s.creditHours, 0);
     const fixedScore = fixed.reduce(
@@ -403,7 +457,12 @@ export async function solveSchedule(
             await pause();
         }
         if (explored > maxNodes) return;
-        if (credits >= c.minCredits && credits <= c.maxCredits) record();
+        if (
+            credits >= c.minCredits &&
+            credits <= c.maxCredits &&
+            subjectsMet([...fixed, ...chosen.map(y => y.section)])
+        )
+            record();
         if (credits >= c.maxCredits || chosen.length >= 7) return;
         const slots = Math.floor((c.maxCredits - credits) / minCreditsPerClass);
         if (best.length >= keep && sum + fixedScore + slots * maxPerClass + BONUS_MAX <= best.at(-1)!.score) return;
@@ -421,6 +480,8 @@ export async function solveSchedule(
                 )
             )
                 continue;
+            const now = [...fixed, ...chosen.map(y => y.section)];
+            if (!addable(s, now)) continue;
             chosen.push(x);
             codes.add(code);
             const next = credits + s.creditHours;
@@ -477,6 +538,19 @@ function explain(
         );
     if (removedBy.prerequisite)
         reasons.push(`${removedBy.prerequisite} sections have a printed prerequisite you have not taken.`);
+    if (c.coreOnly) {
+        const fillers = new Set(
+            pool.filter(x => fillableTags(x.applies, true).length).map(x => normalizeCourseCode(x.section.courseCode))
+        );
+        reasons.push(
+            `Core-only is on: ${fillers.size} course${fillers.size === 1 ? '' : 's'} fill an outstanding core requirement and fit your other rules.`
+        );
+        suggestions.push({ text: 'Allow classes that do not count toward core', patch: { coreOnly: false } });
+    }
+    for (const [subj, n] of Object.entries(c.subjectCounts ?? {}))
+        reasons.push(
+            `Exactly ${n} ${subj} class${n === 1 ? '' : 'es'} required, and no valid week includes that many.`
+        );
     if (c.maxCredits < 15)
         suggestions.push({ text: `Widen the credit range to ${c.minCredits}–15`, patch: { maxCredits: 15 } });
     const onlineMax = c.online?.max ?? 0;

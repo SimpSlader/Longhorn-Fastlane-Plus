@@ -10,12 +10,22 @@ import type { AcademicModel } from './academicModel';
 import type { AiCandidate } from './aiCandidates';
 import { chooseAiCandidates } from './aiCandidates';
 import { type BackupPlan, buildBackups, sectionCounts } from './backups';
+import { estimateGpa, type GpaEstimate } from './gpaModel';
 import type { GradeStat } from './grades';
 import { graduationAnswer, graduationPlan, parseTerm, termName } from './graduation';
 import type { DayCode } from './meetings';
 import { formatMeeting } from './meetings';
+import { enforceStated } from './plannerRules';
+import {
+    type ValidationContext,
+    type ValidationReport,
+    validateBackup,
+    validatePlan,
+    verdictText,
+} from './planValidator';
 import { checkPrerequisites } from './prerequisites';
 import { fitsWith, refineIntent, replacementFits } from './proposal';
+import { isCoreTag } from './requirementFit';
 import { normalizeCourseCode } from './requirements';
 import type { RmpRating } from './rmp';
 import { splitProfessorName } from './rmp';
@@ -29,6 +39,8 @@ import {
     solveSchedule,
 } from './scheduleSolver';
 import { type SectionRecord, semesterKey, subjectOf } from './sections';
+import { validateBuildArgs, validateModifyArgs } from './toolArgs';
+import type { TravelEstimator } from './travel';
 
 export interface ToolContext {
     catalog: SectionRecord[];
@@ -46,13 +58,27 @@ export interface ToolContext {
     remember: (fact: string) => Promise<void>;
     signal?: AbortSignal;
     onProgress?: (text: string) => void;
+    /** hard rules the student stated in their own words (deterministic parse); the model cannot loosen them */
+    stated?: ScheduleConstraints;
+    /** walking-time estimate (tests inject one) */
+    travel?: TravelEstimator;
+    /** true when a newer instruction has arrived: results are dropped, never shown */
+    isStale?: () => boolean;
+    now?: number;
 }
 
 export interface ToolOutcome {
     /** what the model sees (kept small) */
     result: unknown;
     /** a schedule to put on the calendar */
-    plan?: { sections: SectionRecord[]; note: string; constraints: ScheduleConstraints; pool: SolverCandidate[] };
+    plan?: {
+        sections: SectionRecord[];
+        note: string;
+        constraints: ScheduleConstraints;
+        pool: SolverCandidate[];
+        /** the independent validator's verdict for exactly these sections */
+        validation: ValidationReport;
+    };
 }
 
 const WEEKDAYS: DayCode[] = ['M', 'T', 'W', 'TH', 'F'];
@@ -302,6 +328,11 @@ function constraintsFrom(
     const maxC = Math.max(minC, Number(args.maxCredits ?? credits.max ?? base?.maxCredits ?? 16) || 16);
     const onlineMin = args.onlineMin != null ? Number(args.onlineMin) : null;
     const onlineMax = args.onlineMax != null ? Number(args.onlineMax) : null;
+    const counts: Record<string, number> = { ...(base?.subjectCounts ?? {}) };
+    for (const [k, v] of Object.entries((args.exactCounts as Record<string, number> | undefined) ?? {}))
+        counts[k.toUpperCase()] = Number(v);
+    // "include one UGS" means exactly one: a second signature course would only repeat the requirement
+    for (const subj of strings(args.includeSubjects).map(x => x.toUpperCase())) counts[subj] ??= 1;
     const from = clock(args.earliestStart);
     const to = clock(args.latestEnd);
     return {
@@ -328,11 +359,18 @@ function constraintsFrom(
         backToBack: args.backToBack != null ? !!args.backToBack : (base?.backToBack ?? false),
         timeWindow: from != null || to != null ? { from: from ?? 0, to: to ?? 24 * 60 } : (base?.timeWindow ?? null),
         dayLimits: base?.dayLimits ?? {},
+        coreOnly: args.coreOnly != null ? !!args.coreOnly : (base?.coreOnly ?? false),
+        subjectCounts: counts,
+        maxOnline: onlineMax != null ? onlineMax : base?.maxOnline,
+        excludedSections: base?.excludedSections ?? [],
+        checkTravel: true,
+        requirementSource: base?.requirementSource,
     };
 }
 
 interface Scored extends SolverCandidate {
-    grade: { percent: number; sample: number } | null;
+    grade: { percent: number; sample: number; source?: string } | null;
+    gpa?: GpaEstimate | null;
 }
 
 async function candidatePool(
@@ -354,7 +392,7 @@ async function candidatePool(
     const opts = {
         signal: ctx.signal,
         onProgress: ctx.onProgress,
-        limit: 90,
+        limit: c.coreOnly ? 140 : 90,
         asyncShare: Math.max(6, (c.online?.max ?? 2) * 5),
     };
     const chosen: AiCandidate[] = [];
@@ -365,7 +403,11 @@ async function candidatePool(
     };
     add(await chooseAiCandidates({ ...input, subject: '' }, ctx.gradeStat, opts));
     // required subjects and preferred courses are always in the pool, even if they didn't rank in the top
-    for (const subj of strings(args.includeSubjects).map(x => x.toUpperCase()))
+    const required = new Set([
+        ...strings(args.includeSubjects).map(x => x.toUpperCase()),
+        ...Object.keys(c.subjectCounts ?? {}),
+    ]);
+    for (const subj of required)
         add(await chooseAiCandidates({ ...input, subject: subj }, ctx.gradeStat, { ...opts, limit: 25 }));
     for (const code of strings(args.preferCourses).map(normalizeCourseCode)) {
         const list = eligible.filter(s => normalizeCourseCode(s.courseCode) === code);
@@ -382,10 +424,16 @@ async function candidatePool(
     const out: Scored[] = [];
     for (const [i, x] of chosen.entries()) {
         if (x.prerequisite.status === 'unmet') continue;
-        const g = grades.get(x.section.uniqueId)?.result;
+        const stat = grades.get(x.section.uniqueId);
+        const g = stat?.result;
+        // without an imported audit, only the listing's own Core tag is available — and says so
+        const applies = c.coreOnly && !ctx.audit ? x.section.requirementTags.filter(isCoreTag) : x.applies;
+        const gpa = stat?.counts
+            ? estimateGpa({ counts: stat.counts, scope: stat.scope, semesters: stat.semesters })
+            : null;
         let score = scoreSection({
-            applies: x.applies,
-            coreFocus: !!args.coreFocus,
+            applies,
+            coreFocus: !!args.coreFocus || !!c.coreOnly,
             gradePercent: g?.percent ?? null,
             gradeSample: g?.graded ?? 0,
             easyGrades: args.prioritizeGrades !== false,
@@ -393,32 +441,65 @@ async function candidatePool(
             creditHours: x.section.creditHours,
             courseCode: x.section.courseCode,
             prerequisite: x.prerequisite.status,
+            // counts give the confidence-aware model; older stats without counts keep the percentage fallback
+            gpa: gpa ?? undefined,
         });
         if (prefer.has(normalizeCourseCode(x.section.courseCode))) score += 15;
-        // professor quality counts too: look up the best-ranked candidates' ratings (cached per name)
+        // professor quality is secondary context only: a small nudge, never the GPA signal
         if (args.prioritizeRatings && ctx.rmp && i < 40) {
             const who = x.section.instructors[0] ?? '';
             if (!ratingCache.has(who)) ratingCache.set(who, await rating(ctx, who));
             const r = ratingCache.get(who);
-            if (r && typeof r.quality === 'number' && r.ratings >= 5) score += (r.quality - 3.5) * 6;
+            if (r && typeof r.quality === 'number' && r.ratings >= 5) score += (r.quality - 3.5) * 2;
         }
         out.push({
             section: x.section,
-            applies: x.applies,
+            applies,
             prerequisite: x.prerequisite.status,
             score,
-            grade: g ? { percent: Math.round(g.percent), sample: g.graded } : null,
+            grade: g ? { percent: Math.round(g.percent), sample: g.graded, source: stat?.source } : null,
+            gpa,
         });
     }
     return out;
 }
+
+function validationContext(ctx: ToolContext, pool: Scored[]): ValidationContext {
+    const byId = new Map(pool.map(p => [p.section.uniqueId, p]));
+    return {
+        applies: s => byId.get(s.uniqueId)?.applies ?? [],
+        auditAvailable: !!ctx.audit,
+        pendingCredit: ctx.audit?.transfer.pending.map(p => p.code) ?? [],
+        catalog: ctx.catalog,
+        gradeClaims: pool
+            .filter(p => p.grade)
+            .map(p => ({
+                uniqueId: p.section.uniqueId,
+                percent: p.grade!.percent,
+                sample: p.grade!.sample,
+                source: p.grade!.source ?? 'grade dataset',
+            })),
+        now: ctx.now,
+        travel: ctx.travel,
+    };
+}
+
+const compactReport = (r: ValidationReport) => ({
+    allRulesMet: r.allRulesMet,
+    hardRulesPass: r.hardOk,
+    verdict: verdictText(r),
+    checks: r.checks.map(k => `${k.status.toUpperCase()}: ${k.label} — ${k.detail}`.slice(0, 220)),
+    instruction:
+        'Report this verdict exactly. Say "all rules met" only if allRulesMet is true; otherwise list what is unverified or failed.',
+});
 
 async function describePlan(
     ctx: ToolContext,
     sections: SectionRecord[],
     pool: Scored[],
     c: ScheduleConstraints,
-    requested: string[]
+    requested: string[],
+    report: ValidationReport
 ) {
     const bySection = new Map(pool.map(p => [p.section.uniqueId, p]));
     const classes = [];
@@ -433,8 +514,19 @@ async function describePlan(
             mode: mode(s),
             instructor: s.instructors.join(', ') || 'TBA',
             historicalARate: p?.grade ?? (await aRate(ctx, s)),
+            gpaOutlook: p?.gpa
+                ? {
+                      expectedGradePoints: Number(p.gpa.expectedGradePoints.toFixed(2)),
+                      chanceOfA: Math.round(p.gpa.pA * 100),
+                      confidence: p.gpa.confidence,
+                      basis: p.gpa.rationale,
+                  }
+                : 'no historical grade data: not estimated',
             rateMyProfessors: await rating(ctx, s.instructors[0]),
             countsToward: p?.applies ?? [],
+            sectionRecord: s.listing?.asOf
+                ? `Registrar course list as of ${s.listing.asOf}`
+                : `seen on UT's site ${new Date(s.capturedAt).toISOString().slice(0, 10)}`,
             seatStatus: s.status
                 ? `${s.status.value.toLowerCase()} when viewed ${new Date(s.status.observedAt).toISOString().slice(0, 10)}`
                 : 'not checked',
@@ -449,6 +541,12 @@ async function describePlan(
         gradeOf: s => gradeMap.get(s.uniqueId) ?? null,
         sectionCounts: sectionCounts(inTerm(ctx)),
     });
+    const vctx = validationContext(ctx, pool);
+    // a backup is only offered if swapping it in leaves a schedule that passes the same hard rules
+    const passes = (b: BackupPlan['general'][number], replaces?: SectionRecord) =>
+        replaces
+            ? validateBackup(sections, replaces, b.section, c, vctx).hardOk
+            : sections.some(r => validateBackup(sections, r, b.section, c, vctx).hardOk);
     const brief = async (b: BackupPlan['general'][number]) => ({
         code: b.section.courseCode,
         unique: pad(b.section.uniqueId),
@@ -462,25 +560,109 @@ async function describePlan(
     return {
         semester: ctx.term || 'listed semester',
         totalCredits: credits,
+        validation: compactReport(report),
         classes,
         backups: {
             perClass: await Promise.all(
                 backups.perClass.map(async g => ({
                     for: g.for.courseCode,
-                    options: await Promise.all(g.backups.map(brief)),
+                    options: await Promise.all(g.backups.filter(b => passes(b, g.for)).map(brief)),
                 }))
             ),
-            general: await Promise.all(backups.general.map(brief)),
+            general: await Promise.all(backups.general.filter(b => passes(b)).map(brief)),
         },
         couldNotInclude: missing.length
             ? missing.map(subj => `${subj}: no listed section fits around the rest of the rules`)
             : [],
-        note: 'On the calendar with backups. Seats not checked live.',
+        note: 'On the calendar with backups. Every backup was re-checked against the same rules. Seats not checked live.',
     };
 }
 
-async function build(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
-    const c = constraintsFrom(args, ctx);
+/** Applies what the student actually said on top of the model's request; the model cannot loosen it. */
+function withStated(c: ScheduleConstraints, ctx: ToolContext): ScheduleConstraints {
+    const merged = ctx.stated ? enforceStated(c, ctx.stated) : c;
+    return { ...merged, requirementSource: merged.coreOnly && !ctx.audit ? 'listing' : 'audit' };
+}
+
+function badArguments(issues: Array<{ field: string; problem: string }>): ToolOutcome {
+    return {
+        result: {
+            error: 'The arguments were rejected before anything ran.',
+            issues: issues.map(i => `${i.field}: ${i.problem}`),
+            instruction: 'Call the tool again with corrected arguments. Nothing was changed.',
+        },
+    };
+}
+
+type Relaxation = { label: string; change: (c: ScheduleConstraints) => ScheduleConstraints | null };
+
+/** The one-rule-at-a-time relaxations offered (never applied) when no schedule satisfies everything. */
+function relaxations(c: ScheduleConstraints): Relaxation[] {
+    const out: Relaxation[] = [];
+    const extraDay = (['W', 'M', 'F'] as DayCode[]).find(d => c.avoidDays.includes(d));
+    if (extraDay)
+        out.push({
+            label: `Allow ${({ W: 'Wednesday', M: 'Monday', F: 'Friday' } as Record<string, string>)[extraDay]} classes`,
+            change: x => ({ ...x, avoidDays: x.avoidDays.filter(d => d !== extraDay) }),
+        });
+    if (c.coreOnly)
+        out.push({ label: 'Allow classes that do not count toward core', change: x => ({ ...x, coreOnly: false }) });
+    if (c.maxOnline != null)
+        out.push({
+            label: `Allow ${c.maxOnline + 1} asynchronous online classes`,
+            change: x => ({ ...x, maxOnline: c.maxOnline! + 1 }),
+        });
+    out.push({
+        label: `Widen credits to ${Math.max(MIN_CREDITS, c.minCredits - 1)}–${c.maxCredits + 1}`,
+        change: x => ({ ...x, minCredits: Math.max(MIN_CREDITS, c.minCredits - 1), maxCredits: c.maxCredits + 1 }),
+    });
+    if (Object.keys(c.subjectCounts ?? {}).length)
+        out.push({
+            label: `Drop the exact-count rule (${Object.entries(c.subjectCounts!)
+                .map(([k, n]) => `${n} ${k}`)
+                .join(', ')})`,
+            change: x => ({ ...x, subjectCounts: {} }),
+        });
+    if (c.checkTravel !== false)
+        out.push({
+            label: 'Allow tight walks between buildings (unchecked)',
+            change: x => ({ ...x, checkTravel: false }),
+        });
+    return out;
+}
+
+/** Closest alternatives, each solved and validated under its own single relaxation, labeled as needing permission. */
+async function closestAlternatives(args: Record<string, unknown>, ctx: ToolContext, c: ScheduleConstraints) {
+    const found = [];
+    for (const r of relaxations(c)) {
+        const relaxed = r.change(c);
+        if (!relaxed) continue;
+        const pool = await candidatePool(args, ctx, relaxed);
+        const result = await solveSchedule(pool, relaxed, { signal: ctx.signal, maxNodes: 40_000 });
+        if (!result.best) continue;
+        const report = validatePlan(result.best.sections, relaxed, validationContext(ctx, pool));
+        if (!report.hardOk) continue;
+        found.push({
+            requiresPermissionTo: r.label,
+            notOnCalendar: true,
+            totalCredits: result.best.credits,
+            classes: result.best.sections.map(s => ({
+                code: s.courseCode,
+                unique: pad(s.uniqueId),
+                when: when(s),
+                credits: s.creditHours,
+            })),
+        });
+        if (found.length >= 3) break;
+    }
+    return found;
+}
+
+async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+    const checked = validateBuildArgs(rawArgs);
+    if (!checked.ok) return badArguments(checked.issues);
+    const args = checked.args;
+    const c = withStated(constraintsFrom(args, ctx), ctx);
     ctx.onProgress?.('Finding classes that fit your rules…');
     const pool = await candidatePool(args, ctx, c);
     if (!pool.length)
@@ -489,52 +671,61 @@ async function build(args: Record<string, unknown>, ctx: ToolContext): Promise<T
                 error: 'No listed UT sections fit these rules. UT’s course list may not be imported for the semester.',
             },
         };
-    const required = strings(args.includeSubjects).map(x => x.toUpperCase());
+    const required = Object.keys(c.subjectCounts ?? {});
     ctx.onProgress?.('Building a schedule that follows every rule…');
-    // each required subject's best sections are tried as fixed choices until the rest of the week can be built
-    let fixed: SectionRecord[] = [];
-    for (const subj of required) {
-        const options = pool
-            .filter(p => subjectOf(p.section.courseCode) === subj && fitsWith(p.section, fixed))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 4);
-        for (const o of options) {
-            const trial = await solveSchedule(pool, c, {
-                fixed: [...fixed, o.section],
-                signal: ctx.signal,
-                maxNodes: 4000,
-            });
-            if (trial.best) {
-                fixed = [...fixed, o.section];
-                break;
-            }
-        }
-    }
-    const result = await solveSchedule(pool, c, { fixed, signal: ctx.signal });
-    if (!result.best)
+    const result = await solveSchedule(pool, c, { signal: ctx.signal, travel: ctx.travel });
+    if (!result.best) {
+        const alternatives = await closestAlternatives(args, ctx, c);
         return {
             result: {
-                error: 'No complete schedule follows all of these rules.',
+                error: 'No complete schedule follows all of these rules. Nothing was added to the calendar.',
                 reasons: result.report?.reasons ?? [],
                 suggestions: result.report?.suggestions.map(s => s.text) ?? [],
+                closestAlternatives: alternatives,
+                note: alternatives.length
+                    ? 'Each alternative breaks exactly one rule and needs the student’s permission; none is on the calendar.'
+                    : 'No single relaxed rule produced a valid schedule either.',
             },
         };
-    const description = await describePlan(ctx, result.best.sections, pool, c, required);
+    }
+    const report = validatePlan(result.best.sections, c, validationContext(ctx, pool));
+    if (!report.hardOk)
+        return {
+            result: {
+                error: 'The solver’s schedule failed independent validation and was discarded.',
+                failures: report.failures,
+            },
+        };
+    if (ctx.isStale?.()) return { result: { error: 'A newer instruction arrived; this result was discarded.' } };
+    const description = await describePlan(ctx, result.best.sections, pool, c, required, report);
     return {
         result: description,
         plan: {
             sections: result.best.sections,
-            note: `Built from ${pool.length} real UT sections.`,
+            note: `Built from ${pool.length} real UT sections. ${verdictText(report)}`,
             constraints: c,
             pool,
+            validation: report,
         },
     };
 }
 
-async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+    const checked = validateModifyArgs(rawArgs);
+    if (!checked.ok) return badArguments(checked.issues);
+    const args = checked.args;
     if (!ctx.current?.sections.length)
         return { result: { error: 'There is no schedule on screen yet; call build_schedule first.' } };
-    let c = constraintsFrom(args, ctx, ctx.current.constraints);
+    // earlier rules carry over; only what this change mentions is edited
+    let c = withStated(constraintsFrom(args, ctx, ctx.current.constraints), ctx);
+    const another = !!args.anotherOption;
+    if (another)
+        c = {
+            ...c,
+            excludedSections: [
+                ...new Set([...(c.excludedSections ?? []), ...ctx.current.sections.map(s => s.uniqueId)]),
+            ],
+        };
     const removeList = strings(args.remove);
     const removedCourses = removeList.filter(x => /\d/.test(x)).map(normalizeCourseCode);
     const removedSubjects = removeList.filter(x => !/\d/.test(x)).map(x => x.toUpperCase());
@@ -544,6 +735,7 @@ async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<
         excludedSubjects: [...new Set([...c.excludedSubjects, ...removedSubjects])],
     };
     let pool = ctx.current.pool as Scored[];
+    if (another) pool = await candidatePool({ prioritizeGrades: true }, ctx, c);
     const addSubject = String(args.addSubject ?? '').toUpperCase();
     const addCourse = args.addCourse ? normalizeCourseCode(String(args.addCourse)) : '';
     if (addSubject || addCourse) {
@@ -554,7 +746,7 @@ async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<
         );
         pool = [...pool, ...extra.filter(e => !pool.some(p => p.section.uniqueId === e.section.uniqueId))];
     }
-    const keep = ctx.current.sections.filter(s => !hardReason(s, c));
+    const keep = another ? [] : ctx.current.sections.filter(s => !hardReason(s, c));
     const replace = args.replaceCourse ? normalizeCourseCode(String(args.replaceCourse)) : '';
     const target = replace ? ctx.current.sections.find(s => normalizeCourseCode(s.courseCode) === replace) : undefined;
     let fixed: SectionRecord[] = [];
@@ -574,6 +766,7 @@ async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<
             .sort((a, b) => b.score - a.score)[0];
         if (wanted) {
             fixed = [wanted.section];
+            // adding a class is the one change that may need more room; it still has to pass every other rule
             c = {
                 ...c,
                 maxCredits: Math.max(
@@ -596,21 +789,37 @@ async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<
         c,
         {
             fixed,
-            stable: new Set(keep.filter(k => k !== target).map(k => k.uniqueId)),
+            stable: another ? undefined : new Set(keep.filter(k => k !== target).map(k => k.uniqueId)),
             allowNew: target
                 ? s => replacementFits(s, target, intent, gradeOf) || reason === 'any' || reason === 'better professor'
                 : undefined,
             signal: ctx.signal,
+            travel: ctx.travel,
         }
     );
     if (!result.best)
-        return { result: { error: 'That change leaves no complete schedule.', reasons: result.report?.reasons ?? [] } };
+        return {
+            result: {
+                error: 'That change leaves no complete schedule that follows every rule. The calendar is unchanged.',
+                reasons: result.report?.reasons ?? [],
+            },
+        };
+    const report = validatePlan(result.best.sections, c, validationContext(ctx, pool));
+    if (!report.hardOk)
+        return {
+            result: {
+                error: 'The changed schedule failed independent validation and was discarded; the calendar is unchanged.',
+                failures: report.failures,
+            },
+        };
+    if (ctx.isStale?.()) return { result: { error: 'A newer instruction arrived; this result was discarded.' } };
     const description = await describePlan(
         ctx,
         result.best.sections,
         pool as Scored[],
         c,
-        addSubject ? [addSubject] : []
+        addSubject ? [addSubject] : [],
+        report
     );
     const before = new Set(ctx.current.sections.map(s => s.uniqueId));
     const after = new Set(result.best.sections.map(s => s.uniqueId));
@@ -628,9 +837,10 @@ async function modify(args: Record<string, unknown>, ctx: ToolContext): Promise<
         },
         plan: {
             sections: result.best.sections,
-            note: 'Updated as asked; other classes kept where they still fit.',
+            note: `Updated as asked; other classes kept where they still fit. ${verdictText(report)}`,
             constraints: c,
             pool,
+            validation: report,
         },
     };
 }

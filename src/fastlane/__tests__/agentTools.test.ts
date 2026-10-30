@@ -140,7 +140,8 @@ describe('copilot tools', () => {
         const ugs = r.classes.find(c => c.code.startsWith('UGS'))!.code;
         const ugsBackups = r.backups.perClass.find(b => b.for === ugs)!.options.map(o => o.code);
         expect(ugsBackups.filter(c => c.startsWith('UGS')).length).toBeGreaterThanOrEqual(1);
-        expect([...ugsBackups, ...r.backups.general.map(g => g.code)]).toContain('GOV 312L');
+        // another GOV 312L section is offered as a backup (validated against the same rules)
+        expect(r.backups.perClass.flatMap(b => b.options.map(o => o.code))).toContain('GOV 312L');
         expect(r.couldNotInclude).toEqual([]);
     });
 

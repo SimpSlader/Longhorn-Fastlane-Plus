@@ -71,7 +71,7 @@ export function requestedDaysAllowed(request: string): DayCode[] {
     const text = request.toLowerCase();
     const out = new Set<DayCode>();
     const re =
-        /([^.;!?]{1,60}?)\s+(?:is|are)\s+(?:fine|ok(?:ay)?|good)|(?:can do|okay with|ok with|fine with)\s+([^.;!?]{1,60})/g;
+        /([^.;!?]{1,60}?)\s+(?:is|are)\s+(?:fine|ok(?:ay)?|good)|(?:can do|okay with|ok with|fine with|allow|permit|include|open up)\s+([^.;!?]{1,60})/g;
     for (let m = re.exec(text); m; m = re.exec(text)) for (const d of daysIn(m[1] ?? m[2] ?? '')) out.add(d);
     return [...out];
 }
@@ -170,7 +170,7 @@ export function requestedDayLimits(message: string): DayLimits {
 export function requestedCredits(message: string): { min: number; max: number; floor?: boolean } | null {
     const t = message.toLowerCase();
     const range = t.match(
-        /\b(?:(minimum of|minimum|min(?:imum)? of|at least|no less than)\s+)?(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*(?:credit|credits|credit hours|hours|hrs|sch)\b/
+        /\b(?:(minimum of|minimum|min(?:imum)? of|at least|no less than)\s+)?(\d{1,2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*(?:credit|credits|credit hours?|hours?|hrs?|sch)\b/
     );
     if (range) {
         const a = Number(range[2]);

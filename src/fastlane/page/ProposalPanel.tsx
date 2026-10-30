@@ -8,6 +8,7 @@ import type { AiCandidate } from '../core/aiCandidates';
 import type { Backup, BackupPlan } from '../core/backups';
 import type { GradeStat } from '../core/grades';
 import { formatMeeting } from '../core/meetings';
+import { type ValidationReport, verdictText } from '../core/planValidator';
 import type { ProposalVersion } from '../core/proposal';
 import { totalHours } from '../core/proposal';
 import type { ScheduleValidation } from '../core/scheduleSolver';
@@ -26,6 +27,8 @@ export interface AiPick {
 interface Props {
     /** every rule checked against the shown version; errors mean it is a draft, not a valid schedule */
     validation: ScheduleValidation | null;
+    /** the independent validator's verdict: the only source of "All rules met" */
+    report: ValidationReport | null;
     minCredits: number;
     onFill: () => void;
     canFill: boolean;
@@ -66,12 +69,17 @@ export default function ProposalPanel(props: Props) {
                         {version.sections.length} {version.sections.length === 1 ? 'class' : 'classes'}
                     </span>
                 </div>
-                <span className={`fl-pill ${valid ? 'ok' : 'warn'}`}>
-                    {valid
+                <span
+                    className={`fl-pill ${props.report?.allRulesMet ? 'ok' : 'warn'}`}
+                    title={props.report ? verdictText(props.report) : 'Not validated'}
+                >
+                    {props.report?.allRulesMet
                         ? 'All rules met'
-                        : short
-                          ? `Needs ${props.minCredits - credits} more credits`
-                          : 'Needs a change'}
+                        : valid && props.report?.hardOk
+                          ? `Rules pass · ${props.report.unverified.length} unverified`
+                          : short
+                            ? `Needs ${props.minCredits - credits} more credits`
+                            : 'Needs a change'}
                 </span>
                 <fieldset className='fl-plan-undo' aria-label='Proposal versions'>
                     <button
@@ -92,6 +100,11 @@ export default function ProposalPanel(props: Props) {
                     </button>
                 </fieldset>
             </div>
+            {props.report && !props.report.allRulesMet && (
+                <div className={`fl-plan-alert${props.report.hardOk ? ' soft' : ''}`} role='status'>
+                    <span>{verdictText(props.report)}</span>
+                </div>
+            )}
             {!valid && props.validation && props.validation.errors.length > 0 && (
                 <div className='fl-plan-alert' role='alert'>
                     <span>{props.validation.errors.join(' ')}</span>
