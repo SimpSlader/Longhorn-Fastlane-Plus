@@ -51,6 +51,7 @@ const sec = (
         capturedAt?: number;
     } = {}
 ): SectionRecord => ({
+    prerequisites: '',
     ...sectionFixture(id, code, {
         times: opts.times,
         core: opts.core,
@@ -121,7 +122,22 @@ const vctx = (outstanding = OUTSTANDING, extra: Record<string, unknown> = {}) =>
 
 const auditStub = (pending: string[] = []) =>
     ({
-        requirements: [],
+        requirements: [...new Set(catalog.flatMap(s => s.requirementTags.filter(t => t.startsWith('CORE '))))].map(
+            tag => ({
+                id: tag,
+                section: 'Core Curriculum',
+                text: `Complete ${tag}`,
+                category: 'core',
+                status: 'not-started',
+                required: { value: 3, unit: 'hours' },
+                applied: { value: 0, unit: 'hours' },
+                remaining: { value: 3, unit: 'hours' },
+                tags: [tag],
+                courses: [],
+                confidence: 'high',
+                issues: [],
+            })
+        ),
         courses: [],
         transfer: { accepted: [], pending: pending.map(code => ({ code })) },
         restrictions: [],
@@ -336,7 +352,18 @@ describe('hard rules (regression cases 1–9)', () => {
         const out = await runTool(
             'build_schedule',
             { ...BUILD, minCredits: 12, maxCredits: 15 },
-            toolCtx({ outstanding: remaining, stated: statedFor(REQUEST) })
+            toolCtx({
+                outstanding: remaining,
+                audit: {
+                    ...auditStub(),
+                    requirements: auditStub().requirements.map(r =>
+                        r.tags.some(t => t === 'CORE 070' || t === 'CORE 050')
+                            ? { ...r, status: 'completed', applied: r.required, remaining: { value: 0, unit: 'hours' } }
+                            : r
+                    ),
+                },
+                stated: statedFor(REQUEST),
+            })
         );
         const codes = out.plan?.sections.map(s => s.courseCode) ?? [];
         expect(codes).not.toContain('GOV 312L');
@@ -735,7 +762,7 @@ describe('chat and calendar use the same validated result', () => {
         expect(page).toMatch(/if \(outcome\.plan && !isStale\(\)\)/);
         expect(page).toMatch(/showPlan\(sections, note, planReport, constraints\)/);
         // chat text goes through the claim guard with that same report
-        expect(page).toMatch(/guardReply\(out\.text, lastReport\)/);
+        expect(page).toMatch(/guardReply\([\s\S]*lastReport/);
         expect(page).toMatch(/report=\{report\}/);
         // "All rules met" can only come from the independent report
         expect(panel).toMatch(/props\.report\?\.allRulesMet/);

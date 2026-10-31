@@ -215,11 +215,11 @@ describe('prerequisites from printed text', () => {
         ]);
     });
 
-    it('is conservative: met only when every group is covered, unmet only when none is', () => {
+    it('requires every AND group; one missing group cannot be treated as possibly satisfied', () => {
         const text = 'Prerequisite: Accounting 312 or 312H; and Statistics 301 or 301H.';
         expect(checkPrerequisites(text, ['ACC 312H', 'STA 301'], index).status).toBe('met');
         expect(checkPrerequisites(text, ['ACC 312'], index)).toMatchObject({
-            status: 'check',
+            status: 'unmet',
             missing: ['STA 301 or STA 301H'],
         });
         expect(checkPrerequisites(text, ['HIS 315K'], index).status).toBe('unmet');

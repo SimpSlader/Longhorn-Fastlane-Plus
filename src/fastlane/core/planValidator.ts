@@ -7,6 +7,12 @@
  * unmapped building, a grade claim without counts) keeps it false. The UI renders this report; the model's
  * prose cannot change it.
  */
+
+import { takenCourseCodes } from '../audit/parseAudit';
+import type { ParsedAudit } from '../audit/types';
+import { UT_SUBJECTS } from '../data/subjects';
+import { creditIdentity, type DegreeEvaluation, evaluateDegree } from './degreeRules';
+import { checkPrerequisites, subjectNameIndex } from './prerequisites';
 import { assignRequirements, fillableTags } from './requirementFit';
 import { describeRequirement, normalizeCourseCode } from './requirements';
 import type { ScheduleConstraints } from './scheduleSolver';
@@ -31,7 +37,8 @@ export interface Check {
         | 'sections'
         | 'degree-audit'
         | 'freshness'
-        | 'grade-claims';
+        | 'grade-claims'
+        | 'prerequisites';
     label: string;
     status: CheckStatus;
     detail: string;
@@ -39,6 +46,7 @@ export interface Check {
 
 export interface ValidationReport {
     checks: Check[];
+    degree?: DegreeEvaluation;
     /** no check failed: the schedule may be shown as a schedule */
     hardOk: boolean;
     /** every check passed AND every needed record was verified: the only state that may say "All rules met" */
@@ -59,6 +67,7 @@ export interface GradeClaim {
 export interface ValidationContext {
     /** outstanding requirement tags this student's audit says each section fills */
     applies: (s: SectionRecord) => string[];
+    audit?: ParsedAudit | null;
     /** true when a parsed degree audit was available */
     auditAvailable: boolean;
     /** transfer / exam credits still pending (never counted as awarded) — shown, not assumed */
@@ -84,6 +93,12 @@ const DAY_WORD = {
 };
 const label = (s: SectionRecord) => `${s.courseCode} (${String(s.uniqueId).padStart(5, '0')})`;
 const list = (xs: string[]) => xs.join('; ');
+const meetingsKey = (s: SectionRecord) =>
+    JSON.stringify(
+        s.meetings
+            .map(m => [[...m.days].sort(), m.start, m.end, m.location ?? ''])
+            .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    );
 
 export function validatePlan(
     sections: SectionRecord[],
@@ -100,6 +115,12 @@ export function validatePlan(
         });
     const now = ctx.now ?? Date.now();
     const credits = sections.reduce((n, s) => n + s.creditHours, 0);
+    const degree = ctx.audit ? evaluateDegree(ctx.audit, sections, { term: c.term, now }) : undefined;
+    const identity = creditIdentity(ctx.audit ?? null, sections);
+    const applies = (s: SectionRecord) =>
+        degree
+            ? (degree.courses.find(x => x.uniqueId === s.uniqueId)?.contributions.map(x => x.tag) ?? [])
+            : ctx.applies(s);
 
     // semester
     const terms = new Set(sections.map(s => semesterKey(s.semester)));
@@ -112,6 +133,8 @@ export function validatePlan(
 
     // credit range (asynchronous classes count in full)
     const creditBad: string[] = [];
+    if (!Number.isFinite(credits) || sections.some(s => s.creditHours <= 0))
+        creditBad.push('Credit hours must be finite and positive');
     if (credits < c.minCredits) creditBad.push(`${credits} credit hours is below ${c.minCredits}`);
     if (credits > c.maxCredits) creditBad.push(`${credits} credit hours is above ${c.maxCredits}`);
     add('credits', `${c.minCredits}–${c.maxCredits} credit hours`, creditBad, [], `${credits} credit hours`);
@@ -121,12 +144,15 @@ export function validatePlan(
     const dup: string[] = [];
     const ids = new Set<number>();
     for (const s of sections) {
-        const code = normalizeCourseCode(s.courseCode);
+        const code = identity(s.courseCode);
         if (seen.has(code)) dup.push(`${s.courseCode} appears twice`);
         if (ids.has(s.uniqueId)) dup.push(`unique ${s.uniqueId} appears twice`);
         seen.add(code);
         ids.add(s.uniqueId);
     }
+    for (const x of degree?.courses ?? [])
+        if (['duplicate-credit', 'duplicate-enrollment', 'in-progress'].includes(x.status))
+            dup.push(`${sections.find(s => s.uniqueId === x.uniqueId)?.courseCode}: ${x.explanation}`);
     add('unique', 'No repeated course', dup);
 
     // exact per-subject counts (e.g. one UGS)
@@ -143,9 +169,18 @@ export function validatePlan(
         );
 
     // requirement fit: every class advances an outstanding core requirement, none repeats another's
-    const dedicated = assignRequirements(sections, ctx.applies, !!c.coreOnly);
+    const dedicated = degree
+        ? {
+              assigned: new Map(
+                  degree.courses
+                      .filter(x => x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE ')))
+                      .map(x => [x.uniqueId, x.contributions.find(k => !c.coreOnly || k.tag.startsWith('CORE '))!.tag])
+              ),
+              unassigned: sections.filter(s => !applies(s).some(t => !c.coreOnly || t.startsWith('CORE '))),
+          }
+        : assignRequirements(sections, applies, !!c.coreOnly);
     if (c.coreOnly) {
-        const nothing = sections.filter(s => !fillableTags(ctx.applies(s), true).length);
+        const nothing = sections.filter(s => !fillableTags(applies(s), true).length);
         add(
             'requirements',
             'Every class fills an outstanding core requirement',
@@ -155,7 +190,7 @@ export function validatePlan(
                 sections.map(s => `${s.courseCode} → ${describeRequirement(dedicated.assigned.get(s.uniqueId) ?? '?')}`)
             )
         );
-        const repeats = dedicated.unassigned.filter(s => fillableTags(ctx.applies(s), true).length);
+        const repeats = dedicated.unassigned.filter(s => fillableTags(applies(s), true).length);
         add(
             'redundant',
             'No requirement filled twice',
@@ -179,10 +214,24 @@ export function validatePlan(
     const dayBad: string[] = [];
     for (const s of sections) {
         if (isAsync(s)) continue;
+        if (!s.scheduleComplete) dayBad.push(`${label(s)} has incomplete lecture, lab or discussion times`);
         if (!s.meetings.length) dayBad.push(`${label(s)} has no listed meeting times`);
         for (const m of s.meetings) {
-            if (m.end <= m.start) dayBad.push(`${label(s)} has an invalid time range`);
-            for (const d of m.days) if (c.avoidDays.includes(d)) dayBad.push(`${label(s)} meets on ${DAY_WORD[d]}`);
+            if (
+                !Number.isFinite(m.start) ||
+                !Number.isFinite(m.end) ||
+                !m.days.length ||
+                m.start < 0 ||
+                m.end > 1440 ||
+                m.end <= m.start
+            )
+                dayBad.push(`${label(s)} has an invalid time range`);
+            for (const d of m.days) {
+                if (c.avoidDays.includes(d)) dayBad.push(`${label(s)} meets on ${DAY_WORD[d]}`);
+                const limit = c.dayLimits?.[d];
+                if (limit && ((limit.from != null && m.start < limit.from) || (limit.to != null && m.end > limit.to)))
+                    dayBad.push(`${label(s)} is outside the allowed ${DAY_WORD[d]} times`);
+            }
             if (c.timeWindow && (m.start < c.timeWindow.from || m.end > c.timeWindow.to))
                 dayBad.push(`${label(s)} is outside the allowed times`);
         }
@@ -234,12 +283,48 @@ export function validatePlan(
             else if (normalizeCourseCode(real.courseCode) !== normalizeCourseCode(s.courseCode))
                 idBad.push(`unique ${s.uniqueId} is ${real.courseCode} in the course data, not ${s.courseCode}`);
         } else idUnknown.push(`${label(s)}: no course data to check against`);
+        if (s.status?.value === 'CANCELLED') idBad.push(`${label(s)} is cancelled`);
+        const current = byId.get(s.uniqueId);
+        if (
+            current &&
+            (current.status?.value === 'CANCELLED' ||
+                current.creditHours !== s.creditHours ||
+                semesterKey(current.semester) !== semesterKey(s.semester) ||
+                meetingsKey(current) !== meetingsKey(s))
+        )
+            idBad.push(`${label(s)} no longer matches the current cached section; rebuild the plan`);
         if (!s.course) idBad.push(`${label(s)} cannot be placed on a UT schedule`);
     }
     add('sections', 'Real, identifiable sections', idBad, idUnknown);
 
+    if (ctx.audit !== undefined) {
+        const missing: string[] = [],
+            uncertain: string[] = [];
+        const taken = ctx.audit ? takenCourseCodes(ctx.audit) : [];
+        const index = subjectNameIndex(UT_SUBJECTS);
+        for (const s of sections) {
+            if (s.prerequisites === undefined)
+                uncertain.push(`${s.courseCode}: prerequisite information not available`);
+            else if (s.prerequisites) {
+                const check = checkPrerequisites(s.prerequisites, taken, index, ctx.audit?.courses);
+                if (check.status === 'unmet' && ctx.audit)
+                    missing.push(`${s.courseCode}: missing ${check.missing.join('; ')}`);
+                else if ((check.status !== 'met' && check.status !== 'none') || !ctx.audit)
+                    uncertain.push(`${s.courseCode}: prerequisites need verification`);
+            }
+            if (s.isReserved) uncertain.push(`${s.courseCode}: reserved-seat eligibility needs verification`);
+        }
+        add('prerequisites', 'Prerequisites and restrictions', missing, uncertain);
+    }
+
     // degree audit
     const auditUnverified: string[] = [];
+    if (ctx.audit !== undefined && !ctx.audit)
+        auditUnverified.push('Import a current degree audit to verify applicability.');
+    if (degree)
+        for (const x of degree.courses)
+            if (!x.contributions.length)
+                auditUnverified.push(`${sections.find(s => s.uniqueId === x.uniqueId)?.courseCode}: ${x.explanation}`);
     if (c.coreOnly || Object.keys(c.subjectCounts ?? {}).length) {
         if (!ctx.auditAvailable)
             auditUnverified.push(
@@ -279,6 +364,7 @@ export function validatePlan(
     const unverified = checks.filter(k => k.status === 'unverified').map(k => `${k.label}: ${k.detail}`);
     return {
         checks,
+        degree,
         hardOk: failures.length === 0 && sections.length > 0,
         allRulesMet: failures.length === 0 && unverified.length === 0 && sections.length > 0,
         credits,
@@ -290,8 +376,9 @@ export function validatePlan(
 /** One honest sentence for the top of the schedule, from the report alone. */
 export function verdictText(r: ValidationReport): string {
     if (r.allRulesMet) return 'All rules met — checked independently against your constraints and records.';
-    if (!r.hardOk) return `Rules NOT met: ${r.failures.join(' · ')}`;
-    return `Hard rules pass, but not everything could be verified: ${r.unverified.join(' · ')}`;
+    const labels = r.checks.filter(c => c.status === (r.hardOk ? 'unverified' : 'fail')).map(c => c.label);
+    if (!r.hardOk) return `Rules NOT met: ${labels.join(' · ')}. Review the schedule checks.`;
+    return `Hard rules pass, but not everything could be verified: ${labels.join(' · ')}. Review the schedule checks.`;
 }
 
 /** Every backup must pass the same checks as the schedule it would replace (swapped in for the section it backs up). */

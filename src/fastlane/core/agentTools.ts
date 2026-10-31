@@ -10,6 +10,7 @@ import type { AcademicModel } from './academicModel';
 import type { AiCandidate } from './aiCandidates';
 import { chooseAiCandidates } from './aiCandidates';
 import { type BackupPlan, buildBackups, sectionCounts } from './backups';
+import { createDegreeMatcher, evaluateDegree } from './degreeRules';
 import { estimateGpa, type GpaEstimate } from './gpaModel';
 import type { GradeStat } from './grades';
 import { graduationAnswer, graduationPlan, parseTerm, termName } from './graduation';
@@ -203,6 +204,7 @@ async function searchCourses(args: Record<string, unknown>, ctx: ToolContext) {
     const allowed = days(args.days);
     const limit = Math.min(Number(args.limit) || 12, 20);
     const open = new Set(ctx.outstanding);
+    const degreeMatch = ctx.audit ? createDegreeMatcher(ctx.audit, { term: ctx.term, now: ctx.now }) : null;
     const sections = inTerm(ctx).filter(s => {
         if (subject && subjectOf(s.courseCode) !== subject) return false;
         if (query && !`${s.courseCode} ${s.title}`.toLowerCase().includes(query)) return false;
@@ -226,7 +228,7 @@ async function searchCourses(args: Record<string, unknown>, ctx: ToolContext) {
         byCourse.get(k)!.push(s);
     }
     const courses = [...byCourse.entries()]
-        .map(([code, list]) => ({ code, list, applies: list[0]!.requirementTags.filter(t => open.has(t)) }))
+        .map(([code, list]) => ({ code, list, applies: degreeMatch ? degreeMatch(list[0]!) : [] }))
         .filter(c => !ctx.taken.has(c.code))
         .sort((a, b) => b.applies.length - a.applies.length || b.list.length - a.list.length)
         .slice(0, limit);
@@ -275,13 +277,13 @@ async function courseSections(args: Record<string, unknown>, ctx: ToolContext) {
                 ? `${s.status.value.toLowerCase()} when the student viewed it on ${new Date(s.status.observedAt).toISOString().slice(0, 10)}`
                 : 'not checked',
         });
-    const prereq = checkPrerequisites(list[0]!.prerequisites, ctx.taken, ctx.subjectIndex);
+    const prereq = checkPrerequisites(list[0]!.prerequisites, ctx.taken, ctx.subjectIndex, ctx.audit?.courses);
     return {
         course: code,
         title: list[0]!.title,
         credits: list[0]!.creditHours,
         alreadyTakenOrInProgress: ctx.taken.has(code),
-        countsToward: list[0]!.requirementTags.filter(t => ctx.outstanding.includes(t)),
+        countsToward: ctx.audit ? createDegreeMatcher(ctx.audit, { term: ctx.term, now: ctx.now })(list[0]!) : [],
         prerequisites: list[0]!.prerequisites
             ? { text: list[0]!.prerequisites.slice(0, 240), status: prereq.status }
             : null,
@@ -384,6 +386,7 @@ async function candidatePool(
         term: ctx.term,
         taken: ctx.taken,
         outstanding: ctx.outstanding,
+        audit: ctx.audit,
         active: [],
         avoidFriday: false,
         preferAsync: (c.online?.min ?? 0) > 0,
@@ -468,6 +471,7 @@ function validationContext(ctx: ToolContext, pool: Scored[]): ValidationContext 
     const byId = new Map(pool.map(p => [p.section.uniqueId, p]));
     return {
         applies: s => byId.get(s.uniqueId)?.applies ?? [],
+        audit: ctx.audit,
         auditAvailable: !!ctx.audit,
         pendingCredit: ctx.audit?.transfer.pending.map(p => p.code) ?? [],
         catalog: ctx.catalog,
@@ -503,6 +507,7 @@ async function describePlan(
 ) {
     const bySection = new Map(pool.map(p => [p.section.uniqueId, p]));
     const classes = [];
+    const degree = evaluateDegree(ctx.audit, sections, { term: ctx.term, now: ctx.now });
     for (const s of sections) {
         const p = bySection.get(s.uniqueId);
         classes.push({
@@ -523,7 +528,18 @@ async function describePlan(
                   }
                 : 'no historical grade data: not estimated',
             rateMyProfessors: await rating(ctx, s.instructors[0]),
-            countsToward: p?.applies ?? [],
+            countsToward: degree.courses.find(x => x.uniqueId === s.uniqueId)?.contributions.map(x => x.tag) ?? [],
+            degree: (() => {
+                const d = degree.courses.find(x => x.uniqueId === s.uniqueId);
+                return d
+                    ? {
+                          status: d.status,
+                          plannedHours: d.degreeCredits,
+                          requirements: d.contributions.map(c => c.tag),
+                          warnings: d.warnings,
+                      }
+                    : { status: 'unverified' };
+            })(),
             sectionRecord: s.listing?.asOf
                 ? `Registrar course list as of ${s.listing.asOf}`
                 : `seen on UT's site ${new Date(s.capturedAt).toISOString().slice(0, 10)}`,
@@ -537,6 +553,7 @@ async function describePlan(
         plan: sections,
         candidates: inTerm(ctx).filter(s => !hardReason(s, c)),
         outstanding: ctx.outstanding,
+        audit: ctx.audit,
         taken: ctx.taken,
         gradeOf: s => gradeMap.get(s.uniqueId) ?? null,
         sectionCounts: sectionCounts(inTerm(ctx)),
@@ -638,7 +655,7 @@ async function closestAlternatives(args: Record<string, unknown>, ctx: ToolConte
         const relaxed = r.change(c);
         if (!relaxed) continue;
         const pool = await candidatePool(args, ctx, relaxed);
-        const result = await solveSchedule(pool, relaxed, { signal: ctx.signal, maxNodes: 40_000 });
+        const result = await solveSchedule(pool, relaxed, { audit: ctx.audit, signal: ctx.signal, maxNodes: 40_000 });
         if (!result.best) continue;
         const report = validatePlan(result.best.sections, relaxed, validationContext(ctx, pool));
         if (!report.hardOk) continue;
@@ -673,7 +690,7 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
         };
     const required = Object.keys(c.subjectCounts ?? {});
     ctx.onProgress?.('Building a schedule that follows every rule…');
-    const result = await solveSchedule(pool, c, { signal: ctx.signal, travel: ctx.travel });
+    const result = await solveSchedule(pool, c, { audit: ctx.audit, signal: ctx.signal, travel: ctx.travel });
     if (!result.best) {
         const alternatives = await closestAlternatives(args, ctx, c);
         return {
@@ -793,6 +810,7 @@ async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promi
             allowNew: target
                 ? s => replacementFits(s, target, intent, gradeOf) || reason === 'any' || reason === 'better professor'
                 : undefined,
+            audit: ctx.audit,
             signal: ctx.signal,
             travel: ctx.travel,
         }

@@ -6,6 +6,7 @@
 import { lazy, Suspense, useState } from 'react';
 import type { AiCandidate } from '../core/aiCandidates';
 import type { Backup, BackupPlan } from '../core/backups';
+import type { CourseAssessment } from '../core/degreeRules';
 import type { GradeStat } from '../core/grades';
 import { formatMeeting } from '../core/meetings';
 import { type ValidationReport, verdictText } from '../core/planValidator';
@@ -14,6 +15,7 @@ import { totalHours } from '../core/proposal';
 import type { ScheduleValidation } from '../core/scheduleSolver';
 import type { SectionRecord } from '../core/sections';
 import { ClassCard } from './ClassCard';
+import DegreeFitList from './DegreeFitList';
 import WeekGrid from './WeekGrid';
 
 const CoursePopup = lazy(() => import('./CoursePopup'));
@@ -102,7 +104,21 @@ export default function ProposalPanel(props: Props) {
             </div>
             {props.report && !props.report.allRulesMet && (
                 <div className={`fl-plan-alert${props.report.hardOk ? ' soft' : ''}`} role='status'>
-                    <span>{verdictText(props.report)}</span>
+                    <div className='stack'>
+                        <span>{verdictText(props.report)}</span>
+                        <details>
+                            <summary>Review schedule checks</summary>
+                            <ul>
+                                {props.report.checks
+                                    .filter(c => c.status !== 'pass')
+                                    .map(c => (
+                                        <li key={c.id}>
+                                            <strong>{c.label}</strong>: {c.detail}
+                                        </li>
+                                    ))}
+                            </ul>
+                        </details>
+                    </div>
                 </div>
             )}
             {!valid && props.validation && props.validation.errors.length > 0 && (
@@ -178,11 +194,13 @@ export default function ProposalPanel(props: Props) {
                     </aside>
                 )}
             </div>
+            {props.report?.degree && <DegreeFitList degree={props.report.degree} />}
             {selected ? (
                 <ProposalDetail
                     s={selected}
                     grade={grades.get(selected.uniqueId)}
                     fact={facts.get(selected.uniqueId)}
+                    degree={props.report?.degree?.courses.find(c => c.uniqueId === selected.uniqueId)}
                     pick={picks.get(selected.uniqueId)}
                     onRemove={() => {
                         props.onRemove(selected);
@@ -198,7 +216,7 @@ export default function ProposalPanel(props: Props) {
             <button
                 type='button'
                 className='btn primary fl-save'
-                disabled={!version.sections.length || props.busy || !valid}
+                disabled={!version.sections.length || props.busy || !valid || !props.report?.hardOk}
                 onClick={props.onSave}
             >
                 Save as a new schedule
@@ -221,6 +239,7 @@ function ProposalDetail({
     s,
     grade,
     fact,
+    degree,
     pick,
     onRemove,
     onAskReplace,
@@ -230,6 +249,7 @@ function ProposalDetail({
     s: SectionRecord;
     grade: GradeStat | null | undefined;
     fact: AiCandidate | undefined;
+    degree?: CourseAssessment;
     pick: AiPick | undefined;
     onRemove: () => void;
     onAskReplace: () => void;
@@ -246,13 +266,25 @@ function ProposalDetail({
             </ClassCard>
             <p className='fl-detail-line'>
                 {s.instructors.join(', ') || 'Professor not listed'} ·{' '}
-                {fact?.applies.length ? (
-                    <span className='req-verified'>Counts toward {fact.applies.join(', ')}</span>
-                ) : (
-                    <span>Elective (no IDA match)</span>
-                )}
+                <span className={degree?.contributions.length ? 'req-verified' : ''}>
+                    {degree?.contributions.length
+                        ? `Planned toward ${degree.contributions.map(c => c.tag).join(', ')}`
+                        : 'Degree applicability needs verification'}
+                </span>
             </p>
-            {pick?.reason && <p className='fl-detail-line muted'>{pick.reason}</p>}
+            <p className='fl-detail-line'>
+                {degree?.explanation ?? 'Import a current IDA to verify this course against your degree requirements.'}
+            </p>
+            <p className='fl-detail-line muted'>
+                Degree-applicable planned credit: {degree?.degreeCredits ?? 0} hours verified for this plan. Enrollment
+                credit: {s.creditHours} hours.
+            </p>
+            {degree?.warnings.map(w => (
+                <p className='fl-detail-line warn' key={w}>
+                    {w}
+                </p>
+            ))}
+
             {(pick?.warning || unmet) && (
                 <p className='fl-detail-line warn'>
                     {pick?.warning}

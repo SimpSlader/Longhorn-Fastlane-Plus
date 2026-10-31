@@ -15,6 +15,8 @@
  *    returning something invalid.
  */
 
+import type { ParsedAudit } from '../audit/types';
+import { createDegreeMatcher, creditIdentity, evaluateDegree } from './degreeRules';
 import { type GpaEstimate, gpaScore } from './gpaModel';
 import type { DayCode, Meeting } from './meetings';
 import { assignRequirements, fillableTags } from './requirementFit';
@@ -122,7 +124,7 @@ export function hardReason(
     if (s.status?.value === 'CANCELLED') return 'cancelled';
     if (!s.course) return 'not-plannable';
     if (c.term && semesterKey(s.semester) !== c.term) return 'semester';
-    if (s.creditHours <= 0) return 'no-credit';
+    if (!Number.isFinite(s.creditHours) || s.creditHours <= 0) return 'no-credit';
     // an undergraduate plan never includes graduate courses
     if (courseLevel(s.courseCode) === 'graduate') return 'graduate';
     if (c.excludedSubjects.includes(subjectOf(s.courseCode))) return 'excluded-subject';
@@ -131,7 +133,20 @@ export function hardReason(
     if (c.excludedSections?.includes(s.uniqueId)) return 'excluded-section';
     if (!isAsync(s)) {
         // anything that is not fully asynchronous must have known meeting times to be checked at all
-        if (!s.meetings.length) return 'times-unknown';
+        if (
+            !s.scheduleComplete ||
+            !s.meetings.length ||
+            s.meetings.some(
+                m =>
+                    !m.days.length ||
+                    !Number.isFinite(m.start) ||
+                    !Number.isFinite(m.end) ||
+                    m.end <= m.start ||
+                    m.start < 0 ||
+                    m.end > 1440
+            )
+        )
+            return 'times-unknown';
         if (s.meetings.some(m => m.days.some(d => c.avoidDays.includes(d)))) return 'day';
         if (c.timeWindow && s.meetings.some(m => m.start < c.timeWindow!.from || m.end > c.timeWindow!.to))
             return 'time-window';
@@ -348,6 +363,7 @@ export async function solveSchedule(
     candidates: SolverCandidate[],
     c: ScheduleConstraints,
     options: {
+        audit?: ParsedAudit | null;
         fixed?: SectionRecord[];
         stable?: Set<number>;
         allowNew?: (s: SectionRecord) => boolean;
@@ -363,15 +379,24 @@ export async function solveSchedule(
     } = {}
 ): Promise<SolveResult> {
     const fixed = options.fixed ?? [];
+    const degreeMatch = options.audit ? createDegreeMatcher(options.audit, { term: c.term }) : null;
+    const identity = creditIdentity(
+        options.audit ?? null,
+        candidates.map(x => x.section)
+    );
+    candidates = candidates.map(x =>
+        degreeMatch ? { ...x, applies: degreeMatch(x.section).filter(t => x.applies.includes(t)) } : x
+    );
     const stableWeight = options.stableWeight ?? 4;
     const keep = options.keep ?? 3;
     const maxNodes = options.maxNodes ?? 150_000;
-    const fixedCodes = new Set(fixed.map(s => normalizeCourseCode(s.courseCode)));
+    const fixedCodes = new Set(fixed.map(s => identity(s.courseCode)));
     const fixedIds = new Set(fixed.map(s => s.uniqueId));
     const term = c.term || (fixed[0] ? semesterKey(fixed[0].semester) : '');
     const pool = candidates
-        .filter(x => !fixedIds.has(x.section.uniqueId) && !fixedCodes.has(normalizeCourseCode(x.section.courseCode)))
+        .filter(x => !fixedIds.has(x.section.uniqueId) && !fixedCodes.has(identity(x.section.courseCode)))
         .filter(x => !hardReason(x.section, { ...c, term }, x.prerequisite))
+        .filter(x => !degreeMatch || x.applies.length > 0)
         .filter(x => !options.allowNew || options.stable?.has(x.section.uniqueId) || options.allowNew(x.section))
         .filter(x => !clash(x.section, fixed))
         // classes already in the proposal are tried first, so a re-plan changes as little as possible
@@ -394,7 +419,11 @@ export async function solveSchedule(
         if (subj in subjectLimit && countOf(chosenNow, subj) + 1 > subjectLimit[subj]!) return false;
         if (c.maxOnline != null && isAsync(s) && chosenNow.filter(isAsync).length + 1 > c.maxOnline) return false;
         if (travelOn && travelInfeasible(s, chosenNow, estimate)) return false;
-        if (c.coreOnly && assignRequirements([...chosenNow, s], applies, true).unassigned.length) return false;
+        if (options.audit) {
+            const check = evaluateDegree(options.audit, [...chosenNow, s], { term: c.term });
+            if (check.courses.some(x => !x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE '))))
+                return false;
+        } else if (c.coreOnly && assignRequirements([...chosenNow, s], applies, true).unassigned.length) return false;
         return true;
     };
     const subjectsMet = (list: SectionRecord[]) =>
@@ -404,6 +433,30 @@ export async function solveSchedule(
     pool.length = 0;
     pool.push(...pool0.filter(x => addable(x.section, fixed)));
 
+    if (
+        fixed.some(
+            (s, i) =>
+                hardReason(s, c, candidates.find(x => x.section.uniqueId === s.uniqueId)?.prerequisite) ||
+                fixed.slice(0, i).some(o => identity(o.courseCode) === identity(s.courseCode)) ||
+                clash(s, fixed.slice(0, i))
+        ) ||
+        (options.audit &&
+            evaluateDegree(options.audit, fixed, { term: c.term }).courses.some(
+                x => !x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE '))
+            ))
+    )
+        return {
+            best: null,
+            alternatives: [],
+            report: {
+                reasons: [
+                    'A kept class is duplicate, conflicts, or no longer advances a verified requirement. Review the current audit and kept classes.',
+                ],
+                suggestions: [],
+                bestCredits: 0,
+            },
+            explored: 0,
+        };
     const fixedCredits = fixed.reduce((n, s) => n + s.creditHours, 0);
     const fixedScore = fixed.reduce(
         (n, s) => n + (candidates.find(x => x.section.uniqueId === s.uniqueId)?.score ?? 0),
@@ -470,7 +523,7 @@ export async function solveSchedule(
             const x = pool[i]!;
             const s = x.section;
             if (credits + s.creditHours > c.maxCredits) continue;
-            const code = normalizeCourseCode(s.courseCode);
+            const code = identity(s.courseCode);
             if (codes.has(code)) continue;
             if (term && semesterKey(s.semester) !== term) continue;
             if (
@@ -495,7 +548,12 @@ export async function solveSchedule(
     await dfs(0, fixedCredits, 0);
 
     if (best.length) return { best: best[0]!, alternatives: best.slice(1), report: null, explored };
-    return { best: null, alternatives: [], report: explain(pool, c, bestCredits, options.removedBy ?? {}), explored };
+    const report = explain(pool, c, bestCredits, options.removedBy ?? {});
+    if (options.audit)
+        report.reasons.push(
+            'Only courses with verified remaining degree capacity are eligible. A credit minimum is not filled with unverified electives. Import a current IDA and verify missing course options if needed.'
+        );
+    return { best: null, alternatives: [], report, explored };
 }
 
 function explain(

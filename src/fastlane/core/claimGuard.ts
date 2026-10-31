@@ -15,6 +15,25 @@ export const STRUCK = '[not confirmed by the validator]';
 
 export function guardReply(text: string, report: ValidationReport | null): string {
     let out = text;
+    // Degree assertions in model prose are replaced with the deterministic course outcome.
+    // Even an otherwise valid timetable cannot authorize an invented requirement or elective claim.
+    if (report?.degree) {
+        out = out
+            .split(/(?<=[.!?])\s+|\n/)
+            .map(sentence => {
+                if (
+                    !/fulfil|satisf|count(?:s|ing)? toward|degree.applic|advance.*requirement|core requirement/i.test(
+                        sentence
+                    )
+                )
+                    return sentence;
+                const courses = report.degree!.courses.filter(c =>
+                    sentence.toUpperCase().replace(/\s+/g, '').includes(c.courseCode.replace(/\s+/g, '').toUpperCase())
+                );
+                return courses.length ? courses.map(c => `${c.courseCode}: ${c.explanation}`).join(' ') : sentence;
+            })
+            .join('\n');
+    }
     const auditOk = report?.checks.find(c => c.id === 'degree-audit')?.status === 'pass';
     for (const [i, re] of CLAIMS.entries()) {
         // claims about the audit stand only when that check passed; the others only when everything passed

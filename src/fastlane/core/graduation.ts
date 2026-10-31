@@ -83,7 +83,13 @@ export function graduationPlan(
     const { long, summers } = termsUntil(target, now);
     if (!long.length)
         return { missing: `${termName(target)} isn’t after the current term (${termName(currentTerm(now))}).` };
-    const options = (opts.summerHours ?? [0, 6, 12, 18, 24]).filter(h => h === 0 || summers.length > 0);
+    const options = [
+        ...new Set(
+            (opts.summerHours ?? [0, 6, 12, 18, 24])
+                .filter(h => Number.isFinite(h) && h >= 0)
+                .map(h => Math.min(h, remaining))
+        ),
+    ].filter(h => h === 0 || summers.length > 0);
     const scenarios = options.map(summerHours => ({
         summerHours,
         perSemester: round1(Math.max(0, remaining - summerHours) / long.length),

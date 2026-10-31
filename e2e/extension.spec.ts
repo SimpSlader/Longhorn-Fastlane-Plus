@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-
 import type { Page } from '@playwright/test';
+import { unmetArtsFixture } from './degreeFixtures';
 
 import { expect, test } from './fixtures';
 
@@ -463,12 +463,16 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
         await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
+        // The real imported fixture has already completed Core 050. It must return no degree recommendations.
+        await expect(page.locator('.rec')).toHaveCount(0);
+        await unmetArtsFixture(page);
+        await page.reload();
         const recs = page.locator('.rec');
         await expect(recs.first()).toBeVisible();
         const text = await page.locator('main').innerText();
         expect(text).not.toContain('GOV 310L');
         expect(text).toMatch(/Open as of|Check availability|Closed as of/);
-        expect(text).toContain('Satisfies Core 050');
+        expect(text).toContain('Planned toward Core 050');
         await expect(page.getByRole('button', { name: 'Add to my schedule' }).first()).toBeVisible();
         await page.getByRole('button', { name: 'Add to my schedule' }).first().click();
         // the course-inventory panel has its own (empty) status line
@@ -545,6 +549,10 @@ test.describe('degree audit, recommendations, reminders and simple navigation', 
             .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
         await expect(page.getByText('Official IDA degree completion')).toBeVisible();
         await page.goto(`chrome-extension://${extensionId}/fastlane.html#recommend?req=CORE%20050`);
+        // The real imported fixture has already completed Core 050. It must return no degree recommendations.
+        await expect(page.locator('.rec')).toHaveCount(0);
+        await unmetArtsFixture(page);
+        await page.reload();
         // (Playwright's offline emulation does not change navigator.onLine on extension pages, so the
         // offline badge is covered by manual testing; here we verify the features work without network.)
         await expect(page.locator('.rec').first()).toBeVisible();

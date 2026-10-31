@@ -207,9 +207,11 @@ export function requestedSubjectExclusions(
     };
     // the class noun is optional ("remove history"), so a phrase ends at punctuation or a joining word
     const re =
-        /\b(?:no more|no|not|skip|avoid|without|exclude|nothing in|remove|drop|delete|take out|get rid of|don'?t want|do not want)\s+(?:any|the|my|all|those|that|these|this)?\s*([a-z][a-z ,&/-]{1,50}?)\s*(?:\b(?:classes|courses|class|course)\b|[.,]|\b(?:but|please|so|because|from|and keep|then|instead)\b|$)/g;
+        /\b(?:no more|no|not|skip|avoid|without|exclude|nothing in|remove|drop|delete|take out|get rid of|(?:won'?t|will not|don'?t|do not) (?:want|need))\s+(?:any|the|my|all|those|that|these|this)?\s*([a-z][a-z ,&/-]{1,50}?)\s*(?:\b(?:classes|courses|class|course)\b|[.,]|\b(?:but|please|so|because|from|and keep|then|instead)\b|$)/g;
     for (let m = re.exec(t); m; m = re.exec(t)) {
         const phrase = (m[1] ?? '').trim();
+        if (/\b(?:if|when|in case)\s*$/.test(t.slice(0, m.index)) && /\b(?:available|open|offered|fit)\b/.test(phrase))
+            continue;
         for (const part of phrase.split(/\s*(?:,|\/|\bor\b|\band\b|&)\s*/)) {
             const word = part.trim();
             if (word.length < 2) continue;

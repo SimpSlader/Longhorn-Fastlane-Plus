@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-
 import type { BrowserContext, Page } from '@playwright/test';
+import { unmetPlanningFixture } from './degreeFixtures';
 
 import { expect, test } from './fixtures';
 
@@ -130,6 +130,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     sw,
 }) => {
     const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page);
     const sent: Array<Record<string, unknown>> = [];
     await page.route(AI, async route => {
         const body = route.request().postDataJSON() as {
@@ -254,7 +255,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await expect(detail.locator('.class-code')).toHaveText(/^[A-Z ]+ \d{3}[A-Z]? · \d{5}$/);
     await expect(detail.locator('.class-grade')).toContainText(/% *A or A−|No grade data/);
     await expect(detail.getByRole('button', { name: 'Grade distribution' })).toBeVisible();
-    await expect(detail).toContainText(/Counts toward|Elective/);
+    await expect(detail).toContainText(/Planned toward|applicability needs verification/);
     await detail.getByRole('button', { name: 'Remove' }).click();
     await expect(proposal.getByRole('button', { name: 'Undo' })).toBeEnabled();
     // dropping below 12 credits is flagged, saving is blocked, and a refill is offered
@@ -359,7 +360,9 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     const save = proposal.getByRole('button', { name: 'Save as a new schedule' });
     if (await save.isEnabled()) {
         await save.click();
-        await expect(proposal.getByRole('status')).toContainText('Your other schedules were not changed');
+        await expect(
+            proposal.getByRole('status').filter({ hasText: 'Your other schedules were not changed' })
+        ).toBeVisible();
         const after = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
         expect(after.length).toBe(before.length + 1);
         for (const s of before) {
@@ -549,12 +552,12 @@ test('questions about your records are answered from the IDA, accurately and wit
     await input.fill('hyow many jours do i have compleeted?');
     await send.click();
     // the IDA counts 82 of 120 with in-progress and planned courses included; Fastlane separates them
-    await expect(last()).toContainText("You've completed 61 credit hours so far");
+    await expect(last()).toContainText("You've completed 64 credit hours so far");
     await expect(last()).toContainText('another 12');
-    await expect(last()).toContainText('73 credit hours');
+    await expect(last()).toContainText('76 credit hours');
     await expect(last()).not.toContainText('ACC');
     await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
-    await expect(last().locator('strong').first()).toHaveText('61 credit hours');
+    await expect(last().locator('strong').first()).toHaveText('64 credit hours');
 
     await input.fill('What classes am I taking this semester?');
     await send.click();
@@ -564,7 +567,7 @@ test('questions about your records are answered from the IDA, accurately and wit
     await expect(last()).not.toContainText('schedule');
 
     // a correction is acknowledged and kept beside the IDA, not over it
-    await input.fill("That's wrong. I've completed 9 credits, not 61.");
+    await input.fill("That's wrong. I've completed 9 credits, not 64.");
     await send.click();
     await expect(last()).toContainText('Got it. Using 21 credits toward your 120-credit degree, that leaves 99');
     await expect(last()).toContainText('keep your IDA’s figures separately');
@@ -572,7 +575,7 @@ test('questions about your records are answered from the IDA, accurately and wit
     await input.fill('How many hours have I completed?');
     await send.click();
     await expect(last()).toContainText("You've completed 9 credit hours so far");
-    await expect(last()).toContainText('your IDA shows 61');
+    await expect(last()).toContainText('your IDA shows 64');
     expect(aiCalls).toEqual([]);
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-local-answers.png' });
 
@@ -667,7 +670,7 @@ test('the microphone keeps listening through pauses until 5 seconds of silence o
     // nothing is sent until the student presses send; this one is answered from the IDA
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.bot').last()).toContainText(
-        "You've completed 61 credit hours"
+        "You've completed 64 credit hours"
     );
 });
 
@@ -814,6 +817,7 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     extensionId,
 }) => {
     const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page, true);
     const cors = { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` };
     const requests: Array<{
         messages: Array<{ role: string; content: string; tool_calls?: Array<{ name: string }> }>;
@@ -833,7 +837,12 @@ test('the copilot understands a long request, uses tools, builds a full schedule
                 body: JSON.stringify(payload),
             });
         if (last.role === 'tool') {
-            const result = JSON.parse(last.content) as { totalCredits?: number; classes?: Array<{ code: string }> };
+            const result = JSON.parse(last.content) as {
+                totalCredits?: number;
+                classes?: Array<{ code: string }>;
+                error?: string;
+                reasons?: string[];
+            };
             return reply({
                 type: 'answer',
                 text: result.classes
@@ -975,11 +984,11 @@ test('Degree progress shows simple cards built from the real IDA', async ({ cont
         .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
     const overall = page.getByRole('region', { name: 'Official IDA degree completion' });
     await expect(overall).toContainText('68%');
-    await expect(overall).toContainText('82 of 120 degree hours · 38 remaining');
+    await expect(overall).toContainText('82 of 120 degree hours counted by IDA · 38 remaining');
     const card = (title: string) => page.locator('details.progress-card').filter({ hasText: title });
-    await expect(card('Core Curriculum')).toContainText('27 / 42 credit hours completed');
+    await expect(card('Core Curriculum')).toContainText('27 / 42 credit hours counted by IDA');
     await expect(card('Core Curriculum')).toContainText('15 credit hours remaining');
-    await expect(card('Major Requirements')).toContainText('6 / 9 requirements complete');
+    await expect(card('Major Requirements')).toContainText('5 / 9 requirements complete');
     await expect(card('Major Requirements')).toContainText('hours need verification');
     await expect(card('GPA, residency and total hours')).toContainText('3.78');
     await expect(card('GPA, residency and total hours')).toContainText('60/60');

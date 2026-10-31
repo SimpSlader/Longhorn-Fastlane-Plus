@@ -101,7 +101,7 @@ test('imports the Registrar PDF chosen by the student (opt-in: FASTLANE_OFFERING
     await page.getByRole('combobox', { name: 'Subject' }).selectOption('HIS');
     await expect(page.locator('.planner-results article').first()).toContainText('HIS ');
     console.info(`browse ready after ${Math.round((Date.now() - started) / 1000)} s`);
-    const titles = await page.locator('.planner-results article b').allTextContents();
+    const titles = await page.locator('.planner-results article .class-code').allTextContents();
     expect(titles.length).toBeGreaterThan(10);
     expect(titles.every(t => t.startsWith('HIS '))).toBe(true);
 });
