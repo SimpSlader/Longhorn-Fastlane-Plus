@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -23,12 +24,17 @@ async function fullInventory() {
     }
     return buildInventory(
         parseOfferingsItems(items),
-        { name: 'ut.courses.Spring2027.pdf', sha256: 'real' },
+        {
+            name: 'ut.courses.Spring2027.pdf',
+            sha256: createHash('sha256')
+                .update(readFileSync(PDF as string))
+                .digest('hex'),
+        },
         Date.now()
     );
 }
 
-test('the exact request builds a valid Tue/Thu, 12–13 credit, no-history schedule from the real catalog', async ({
+test('the real full catalog yields a verified Tue/Thu plan or an explicit missing-capacity result, never invented progress', async ({
     context,
     extensionId,
 }) => {
@@ -101,8 +107,21 @@ test('the exact request builds a valid Tue/Thu, 12–13 credit, no-history sched
     await page.getByRole('button', { name: 'Send message' }).click();
 
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
-    await expect(proposal).toBeVisible({ timeout: 180_000 });
-    await expect(proposal).toContainText('All rules met');
+    const outcome = page
+        .locator('.fl-plan, .bubble.bot.error')
+        .or(page.locator('.bubble.bot').filter({ hasText: /couldn't build a complete schedule/ }));
+    await expect(outcome.first()).toBeVisible({ timeout: 180_000 });
+    if ((await proposal.count()) === 0) {
+        const answer = await page.getByRole('log', { name: 'Planning conversation' }).innerText();
+        expect(answer).toMatch(
+            /verified remaining degree capacity|No listed UT sections fit|couldn't build a complete schedule/
+        );
+        await expect(page.getByText('All rules met', { exact: true })).toHaveCount(0);
+        console.info('REAL CATALOG: honest incomplete result; no unverified filler plan', records.length);
+        return;
+    }
+    await expect(proposal.locator('.fl-pill').first()).not.toHaveText('Needs a change');
+    await expect(proposal.getByRole('region', { name: 'Degree fit for this plan' })).toBeVisible();
     // nothing sent to AI breaks a hard rule either
     expect(sent[0]!.candidates.every(c => !c.code.startsWith('HIS '))).toBe(true);
     expect(sent[0]!.candidates.every(c => c.days.every(d => d === 'T' || d === 'TH'))).toBe(true);

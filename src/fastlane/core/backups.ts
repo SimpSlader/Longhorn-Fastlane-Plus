@@ -5,6 +5,9 @@
  * few general backups that fit beside the whole week. Backups never overlap the other classes they would
  * join, and no class is suggested twice. Everything comes from UT's listed sections; nothing is invented.
  */
+
+import type { ParsedAudit } from '../audit/types';
+import { createDegreeMatcher, evaluateDegree } from './degreeRules';
 import { fitsWith } from './proposal';
 import { normalizeCourseCode } from './requirements';
 import { isAsync } from './scheduleSolver';
@@ -23,6 +26,7 @@ export interface BackupPlan {
 }
 
 export interface BackupInput {
+    audit?: ParsedAudit | null;
     plan: SectionRecord[];
     /** listed sections that follow the student's hard rules (days, exclusions, semester…) */
     candidates: SectionRecord[];
@@ -50,6 +54,17 @@ export function sectionCounts(sections: SectionRecord[]): Map<string, number> {
 
 export function buildBackups(input: BackupInput, perKind = 2, generalCount = 3): BackupPlan {
     const outstanding = new Set(input.outstanding);
+    const advance = (s: SectionRecord, selected: SectionRecord[]) =>
+        !input.audit ||
+        createDegreeMatcher(
+            input.audit,
+            {
+                term: input.plan[0]?.semester
+                    ? `${input.plan[0].semester.season} ${input.plan[0].semester.year}`
+                    : undefined,
+            },
+            selected
+        )(s).length > 0;
     const planCodes = new Set(input.plan.map(code));
     const used = new Set<number>();
     const usable = input.candidates.filter(
@@ -78,7 +93,9 @@ export function buildBackups(input: BackupInput, perKind = 2, generalCount = 3):
     const perClass = input.plan.map(p => {
         const others = input.plan.filter(x => x.uniqueId !== p.uniqueId);
         const pTags = new Set(tagsOf(p, outstanding));
-        const fits = usable.filter(s => s.uniqueId !== p.uniqueId && open(s) && notTaken(s) && fitsWith(s, others));
+        const fits = usable.filter(
+            s => s.uniqueId !== p.uniqueId && open(s) && notTaken(s) && advance(s, others) && fitsWith(s, others)
+        );
         const sameCourse = (s: SectionRecord) => code(s) === code(p);
         const sameReq = (s: SectionRecord) => s.requirementTags.some(t => pTags.has(t));
         const sameSubject = (s: SectionRecord) => subjectOf(s.courseCode) === subjectOf(p.courseCode);
@@ -100,7 +117,7 @@ export function buildBackups(input: BackupInput, perKind = 2, generalCount = 3):
                 kindOf(s) === 'same course'
                     ? `Another section of ${p.courseCode}`
                     : kindOf(s) === 'same requirement'
-                      ? `Counts for the same requirement as ${p.courseCode}`
+                      ? `Listed in the same requirement category as ${p.courseCode}`
                       : `Another ${subjectOf(p.courseCode)} class`,
         }));
         // the safe fallback: a course with many listed sections, ideally for the same requirement
@@ -124,7 +141,19 @@ export function buildBackups(input: BackupInput, perKind = 2, generalCount = 3):
     // general backups fit beside the whole week, so they can stand in for any class
     const general = take(
         usable
-            .filter(s => open(s) && notTaken(s) && !planCodes.has(code(s)) && fitsWith(s, input.plan))
+            .filter(
+                s =>
+                    open(s) &&
+                    notTaken(s) &&
+                    input.plan.some(p =>
+                        advance(
+                            s,
+                            input.plan.filter(x => x.uniqueId !== p.uniqueId)
+                        )
+                    ) &&
+                    !planCodes.has(code(s)) &&
+                    fitsWith(s, input.plan)
+            )
             .filter(s => tagsOf(s, outstanding).length > 0 || many(s) >= SAFE_SECTIONS)
             .sort((a, b) =>
                 rank(

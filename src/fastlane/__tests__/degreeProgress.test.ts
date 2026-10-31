@@ -21,14 +21,14 @@ describe('degree progress from a real IDA', () => {
         expect(core.remainingText).toBe('15 credit hours remaining');
         // the total rule itself is not listed as a requirement
         expect(core.items.some(r => /42 hours are required/.test(r.text))).toBe(false);
-        expect(core.counts).toEqual({ completed: 6, inProgress: 3, remaining: 1, total: 10 });
+        expect(core.counts).toEqual({ completed: 5, inProgress: 4, remaining: 1, total: 10 });
     });
 
     it('shows requirement counts, not invented hours, when a category mixes courses and hours', () => {
         const major = summarizeRequirements(of('major'));
-        expect(major.figure).toEqual({ done: 6, total: 9, unit: 'requirements' });
+        expect(major.figure).toEqual({ done: 5, total: 9, unit: 'requirements' });
         expect(major.hoursNeedVerification).toBe(true);
-        expect(major.remainingText).toBe('3 requirements left');
+        expect(major.remainingText).toBe('4 requirements left'); // planned/in-progress credit is not completed
     });
 
     it('reads the official percentage, degree hours, residence hours and GPA as the IDA states them', () => {
