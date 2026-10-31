@@ -1,3 +1,4 @@
+import { DAY_ORDER } from './meetings';
 /**
  * Constraint-based schedule builder for Fastlane's AI planner.
  *
@@ -44,7 +45,9 @@ export interface ScheduleConstraints {
     term: string;
     /** wanted number of fully asynchronous online classes (a preference, not a hard rule) */
     online: { min: number; max: number } | null;
+    onlineIsPreference?: boolean;
     backToBack: boolean;
+    maxGapMinutes?: number | null;
     /** latest start / earliest end limits from "morning only" style preferences (hard), minutes */
     timeWindow?: { from: number; to: number } | null;
     /** one day allowed only part of the time ("Friday mornings are fine"), minutes */
@@ -171,6 +174,22 @@ function overlap(a: Meeting, b: Meeting): boolean {
 
 function clash(s: SectionRecord, chosen: SectionRecord[]): boolean {
     return chosen.some(o => o.meetings.some(m => s.meetings.some(n => overlap(m, n))));
+}
+
+/** Largest same-day gap. Check complete combinations: a later class may bridge a partial gap. */
+export function maximumGap(sections: SectionRecord[]): number {
+    let largest = 0;
+    for (const day of DAY_ORDER) {
+        const meetings = sections
+            .flatMap(s => s.meetings.filter(m => m.days.includes(day)))
+            .sort((a, b) => a.start - b.start);
+        let end: number | undefined;
+        for (const m of meetings) {
+            if (end !== undefined) largest = Math.max(largest, m.start - end);
+            end = Math.max(end ?? m.end, m.end);
+        }
+    }
+    return largest;
 }
 
 /** Minutes of waiting between consecutive classes on the same day (a 15-minute passing period is free). */
@@ -472,6 +491,7 @@ export async function solveSchedule(
 
     const record = () => {
         const sections = [...fixed, ...chosen.map(x => x.section)];
+        if (c.maxGapMinutes != null && maximumGap(sections) > c.maxGapMinutes) return;
         const score =
             fixedScore +
             chosen.reduce((n, x) => n + x.score, 0) +
@@ -549,6 +569,10 @@ export async function solveSchedule(
 
     if (best.length) return { best: best[0]!, alternatives: best.slice(1), report: null, explored };
     const report = explain(pool, c, bestCredits, options.removedBy ?? {});
+    if (explored > maxNodes)
+        report.reasons.unshift(
+            'The search limit was reached. This attempt did not prove that your requested schedule is impossible.'
+        );
     if (options.audit)
         report.reasons.push(
             'Only courses with verified remaining degree capacity are eligible. A credit minimum is not filled with unverified electives. Import a current IDA and verify missing course options if needed.'
@@ -575,7 +599,7 @@ function explain(
         );
     else
         reasons.push(
-            `The most credits that fit all of your rules without time conflicts is ${bestCredits}, short of ${range}.`
+            `The search reached ${bestCredits} credit hours without time conflicts, but did not find a complete ${range}-hour combination meeting every rule.`
         );
     if (c.avoidDays.some(d => ['M', 'T', 'W', 'TH', 'F'].includes(d))) {
         const allowed = (['M', 'T', 'W', 'TH', 'F'] as DayCode[]).filter(d => !c.avoidDays.includes(d));
@@ -607,10 +631,14 @@ function explain(
     }
     for (const [subj, n] of Object.entries(c.subjectCounts ?? {}))
         reasons.push(
-            `Exactly ${n} ${subj} class${n === 1 ? '' : 'es'} required, and no valid week includes that many.`
+            `Exactly ${n} ${subj} class${n === 1 ? '' : 'es'} required; ${new Set(pool.filter(x => subjectOf(x.section.courseCode) === subj).map(x => x.section.courseCode)).size} distinct matching course options were searched.`
         );
     if (c.maxCredits < 15)
         suggestions.push({ text: `Widen the credit range to ${c.minCredits}–15`, patch: { maxCredits: 15 } });
+    if (c.maxGapMinutes != null)
+        reasons.push(
+            `Your maximum ${c.maxGapMinutes}-minute gap is a hard limit; every complete combination must meet it.`
+        );
     const onlineMax = c.online?.max ?? 0;
     suggestions.push({
         text:

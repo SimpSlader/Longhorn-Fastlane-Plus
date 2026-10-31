@@ -389,7 +389,7 @@ describe('hard rules (regression cases 1–9)', () => {
             reasons: string[];
             closestAlternatives: Array<{ requiresPermissionTo: string; notOnCalendar: boolean }>;
         };
-        expect(r.error).toMatch(/No complete schedule follows all of these rules/);
+        expect(r.error).toMatch(/couldn’t find a complete schedule/);
         expect(r.reasons.length).toBeGreaterThan(0);
         for (const alt of r.closestAlternatives) {
             expect(alt.notOnCalendar).toBe(true);

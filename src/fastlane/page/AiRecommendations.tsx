@@ -40,6 +40,7 @@ import { formatMeeting } from '../core/meetings';
 import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/memory';
 import { composeReply, quickReplies } from '../core/plannerReply';
 import { constraintsFromRules, statedRules } from '../core/plannerRules';
+import { planningFailure } from '../core/planningFailure';
 import { type ValidationReport, validatePlan } from '../core/planValidator';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
@@ -525,6 +526,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             term: actualTerm,
             online: overrides.online !== undefined ? overrides.online : p.asyncCount,
             backToBack: overrides.backToBack ?? p.backToBack,
+            maxGapMinutes: p.maxGapMinutes,
             timeWindow:
                 time === 'morning'
                     ? { from: 0, to: 12 * 60 }
@@ -1237,7 +1239,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 execute: async call => {
                     const outcome = await runTool(call.name, call.arguments, { ...ctx, current: ctx.current });
                     if (outcome.result && typeof outcome.result === 'object' && 'error' in outcome.result)
-                        toolFailure = String(outcome.result.error);
+                        toolFailure = planningFailure(outcome.result);
                     if (outcome.plan && !isStale()) {
                         toolFailure = '';
                         const { sections, note, constraints, pool: planPool, validation: planReport } = outcome.plan;
@@ -1273,10 +1275,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (isStale()) return true;
             say(
                 shown,
-                guardReply(
-                    toolFailure ? `${toolFailure} Your saved schedules have not changed.` : out.text,
-                    lastReport
-                ),
+                guardReply(toolFailure || out.text, lastReport),
                 shown,
                 'chat',
                 diagnose(

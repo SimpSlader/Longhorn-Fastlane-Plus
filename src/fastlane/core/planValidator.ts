@@ -16,7 +16,7 @@ import { checkPrerequisites, subjectNameIndex } from './prerequisites';
 import { assignRequirements, fillableTags } from './requirementFit';
 import { describeRequirement, normalizeCourseCode } from './requirements';
 import type { ScheduleConstraints } from './scheduleSolver';
-import { isAsync } from './scheduleSolver';
+import { isAsync, maximumGap } from './scheduleSolver';
 import { type SectionRecord, semesterKey, subjectOf } from './sections';
 import { campusTravelMinutes, type TravelEstimator, transitions } from './travel';
 
@@ -33,6 +33,7 @@ export interface Check {
         | 'exclusions'
         | 'days'
         | 'overlap'
+        | 'gaps'
         | 'travel'
         | 'sections'
         | 'degree-audit'
@@ -251,6 +252,15 @@ export function validatePlan(
                     if (a.days.some(d => b.days.includes(d)) && a.start < b.end && b.start < a.end)
                         overlaps.push(`${sections[i]!.courseCode} overlaps ${sections[j]!.courseCode}`);
     add('overlap', 'No time overlaps', [...new Set(overlaps)]);
+
+    if (c.maxGapMinutes != null) {
+        const gap = maximumGap(sections);
+        add(
+            'gaps',
+            `At most ${c.maxGapMinutes} minutes between classes`,
+            gap > c.maxGapMinutes ? [`The longest same-day gap is ${gap} minutes`] : []
+        );
+    }
 
     // walking between classes
     if (c.checkTravel !== false) {

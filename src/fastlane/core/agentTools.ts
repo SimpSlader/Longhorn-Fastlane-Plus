@@ -622,6 +622,16 @@ function relaxations(c: ScheduleConstraints): Relaxation[] {
             label: `Allow ${({ W: 'Wednesday', M: 'Monday', F: 'Friday' } as Record<string, string>)[extraDay]} classes`,
             change: x => ({ ...x, avoidDays: x.avoidDays.filter(d => d !== extraDay) }),
         });
+    if (c.maxGapMinutes != null)
+        out.push({
+            label: `Allow gaps up to ${Math.max(60, c.maxGapMinutes + 15)} minutes`,
+            change: x => ({ ...x, maxGapMinutes: Math.max(60, c.maxGapMinutes! + 15) }),
+        });
+    if (c.minCredits > MIN_CREDITS)
+        out.push({
+            label: `Try ${MIN_CREDITS}–${c.maxCredits} credits while keeping your other rules`,
+            change: x => ({ ...x, minCredits: MIN_CREDITS }),
+        });
     if (c.coreOnly)
         out.push({ label: 'Allow classes that do not count toward core', change: x => ({ ...x, coreOnly: false }) });
     if (c.maxOnline != null)
@@ -685,7 +695,15 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
     if (!pool.length)
         return {
             result: {
-                error: 'No listed UT sections fit these rules. UT’s course list may not be imported for the semester.',
+                error: 'No eligible cached sections were found for this request.',
+                reasons: [
+                    'The selected semester, unmet degree requirements, and your course filters left no eligible options.',
+                    ...evaluateDegree(ctx.audit, [], { term: ctx.term, now: ctx.now }).issues.slice(0, 2),
+                ],
+                suggestions: [
+                    'Import or refresh the requested semester’s course list and a current IDA.',
+                    'Check that the IDA still has unmet core hours, including a signature course.',
+                ],
             },
         };
     const required = Object.keys(c.subjectCounts ?? {});
@@ -695,9 +713,17 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
         const alternatives = await closestAlternatives(args, ctx, c);
         return {
             result: {
-                error: 'No complete schedule follows all of these rules. Nothing was added to the calendar.',
-                reasons: result.report?.reasons ?? [],
-                suggestions: result.report?.suggestions.map(s => s.text) ?? [],
+                error: 'I couldn’t find a complete schedule meeting all of your rules in the cached sections.',
+                reasons: [
+                    ...(result.report?.reasons ?? []),
+                    ...evaluateDegree(ctx.audit, [], { term: ctx.term, now: ctx.now }).issues.slice(0, 2),
+                ],
+                suggestions: alternatives.length
+                    ? []
+                    : [
+                          'Import or refresh the requested semester’s course list and your current IDA.',
+                          'Ask for a lower credit load or a wider gap limit; your core-only, day and UGS requirements will stay in place unless you change them.',
+                      ],
                 closestAlternatives: alternatives,
                 note: alternatives.length
                     ? 'Each alternative breaks exactly one rule and needs the student’s permission; none is on the calendar.'
@@ -819,7 +845,10 @@ async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promi
         return {
             result: {
                 error: 'That change leaves no complete schedule that follows every rule. The calendar is unchanged.',
-                reasons: result.report?.reasons ?? [],
+                reasons: [
+                    ...(result.report?.reasons ?? []),
+                    ...evaluateDegree(ctx.audit, [], { term: ctx.term, now: ctx.now }).issues.slice(0, 2),
+                ],
             },
         };
     const report = validatePlan(result.best.sections, c, validationContext(ctx, pool));

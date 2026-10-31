@@ -212,7 +212,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     // the demo catalog cannot reach 12 credits without Monday/Wednesday/Friday: Fastlane explains instead of
     // presenting a short schedule
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
-    await expect(log).toContainText('short of 12');
+    await expect(log).toContainText('complete 12–16-hour combination');
     await expect(proposal).toHaveCount(0);
 
     // a follow-up lifts the day limit and keeps the earlier preferences (ACC plan, online count)
@@ -1003,4 +1003,64 @@ test('Degree progress shows simple cards built from the real IDA', async ({ cont
     await page.screenshot({ path: 'test-results/redesign/degree-progress-light.png', fullPage: true });
     await page.getByRole('combobox', { name: 'Appearance theme' }).selectOption('dark');
     await page.screenshot({ path: 'test-results/redesign/degree-progress-dark.png', fullPage: true });
+});
+
+test('an infeasible screenshot request shows actual blockers and recovery options even when the model says Done', async ({
+    context,
+    extensionId,
+}) => {
+    const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page);
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/agent', async route => {
+        const body = route.request().postDataJSON();
+        const last = body.messages.at(-1);
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+            body: JSON.stringify(
+                last.role === 'tool'
+                    ? { type: 'answer', text: 'Done. All rules met.' }
+                    : {
+                          type: 'tool_calls',
+                          calls: [
+                              {
+                                  id: 'build',
+                                  name: 'build_schedule',
+                                  arguments: {
+                                      minCredits: 15,
+                                      maxCredits: 16,
+                                      onlyDays: ['T', 'TH'],
+                                      coreOnly: true,
+                                      includeSubjects: ['UGS'],
+                                      excludeSubjects: ['HIS'],
+                                  },
+                              },
+                          ],
+                      }
+            ),
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    const before = await page.evaluate(async () => JSON.stringify(await chrome.storage.local.get('schedules')));
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    let replies = 0;
+    expect(JSON.parse(before).schedules.length).toBeGreaterThan(0);
+    for (const text of [
+        'please create a 15-16 hour schedule, Tuesday and Thursday only, classes that only count towards core complete, No history, and I need a UGS, preferably 2 online classes, back to back, the max gap allowed is 15 minutes.',
+        'try your best to follow what i said',
+    ]) {
+        await input.fill(text);
+        await page.getByRole('button', { name: 'Send message' }).click();
+        // Select the rendered assistant text by its local diagnostic, independent of model prose.
+        await expect(page.getByText('Why this attempt stopped:', { exact: false })).toHaveCount(++replies);
+        await expect(page.getByText(/maximum 15-minute gap/).last()).toBeVisible();
+        await expect(page.getByText('Done. All rules met.', { exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+    }
+    expect(await page.evaluate(async () => JSON.stringify(await chrome.storage.local.get('schedules')))).toBe(before);
+    await page.setViewportSize({ width: 1440, height: 1400 });
+    await page.locator('.bubble.bot').last().screenshot({ path: 'reports/screenshots/schedule-recovery.png' });
 });

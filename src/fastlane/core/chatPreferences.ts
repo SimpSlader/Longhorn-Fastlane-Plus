@@ -84,6 +84,7 @@ export interface PlanningPreferences {
     dayLimits: DayLimits;
     /** wanted number of fully asynchronous online classes, if stated */
     asyncCount: { min: number; max: number } | null;
+    asyncPreferredOnly?: boolean;
     preferAsync: boolean;
     /** "easy professors", "easy A": rank by historical grade rate (never a promise) */
     easyGrades: boolean;
@@ -100,6 +101,8 @@ export interface PlanningPreferences {
     excludedTitleWords: string[];
     /** "back to back", "no gaps": cluster classes with little time between them */
     backToBack: boolean;
+    /** Explicit maximum wait between consecutive same-day meetings; null means no hard limit. */
+    maxGapMinutes?: number | null;
     /** "core complete": unfinished Core Curriculum requirements come first */
     coreFocus: boolean;
     /** the student plans some courses at ACC without naming them (never counted as credit) */
@@ -121,6 +124,7 @@ export const EMPTY_PREFERENCES: PlanningPreferences = {
     excludedSubjects: [],
     excludedTitleWords: [],
     backToBack: false,
+    maxGapMinutes: null,
     coreFocus: false,
     accPlanned: false,
     accSuggest: false,
@@ -346,6 +350,14 @@ export function applyPlanningMessage(
             if (excludedTitleWords.includes(w)) excludedTitleWords.splice(excludedTitleWords.indexOf(w), 1);
     }
     return {
+        maxGapMinutes: /\b(?:remove|drop|ignore) (?:the )?gap (?:limit|rule)\b/.test(text)
+            ? null
+            : (() => {
+                  const m = text.match(
+                      /\b(?:max(?:imum)?\s+gap(?:\s+allowed)?(?:\s+is|\s+of)?|gaps?\s+(?:no more than|up to|at most))\s*(\d{1,3})\s*(?:minutes?|mins?)\b/
+                  );
+                  return m ? Number(m[1]) : previous.maxGapMinutes;
+              })(),
         credits: requestedCredits(message) ?? previous.credits,
         excludedSubjects: excludedSubjects.filter(Boolean),
         excludedTitleWords: excludedTitleWords.filter(Boolean),
@@ -367,6 +379,13 @@ export function applyPlanningMessage(
             /\b(?:through|at|via)\s+(?:acc|austin community college|a community college)\b/.test(text),
         avoidDays: [...avoid],
         dayLimits,
+        asyncPreferredOnly: /\bno\s+(?:async(?:hronous)?|online)\b|\bin[- ]person only\b/.test(text)
+            ? false
+            : count
+              ? /\b(?:prefer(?:ably)?|ideally)\s+(?:\d|one|two|three|four)\s+(?:fully\s+)?(?:async(?:hronous)?|online)\b/.test(
+                    text
+                )
+              : previous.asyncPreferredOnly,
         asyncCount,
         preferAsync: (asyncCount?.min ?? 0) > 0 || (previous.preferAsync && asyncCount?.max !== 0),
         easyGrades:
@@ -421,6 +440,7 @@ export function describePreferences(p: PlanningPreferences, dayNames: Record<Day
             `No ${p.excludedTitleWords.length ? `${p.excludedTitleWords.join(', ')} classes (` : ''}${p.excludedSubjects.join(', ')}${p.excludedTitleWords.length ? ' and courses titled that way)' : ' classes'}`
         );
     if (p.coreFocus) out.push('Unfinished Core Curriculum requirements first');
+    if (p.maxGapMinutes != null) out.push(`At most ${p.maxGapMinutes} minutes between same-day classes`);
     if (p.backToBack) out.push('Back-to-back classes with as few gaps as possible');
     if (p.accSuggest) out.push('Suggest harder classes to take at ACC (from UT’s official transfer table)');
     else if (p.accPlanned && !p.plannedElsewhere.length)

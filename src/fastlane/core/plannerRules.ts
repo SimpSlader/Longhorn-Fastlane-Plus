@@ -58,10 +58,11 @@ export function applyMessage(
     const online = text.match(
         /\b(?:up to|at most|no more than|max(?:imum)?(?: of)?)\s*(\d)\s*(?:asynchronous |async )?online\b/
     );
-    if (online) maxOnline = Number(online[1]);
+    if (/\bno\s+(?:async(?:hronous)?|online)\b|\bin[- ]person only\b/.test(text)) maxOnline = 0;
+    else if (online) maxOnline = Number(online[1]);
     else if (/\b(?:ok|okay|fine)\b[^.]*?(?:\d)\s*[-–to ]+\s*(\d)\s*online/.test(text))
         maxOnline = Number(text.match(/(\d)\s*(?:online)/)?.[1] ?? maxOnline);
-    else if (prefs.asyncCount) maxOnline = Math.max(maxOnline ?? 0, prefs.asyncCount.max);
+    else if (prefs.asyncCount && !prefs.asyncPreferredOnly) maxOnline = Math.max(maxOnline ?? 0, prefs.asyncCount.max);
     return { prefs, coreOnly, subjectCounts, maxOnline, excludedSections: rules.excludedSections };
 }
 
@@ -97,7 +98,9 @@ export function constraintsFromRules(
         excludedCourses: p.excludedCourses,
         term,
         online: p.asyncCount,
+        onlineIsPreference: p.asyncPreferredOnly,
         backToBack: p.backToBack,
+        maxGapMinutes: p.maxGapMinutes,
         dayLimits: p.dayLimits as DayLimits,
         coreOnly: rules.coreOnly,
         subjectCounts: rules.subjectCounts,
@@ -123,9 +126,11 @@ export function enforceStated(model: ScheduleConstraints, stated: ScheduleConstr
         coreOnly: !!(model.coreOnly || stated.coreOnly),
         subjectCounts: { ...(model.subjectCounts ?? {}), ...(stated.subjectCounts ?? {}) },
         maxOnline:
-            model.maxOnline != null && stated.maxOnline != null
-                ? Math.min(model.maxOnline, stated.maxOnline)
-                : (stated.maxOnline ?? model.maxOnline),
+            stated.onlineIsPreference && stated.maxOnline == null
+                ? undefined
+                : model.maxOnline != null && stated.maxOnline != null
+                  ? Math.min(model.maxOnline, stated.maxOnline)
+                  : (stated.maxOnline ?? model.maxOnline),
         ...(stated.creditsRequested
             ? {
                   minCredits: Math.max(model.minCredits, stated.minCredits),
@@ -135,6 +140,7 @@ export function enforceStated(model: ScheduleConstraints, stated: ScheduleConstr
             : {}),
         dayLimits: { ...(model.dayLimits ?? {}), ...(stated.dayLimits ?? {}) },
         backToBack: model.backToBack || stated.backToBack,
+        maxGapMinutes: stated.maxGapMinutes !== undefined ? stated.maxGapMinutes : model.maxGapMinutes,
         checkTravel: true,
     };
 }

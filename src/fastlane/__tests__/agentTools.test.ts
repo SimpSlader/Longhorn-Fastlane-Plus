@@ -188,7 +188,7 @@ describe('copilot tools', () => {
         expect(taken.alreadyTakenOrInProgress).toBe(true);
         // Mondays only can't reach 21 credits (two Monday sections plus three online classes)
         const impossible = await runTool('build_schedule', { minCredits: 21, maxCredits: 21, onlyDays: ['M'] }, ctx());
-        expect((impossible.result as { error?: string }).error).toMatch(/No complete schedule/);
+        expect((impossible.result as { error?: string }).error).toMatch(/couldn’t find a complete schedule/);
         expect(impossible.plan).toBeUndefined();
     });
 });
