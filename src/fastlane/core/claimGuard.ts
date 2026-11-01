@@ -50,3 +50,21 @@ export function guardReply(text: string, report: ValidationReport | null): strin
     const verdict = `**Validator:** ${verdictText(report)}`;
     return `${out.trimEnd()}\n\n${verdict}`;
 }
+
+/**
+ * Prose that presents a schedule (class rows with unique numbers, times, or a "credit hour schedule" heading).
+ * A schedule only exists once a tool built and validated it; the model's own table is never trusted.
+ */
+export function looksLikeSchedule(text: string): boolean {
+    const rows = text
+        .split('\n')
+        .filter(
+            l =>
+                /\b[A-Z]{1,4}\s?\d{3}[A-Z]?\b/.test(l) &&
+                /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\bonline\b|\b\d{5}\b/i.test(l)
+        );
+    return rows.length >= 3 || /\b\d{1,2}\s*[-–]?\s*credit[- ]hour\b[^\n]*\bschedule\b/i.test(text);
+}
+
+export const UNBUILT_SCHEDULE =
+    'I did not build a new schedule for that, so your calendar is unchanged, and the class list I started to write was not checked against UT’s course data (it could include classes or numbers that do not exist). Please ask again, for example “swap UTS 306J for a different class” or name the course, and I will rebuild and verify it.';

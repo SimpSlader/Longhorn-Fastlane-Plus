@@ -17,7 +17,7 @@ import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
-import { guardReply } from '../core/claimGuard';
+import { guardReply, looksLikeSchedule, UNBUILT_SCHEDULE } from '../core/claimGuard';
 import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
 import { applicableTags, createDegreeMatcher, evaluateDegree, recordedCourseCodes } from '../core/degreeRules';
 import type { GradeStat } from '../core/grades';
@@ -1335,7 +1335,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 guardReply(
                     isPlanResult(planResult)
                         ? [renderPlanReply(planResult), toolFailure].filter(Boolean).join('\n\n')
-                        : toolFailure || out.text,
+                        : toolFailure || (looksLikeSchedule(out.text) ? UNBUILT_SCHEDULE : out.text),
                     lastReport
                 ),
                 shown,

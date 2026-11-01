@@ -973,3 +973,19 @@ describe('natural request: degree classes first, electives ranked by GPA, altern
         expect(text).toMatch(/What I understood:.*15–15 credit hours/);
     });
 });
+
+describe('model prose that invents a schedule', () => {
+    it('is recognised so it is never shown as a schedule', async () => {
+        const { looksLikeSchedule } = await import('../core/claimGuard');
+        const invented = [
+            'Spring 2027 – 15 credit‑hour schedule (with NTR 392)',
+            '| UGS 303 DIY | 65804 | 3 | TTH 3:30‑5:00 pm · BUR 112 |',
+            '| AST 301 INTRO | 49325 | 3 | TTH 9:30‑11:00 am · WEL 3.502 |',
+            '| NTR 392 NUTRITION | – | 3 | online |',
+        ].join('\n');
+        expect(looksLikeSchedule(invented)).toBe(true);
+        expect(looksLikeSchedule('No NTR class fits around your other classes. The calendar is unchanged.')).toBe(
+            false
+        );
+    });
+});
