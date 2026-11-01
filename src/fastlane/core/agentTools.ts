@@ -401,7 +401,8 @@ function constraintsFrom(
             ]),
         ],
         coreOnly: args.coreOnly != null ? !!args.coreOnly : (base?.coreOnly ?? false),
-        allowElectives: args.allowElectives != null ? !!args.allowElectives : (base?.allowElectives ?? false),
+        // default: degree requirements first, then eligible electives to reach the credit total — unless the student says no
+        allowElectives: args.allowElectives != null ? !!args.allowElectives : (base?.allowElectives ?? true),
         subjectCounts: counts,
         maxOnline: onlineMax != null ? onlineMax : base?.maxOnline,
         excludedSections: base?.excludedSections ?? [],
@@ -575,6 +576,12 @@ async function describePlan(
                 : 'no historical grade data: not estimated',
             rateMyProfessors: await rating(ctx, s.instructors[0]),
             countsToward: degree.courses.find(x => x.uniqueId === s.uniqueId)?.contributions.map(x => x.tag) ?? [],
+            // never let an elective read as if it advanced the degree
+            kind: (() => {
+                const tags = degree.courses.find(x => x.uniqueId === s.uniqueId)?.contributions ?? [];
+                if (tags.length) return 'requirement';
+                return (c.requiredCourses ?? []).includes(normalizeCourseCode(s.courseCode)) ? 'requested' : 'elective';
+            })(),
             degree: (() => {
                 const d = degree.courses.find(x => x.uniqueId === s.uniqueId);
                 return d
@@ -624,6 +631,10 @@ async function describePlan(
         semester: ctx.term || 'listed semester',
         totalCredits: credits,
         validation: compactReport(report),
+        electives: {
+            count: classes.filter(x => x.kind === 'elective').length,
+            hours: classes.filter(x => x.kind === 'elective').reduce((n, x) => n + x.credits, 0),
+        },
         classes,
         backups: {
             perClass: await Promise.all(

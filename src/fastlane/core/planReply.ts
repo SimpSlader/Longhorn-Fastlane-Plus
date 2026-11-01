@@ -16,6 +16,7 @@ interface ClassRow {
     historicalARate: { percent: number; sample: number } | null;
     gpaOutlook: string | { expectedGradePoints: number; chanceOfA: number; confidence: string; basis?: string };
     countsToward: string[];
+    kind?: 'requirement' | 'requested' | 'elective';
     sectionRecord?: string;
     seatStatus?: string;
     rateMyProfessors?: {
@@ -41,6 +42,7 @@ export interface PlanResult {
     backups?: { perClass: Array<{ for: string; options: Backup[] }>; general: Backup[] };
     changed?: { removed: string[]; added: string[] };
     couldNotInclude?: string[];
+    electives?: { count: number; hours: number };
     understood?: string;
     alternatives?: Array<{
         label: string;
@@ -83,7 +85,14 @@ export function renderPlanReply(r: PlanResult): string {
             typeof c.gpaOutlook === 'string'
                 ? 'not estimated (no grade data)'
                 : `${c.gpaOutlook.expectedGradePoints.toFixed(2)} pts, ${c.gpaOutlook.chanceOfA}% A (${c.gpaOutlook.confidence} confidence)`;
-        const req = c.countsToward.length ? c.countsToward.map(describeRequirement).join('; ') : 'unverified';
+        // an elective is labelled as one: it adds credit hours but satisfies no unmet requirement
+        const req = c.countsToward.length
+            ? c.countsToward.map(describeRequirement).join('; ')
+            : c.kind === 'elective'
+              ? 'Elective: counts toward total credit hours only'
+              : c.kind === 'requested'
+                ? 'Requested by you: no unmet requirement'
+                : 'unverified';
         const r = c.rateMyProfessors;
         // a rating is shown only when one exists on file; nothing is ever estimated
         const rmp =
@@ -95,6 +104,10 @@ export function renderPlanReply(r: PlanResult): string {
         );
     }
     lines.push(table.join('\n'));
+    if (r.electives?.count)
+        lines.push(
+            `${r.electives.count} of ${r.classes.length} classes (${r.electives.hours} credit hours) are electives chosen to reach your credit total, ranked by grade outlook. They add to your total hours but do **not** satisfy any unmet degree requirement.`
+        );
     if (r.couldNotInclude?.length) lines.push(`Could not include: ${r.couldNotInclude.join('; ')}.`);
     const per = r.backups?.perClass.filter(g => g.options.length) ?? [];
     if (per.length || r.backups?.general.length) {
@@ -134,6 +147,7 @@ export function forModel(result: unknown): unknown {
         when: c.when,
         instructor: c.instructor,
         counts: c.countsToward,
+        kind: c.kind,
         aRate: (c.historicalARate as { percent?: number } | null)?.percent ?? null,
     }));
     const backups = r.backups as

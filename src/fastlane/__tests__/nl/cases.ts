@@ -68,7 +68,6 @@ const base15 = (say: string): Turn =>
             maxCredits: 15,
             onlyDays: TTH,
             coreOnly: false,
-            allowElectives: true,
             onlineMax: 2,
             backToBack: true,
         },
@@ -82,7 +81,6 @@ const ecoBase = (say: string): Turn =>
             maxCredits: 12,
             onlyDays: TTH,
             requiredCourses: ['ECO 304L'],
-            allowElectives: true,
             onlineMax: 2,
             latestEnd: '12:30 pm',
         },
@@ -117,7 +115,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     includeSubjects: ['UGS'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { credits: [15, 15], days: TTH, subjectCount: { UGS: 1 } }
@@ -141,7 +138,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 "I don't care what electives I take as long as they're easy A's. 15 hours, Tuesday/Thursday.",
-                { minCredits: 15, maxCredits: 15, onlyDays: TTH, allowElectives: true, objective: 'gpa', onlineMax: 2 },
+                { minCredits: 15, maxCredits: 15, onlyDays: TTH, objective: 'gpa', onlineMax: 2 },
                 { credits: [15, 15], days: TTH, exclude: ['AST 301', 'AMS 310'] }
             ),
         ],
@@ -157,7 +154,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['ECO 304L', 'GOV 312L'],
-                    allowElectives: true,
                     objective: 'gpa',
                     onlineMax: 2,
                 },
@@ -171,7 +167,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Monday Wednesday Friday only, 12 to 13 hours, nothing online',
-                { minCredits: 12, maxCredits: 13, onlyDays: ['M', 'W', 'F'], onlineMax: 0, allowElectives: true },
+                { minCredits: 12, maxCredits: 13, onlyDays: ['M', 'W', 'F'], onlineMax: 0 },
                 { incomplete: true, allRulesMet: false }
             ),
         ],
@@ -182,7 +178,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'I hate mornings, nothing before 11 please. 12 hours.',
-                { minCredits: 12, maxCredits: 12, earliestStart: '11:00 am', allowElectives: true },
+                { minCredits: 12, maxCredits: 12, earliestStart: '11:00 am' },
                 { credits: [12, 12], noMeetingBefore: 660 }
             ),
         ],
@@ -193,7 +189,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Done by 3:30 every day, 12 hours, I work afternoons',
-                { minCredits: 12, maxCredits: 12, latestEnd: '3:30 pm', allowElectives: true },
+                { minCredits: 12, maxCredits: 12, latestEnd: '3:30 pm' },
                 { credits: [12, 12], noMeetingAfter: 930 }
             ),
         ],
@@ -204,7 +200,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Light semester, 9 hours, I am taking an ACC class too',
-                { minCredits: 9, maxCredits: 9, allowElectives: true },
+                { minCredits: 9, maxCredits: 9 },
                 { credits: [9, 9] }
             ),
         ],
@@ -215,7 +211,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Mondays and Wednesdays are out for me. 15 hours, mostly core.',
-                { minCredits: 15, maxCredits: 15, avoidDays: ['M', 'W'], allowElectives: true },
+                { minCredits: 15, maxCredits: 15, avoidDays: ['M', 'W'] },
                 { credits: [15, 15] }
             ),
         ],
@@ -250,7 +246,6 @@ export const cases: Case[] = [
                     minCredits: 12,
                     maxCredits: 12,
                     requiredCourses: ['nutrition'],
-                    allowElectives: true,
                     objective: 'gpa',
                     onlineMin: 1,
                 },
@@ -289,7 +284,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 '12 hours TTh please',
-                { minCredits: 12, maxCredits: 12, onlyDays: TTH, allowElectives: true, onlineMax: 2 },
+                { minCredits: 12, maxCredits: 12, onlyDays: TTH, onlineMax: 2 },
                 { credits: [12, 12], days: TTH }
             ),
             change(
@@ -334,7 +329,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['UGS 302'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { include: ['UGS 302'] }
@@ -409,7 +403,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     includeSubjects: ['UGS'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { subjectCount: { UGS: 1 } }
@@ -468,7 +461,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     includeSubjects: ['UGS'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { subjectCount: { UGS: 1 } }
@@ -492,7 +484,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['ECO 304L'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { include: ['ECO 304L'] }
@@ -516,7 +507,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 '12 hours, TTh',
-                { minCredits: 12, maxCredits: 12, onlyDays: TTH, allowElectives: true, onlineMax: 2 },
+                { minCredits: 12, maxCredits: 12, onlyDays: TTH, onlineMax: 2 },
                 { credits: [12, 12] }
             ),
             change(
@@ -547,7 +538,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['ECO 304L'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { include: ['ECO 304L'] }
@@ -579,7 +569,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['GOV 312L'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { include: ['GOV 312L'] }
@@ -611,7 +600,6 @@ export const cases: Case[] = [
                     maxCredits: 15,
                     onlyDays: TTH,
                     requiredCourses: ['M 408C'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { incomplete: true, allRulesMet: false }
@@ -629,7 +617,6 @@ export const cases: Case[] = [
                     maxCredits: 12,
                     onlyDays: TTH,
                     requiredCourses: ['AMS 310', 'HIS 315L'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { incomplete: true, allRulesMet: false }
@@ -646,7 +633,6 @@ export const cases: Case[] = [
                     minCredits: 15,
                     maxCredits: 15,
                     onlineMax: 2,
-                    allowElectives: true,
                     avoidDays: ['M', 'T', 'W', 'TH', 'F'],
                 },
                 { plan: false, error: 'couldn’t build' }
@@ -678,7 +664,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Everything must end by 10 am and I need 15 hours',
-                { minCredits: 15, maxCredits: 15, latestEnd: '10:00 am', allowElectives: true, onlineMax: 2 },
+                { minCredits: 15, maxCredits: 15, latestEnd: '10:00 am', onlineMax: 2 },
                 { incomplete: true, allRulesMet: false }
             ),
         ],
@@ -687,12 +673,12 @@ export const cases: Case[] = [
     {
         id: 'V01',
         category: 'vague',
-        turns: [build('Build me a good schedule', { allowElectives: true }, { credits: [12, 16] })],
+        turns: [build('Build me a good schedule', {}, { credits: [12, 16] })],
     },
     {
         id: 'V02',
         category: 'vague',
-        turns: [build('something easy', { allowElectives: true, objective: 'gpa' }, { credits: [12, 16] })],
+        turns: [build('something easy', { objective: 'gpa' }, { credits: [12, 16] })],
     },
     {
         id: 'V03',
@@ -708,18 +694,12 @@ export const cases: Case[] = [
     {
         id: 'V04',
         category: 'vague',
-        turns: [build('I work Fridays', { avoidDays: ['F'], allowElectives: true }, { credits: [12, 16] })],
+        turns: [build('I work Fridays', { avoidDays: ['F'] }, { credits: [12, 16] })],
     },
     {
         id: 'V05',
         category: 'vague',
-        turns: [
-            build(
-                'a normal full load',
-                { minCredits: 15, maxCredits: 15, allowElectives: true },
-                { credits: [15, 15] }
-            ),
-        ],
+        turns: [build('a normal full load', { minCredits: 15, maxCredits: 15 }, { credits: [15, 15] })],
     },
     {
         id: 'V06',
@@ -727,7 +707,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'as few days on campus as possible, 15 hours',
-                { minCredits: 15, maxCredits: 15, onlyDays: TTH, allowElectives: true, onlineMax: 3 },
+                { minCredits: 15, maxCredits: 15, onlyDays: TTH, onlineMax: 3 },
                 { credits: [15, 15], days: TTH }
             ),
         ],
@@ -739,7 +719,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 '30 credit hours, Tuesday Thursday only',
-                { minCredits: 30, maxCredits: 30, onlyDays: TTH, allowElectives: true },
+                { minCredits: 30, maxCredits: 30, onlyDays: TTH },
                 { incomplete: true, allRulesMet: false }
             ),
         ],
@@ -754,7 +734,6 @@ export const cases: Case[] = [
                     minCredits: 12,
                     maxCredits: 12,
                     requiredCourses: ['underwater basket weaving'],
-                    allowElectives: true,
                 },
                 { incomplete: true, allRulesMet: false }
             ),
@@ -772,7 +751,6 @@ export const cases: Case[] = [
                     earliestStart: '7:00 am',
                     latestEnd: '8:00 am',
                     onlineMax: 0,
-                    allowElectives: true,
                 },
                 { plan: false, error: 'couldn’t build' }
             ),
@@ -797,7 +775,6 @@ export const cases: Case[] = [
                     maxCredits: 12,
                     onlineMax: 0,
                     avoidDays: ['M', 'T', 'W', 'TH', 'F'],
-                    allowElectives: true,
                 },
                 { plan: false, error: 'couldn’t build' }
             ),
@@ -810,7 +787,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 "Tuesday and Thursday are the only days I can't do. 12 hours.",
-                { minCredits: 12, maxCredits: 12, avoidDays: TTH, allowElectives: true },
+                { minCredits: 12, maxCredits: 12, avoidDays: TTH },
                 { credits: [12, 12] }
             ),
         ],
@@ -826,7 +803,6 @@ export const cases: Case[] = [
                     maxCredits: 12,
                     onlyDays: TTH,
                     excludeSubjects: ['UGS'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { credits: [12, 12], exclude: ['UGS 302', 'UGS 303'] }
@@ -839,7 +815,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 "I'd rather not have only core classes — mix in some fun electives. 15 hours.",
-                { minCredits: 15, maxCredits: 15, allowElectives: true, coreOnly: false },
+                { minCredits: 15, maxCredits: 15, coreOnly: false },
                 { credits: [15, 15] }
             ),
         ],
@@ -855,7 +831,6 @@ export const cases: Case[] = [
                     maxCredits: 12,
                     onlyDays: TTH,
                     excludeSubjects: ['UGS'],
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { exclude: ['UGS 302', 'UGS 303'], days: TTH }
@@ -868,7 +843,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Anything but economics please',
-                { minCredits: 12, maxCredits: 15, excludeSubjects: ['ECO'], allowElectives: true },
+                { minCredits: 12, maxCredits: 15, excludeSubjects: ['ECO'] },
                 { exclude: ['ECO 304L'] }
             ),
         ],
@@ -879,7 +854,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Fridays off, and nothing before 10, 14 or 15 credits',
-                { minCredits: 14, maxCredits: 15, avoidDays: ['F'], earliestStart: '10:00 am', allowElectives: true },
+                { minCredits: 14, maxCredits: 15, avoidDays: ['F'], earliestStart: '10:00 am' },
                 { credits: [14, 15], noMeetingBefore: 600 }
             ),
         ],
@@ -890,7 +865,7 @@ export const cases: Case[] = [
         turns: [
             build(
                 'I can do two online classes at most',
-                { minCredits: 12, maxCredits: 15, onlineMax: 2, allowElectives: true },
+                { minCredits: 12, maxCredits: 15, onlineMax: 2 },
                 { async: [0, 2] }
             ),
         ],
@@ -907,7 +882,6 @@ export const cases: Case[] = [
                     onlyDays: TTH,
                     backToBack: true,
                     maxGapMinutes: 15,
-                    allowElectives: true,
                     onlineMax: 2,
                 },
                 { credits: [12, 12], days: TTH, maxGap: 15 }

@@ -113,3 +113,60 @@ describe('follow-up fixes found by the live run', () => {
         expect(JSON.stringify(added.result)).not.toMatch(/matches “NUTR 301”/);
     });
 });
+
+describe('electives: degree first, then labelled electives to reach the credit total', () => {
+    const ask = { minCredits: 15, maxCredits: 15, onlyDays: ['T', 'TH'], onlineMax: 2 }; // electives never mentioned
+
+    it('fills the credit total with electives by default and labels each one', async () => {
+        const out = await runTool('build_schedule', ask, makeContext());
+        expect(out.plan).toBeDefined();
+        const r = out.result as {
+            classes: Array<{ code: string; kind: string; countsToward: string[] }>;
+            electives: { count: number; hours: number };
+        };
+        expect(r.classes.filter(c => c.kind === 'requirement').every(c => c.countsToward.length > 0)).toBe(true);
+        expect(r.classes.filter(c => c.kind === 'elective').every(c => c.countsToward.length === 0)).toBe(true);
+        expect(r.electives.count).toBe(r.classes.filter(c => c.kind === 'elective').length);
+        const text = renderPlanReply(out.result as never);
+        if (r.electives.count) {
+            expect(text).toMatch(/Elective: counts toward total credit hours only/);
+            expect(text).toMatch(/do \*\*not\*\* satisfy any unmet degree requirement/);
+        }
+        expect(out.plan!.validation.hardOk).toBe(true);
+    });
+
+    it('degree requirements outrank electives even when the elective has much better grades', async () => {
+        const [ugs303, psyEasy] = [catalog.find(s => s.uniqueId === 2)!, catalog.find(s => s.uniqueId === 28)!];
+        // same slot: UGS 303 fills an unmet requirement (MID grades); PSY 301 is an elective with EASY grades
+        const out = await runTool(
+            'build_schedule',
+            { minCredits: 3, maxCredits: 3, onlyDays: ['T', 'TH'] },
+            makeContext({ catalog: [ugs303, psyEasy] })
+        );
+        expect(out.plan!.sections.map(s => s.courseCode)).toEqual(['UGS 303']);
+    });
+
+    it('a student who says no electives is never given them silently', async () => {
+        const out = await runTool(
+            'build_schedule',
+            { ...ask, minCredits: 21, maxCredits: 21, allowElectives: false },
+            makeContext()
+        );
+        // whether it finds a smaller schedule or a labelled draft, no elective is ever slipped in
+        for (const c of (out.result as { classes?: Array<{ kind: string }> }).classes ?? [])
+            expect(c.kind).not.toBe('elective');
+        if (out.plan)
+            expect(out.plan.validation.credits === 21 && !out.plan.validation.allRulesMet).toBe(
+                out.plan.validation.credits === 21
+            );
+    });
+
+    it('a class the student asked for by name is labelled as requested, not as a degree requirement', async () => {
+        const out = await runTool('build_schedule', { ...ask, requiredCourses: ['ECO 304L'] }, makeContext());
+        const eco = (out.result as { classes: Array<{ code: string; kind: string }> }).classes.find(
+            c => c.code === 'ECO 304L'
+        );
+        expect(eco?.kind).toBe('requested');
+        expect(renderPlanReply(out.result as never)).toMatch(/Requested by you: no unmet requirement/);
+    });
+});

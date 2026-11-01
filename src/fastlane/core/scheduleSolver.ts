@@ -26,6 +26,8 @@ import { type SectionRecord, semesterKey, subjectOf } from './sections';
 import { campusTravelMinutes, type TravelEstimator, travelInfeasible } from './travel';
 
 export const MIN_CREDITS = 12;
+/** score of filling an unmet requirement: larger than every grade, gap and stability term combined */
+const REQUIREMENT_FIRST = 25;
 export const DEFAULT_MAX_CREDITS = 16;
 /** credits above this get a small penalty when the student set no range (default target 12–15) */
 const DEFAULT_TARGET_MAX = 15;
@@ -265,7 +267,9 @@ export function scoreSection(input: {
     if (input.courseCode && isUpperDivision(input.courseCode) && !verified) score -= 2;
     if (input.prerequisite === 'check') score -= 1.5;
     const core = input.applies.some(t => /^core\b/i.test(t));
-    if (input.applies.length) score += input.coreFocus ? (core ? 7 : 2.5) : 4.5;
+    // degree requirements come first, lexicographically: no grade or convenience advantage may displace a class
+    // that fills an unmet requirement with an elective
+    if (input.applies.length) score += REQUIREMENT_FIRST + (input.coreFocus ? (core ? 2.5 : -2) : 0);
     if (input.gpa !== undefined) score += gpaScore(input.gpa, input.easyGrades ? 1 : 0.2);
     else {
         const n = Math.max(0, input.gradeSample);
