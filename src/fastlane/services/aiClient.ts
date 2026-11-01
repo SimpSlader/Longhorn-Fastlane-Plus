@@ -23,18 +23,27 @@ export interface AiTarget {
     dev: boolean;
 }
 
-/** Production unless a valid developer test server is set. A rejected or malformed URL silently means production. */
+/** Explicit TEST SERVER selections fail closed: never redirect failed preview requests to production. */
 export async function aiTarget(): Promise<AiTarget> {
     // the developer test server exists only in local builds; a store build always talks to production
     if (import.meta.env.VITE_FASTLANE_DEV_AUTORELOAD !== 'true') return { base: AI_BASE, dev: false };
+    let base: string;
+    let code: string;
     try {
-        const { base, code } = await FastlaneDevServerStore.all();
-        const origin = new URL(base).origin;
-        if (base && isPreviewOrigin(origin)) return { base: `${origin}/api`, code: code || undefined, dev: true };
+        ({ base, code } = await FastlaneDevServerStore.all());
     } catch {
-        // no dev server configured
+        throw new Error('Cannot read AI test-server settings. Check extension storage and reload; production was not contacted.');
     }
-    return { base: AI_BASE, dev: false };
+    if (!base) return { base: AI_BASE, dev: false };
+    let origin: string;
+    try {
+        origin = new URL(base).origin;
+    } catch {
+        throw new Error('Invalid AI test-server URL. Open Settings → Developer: AI test server to correct it; production was not contacted.');
+    }
+    if (!isPreviewOrigin(origin))
+        throw new Error('AI test-server URL is not an authorized candidate preview. Correct it in Settings; production was not contacted.');
+    return { base: `${origin}/api`, code: code || undefined, dev: true };
 }
 
 /** POST JSON to one AI endpoint of the active target. Preview requests carry the browser's Vercel login cookie. */
