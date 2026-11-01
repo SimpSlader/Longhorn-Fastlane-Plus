@@ -41,7 +41,7 @@ describe('copilot agent API', () => {
             'remember',
         ]);
         expect(SYSTEM_PROMPT).toMatch(/Never reply with only a raw list of sections/);
-        expect(SYSTEM_PROMPT).toMatch(/call build_schedule once with every constraint/);
+        expect(SYSTEM_PROMPT).toMatch(/MUST call build_schedule or modify_schedule/);
     });
 
     it('returns the tools the model wants run, then its answer once results come back', async () => {

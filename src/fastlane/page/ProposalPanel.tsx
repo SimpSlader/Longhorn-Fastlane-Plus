@@ -15,6 +15,7 @@ import { totalHours } from '../core/proposal';
 import type { ScheduleValidation } from '../core/scheduleSolver';
 import type { SectionRecord } from '../core/sections';
 import { ClassCard } from './ClassCard';
+import { CopyButton } from './common';
 import DegreeFitList from './DegreeFitList';
 import WeekGrid from './WeekGrid';
 
@@ -31,6 +32,12 @@ interface Props {
     validation: ScheduleValidation | null;
     /** the independent validator's verdict: the only source of "All rules met" */
     report: ValidationReport | null;
+    /** one-click versions of the same request (recommended + GPA / convenience / degree progress) */
+    versions?: Array<{ label: string; short: string; valid: boolean }>;
+    activeVersion?: number;
+    onPickVersion?: (index: number) => void;
+    /** everything needed to register, or null when the schedule is not a valid one */
+    copyAll?: string | null;
     minCredits: number;
     onFill: () => void;
     canFill: boolean;
@@ -102,6 +109,40 @@ export default function ProposalPanel(props: Props) {
                     </button>
                 </fieldset>
             </div>
+            {(props.versions?.length || props.copyAll !== undefined) && (
+                <div className='fl-plan-versions' role='toolbar' aria-label='Schedule versions and registration'>
+                    {props.versions && props.versions.length > 1 && (
+                        <fieldset className='fl-seg' aria-label='Optimize for'>
+                            {props.versions.map((v, i) => (
+                                <button
+                                    key={v.label}
+                                    type='button'
+                                    className={i === props.activeVersion ? 'on' : ''}
+                                    aria-pressed={i === props.activeVersion}
+                                    title={v.label}
+                                    disabled={props.busy}
+                                    onClick={() => props.onPickVersion?.(i)}
+                                >
+                                    {v.short}
+                                    {v.valid ? '' : ' (draft)'}
+                                </button>
+                            ))}
+                        </fieldset>
+                    )}
+                    {props.copyAll != null ? (
+                        <CopyButton text={props.copyAll} label='Copy all unique numbers' />
+                    ) : (
+                        <button
+                            type='button'
+                            className='btn sm'
+                            disabled
+                            title='A draft that breaks your rules is not offered for registration'
+                        >
+                            Copy all unique numbers
+                        </button>
+                    )}
+                </div>
+            )}
             {props.report && !props.report.allRulesMet && (
                 <div className={`fl-plan-alert${props.report.hardOk ? ' soft' : ''}`} role='status'>
                     <div className='stack'>

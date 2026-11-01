@@ -11,6 +11,8 @@ const CLAIMS = [
     /\bfully (?:degree[- ]audit[- ]verified|verified)\b/gi,
     /\b(?:verified|checked) against your degree audit\b/gi,
 ];
+const NEGATION =
+    /\b(?:no|not|never|nothing|none|neither|nor|cannot|can't|can’t|doesn't|doesn’t|didn't|didn’t)\b[^.]*$/i;
 export const STRUCK = '[not confirmed by the validator]';
 
 export function guardReply(text: string, report: ValidationReport | null): string {
@@ -38,7 +40,11 @@ export function guardReply(text: string, report: ValidationReport | null): strin
     for (const [i, re] of CLAIMS.entries()) {
         // claims about the audit stand only when that check passed; the others only when everything passed
         const supported = i >= 2 ? !!report?.allRulesMet && (i === 3 ? auditOk : true) : !!report?.allRulesMet;
-        if (!supported) out = out.replace(re, STRUCK);
+        if (supported) continue;
+        // "no schedule meets every rule" is a denial, not a claim
+        out = out.replace(re, (match, offset: number) =>
+            NEGATION.test(out.slice(Math.max(0, offset - 30), offset)) ? match : STRUCK
+        );
     }
     if (!report) return out;
     const verdict = `**Validator:** ${verdictText(report)}`;

@@ -41,7 +41,8 @@ import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/me
 import { composeReply, quickReplies } from '../core/plannerReply';
 import { constraintsFromRules, statedRules } from '../core/plannerRules';
 import { planningFailure } from '../core/planningFailure';
-import { type ValidationReport, validatePlan } from '../core/planValidator';
+import { isPlanResult, renderPlanReply } from '../core/planReply';
+import { type ValidationReport, validatePlan, verdictText } from '../core/planValidator';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
 import {
@@ -52,6 +53,7 @@ import {
     replacementFits,
     resolveTarget,
 } from '../core/proposal';
+import { registrationText } from '../core/registrationText';
 import { normalizeCourseCode } from '../core/requirements';
 import type { RmpRating } from '../core/rmp';
 import { splitProfessorName } from '../core/rmp';
@@ -368,6 +370,18 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     // the schedule on screen as the copilot built it (its rules and candidate pool), for follow-up changes
     const copilotBuild = useRef<ToolContext['current']>(null);
     const copilotSeq = useRef(0);
+    // the recommended schedule plus one-click GPA / convenience / degree-progress versions, each validated
+    const [variants, setVariants] = useState<
+        Array<{
+            label: string;
+            short: string;
+            sections: SectionRecord[];
+            validation: ValidationReport;
+            constraints: ScheduleConstraints;
+            pool: SolverCandidate[];
+        }>
+    >([]);
+    const [variantIndex, setVariantIndex] = useState(0);
     // biome-ignore lint/correctness/useExhaustiveDependencies: any imported-audit identity change invalidates in-flight work
     useEffect(() => {
         abortRef.current?.abort();
@@ -1169,6 +1183,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         const isStale = () => copilotSeq.current !== mySeq || controller.signal.aborted;
         let lastReport: ValidationReport | null = null;
         let toolFailure = '';
+        // the checked result of the last schedule tool call: chat describes exactly this, never the model's memory of it
+        let planResult: unknown = null;
         // hard rules in the student's own words (and remembered ones) — the model can add detail, never loosen them
         const stated = constraintsFromRules(
             statedRules([...memory, ...history_.map(h => h.context), shown], subjectCodes, UT_SUBJECTS),
@@ -1238,13 +1254,49 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 onProgress: setProgress,
                 execute: async call => {
                     const outcome = await runTool(call.name, call.arguments, { ...ctx, current: ctx.current });
-                    if (outcome.result && typeof outcome.result === 'object' && 'error' in outcome.result)
+                    const incomplete =
+                        !!outcome.result && typeof outcome.result === 'object' && 'incomplete' in outcome.result;
+                    if (
+                        outcome.result &&
+                        typeof outcome.result === 'object' &&
+                        ('error' in outcome.result || incomplete)
+                    )
                         toolFailure = planningFailure(outcome.result);
                     if (outcome.plan && !isStale()) {
-                        toolFailure = '';
+                        // a closest-match draft keeps its own explanation of the rules it does not follow
+                        if (!incomplete) toolFailure = '';
+                        planResult = outcome.result;
                         const { sections, note, constraints, pool: planPool, validation: planReport } = outcome.plan;
                         lastReport = planReport;
                         showPlan(sections, note, planReport, constraints);
+                        const short: Record<string, string> = {
+                            gpa: 'GPA',
+                            convenience: 'Convenience',
+                            degree: 'Degree',
+                        };
+                        setVariants(
+                            outcome.plan.alternatives?.length
+                                ? [
+                                      {
+                                          label: 'Recommended',
+                                          short: 'Recommended',
+                                          sections,
+                                          validation: planReport,
+                                          constraints,
+                                          pool: planPool,
+                                      },
+                                      ...outcome.plan.alternatives.map(a => ({
+                                          label: a.label,
+                                          short: short[a.objective] ?? a.objective,
+                                          sections: a.sections,
+                                          validation: a.validation,
+                                          constraints,
+                                          pool: planPool,
+                                      })),
+                                  ]
+                                : []
+                        );
+                        setVariantIndex(0);
                         copilotBuild.current = { sections, constraints, pool: planPool };
                         setCopilotRules(constraints);
                         ctx.current = { sections, constraints, pool: planPool };
@@ -1275,7 +1327,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (isStale()) return true;
             say(
                 shown,
-                guardReply(toolFailure || out.text, lastReport),
+                guardReply(
+                    isPlanResult(planResult)
+                        ? [renderPlanReply(planResult), toolFailure].filter(Boolean).join('\n\n')
+                        : toolFailure || out.text,
+                    lastReport
+                ),
                 shown,
                 'chat',
                 diagnose(
@@ -2087,6 +2144,26 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     <ProposalPanel
                         validation={validation}
                         report={report}
+                        versions={variants.map(v => ({
+                            label: v.label,
+                            short: v.short,
+                            valid: v.validation.hardOk,
+                        }))}
+                        activeVersion={variantIndex}
+                        onPickVersion={i => {
+                            const v = variants[i];
+                            if (!v) return;
+                            showPlan(
+                                v.sections,
+                                `${v.label}. ${verdictText(v.validation)}`,
+                                v.validation,
+                                v.constraints
+                            );
+                            copilotBuild.current = { sections: v.sections, constraints: v.constraints, pool: v.pool };
+                            proposalRef.current = { sections: v.sections } as ProposalVersion;
+                            setVariantIndex(i);
+                        }}
+                        copyAll={report?.hardOk ? registrationText(proposal.sections, actualTerm) : null}
                         minCredits={constraints.minCredits}
                         onFill={() => void solveLocally('fill')}
                         canFill={pool.size > 0}

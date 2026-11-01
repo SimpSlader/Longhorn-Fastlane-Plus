@@ -900,7 +900,7 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     await send.click();
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
     await expect(proposal).toBeVisible();
-    await expect(log.locator('.bubble.bot').last()).toContainText(/-credit schedule/);
+    await expect(log.locator('.bubble.bot').last()).toContainText(/schedule — \d+ credit hours/);
     await expect(log).not.toContainText('has 3 listed sections');
     // the tool result the model saw was a real schedule from the solver, with backups
     const toolResult = JSON.parse(requests.at(-1)!.messages.at(-1)!.content) as {
@@ -1009,6 +1009,7 @@ test('an infeasible screenshot request shows actual blockers and recovery option
     context,
     extensionId,
 }) => {
+    test.setTimeout(240_000);
     const page = await demoWithAudit(context, extensionId);
     await unmetPlanningFixture(page);
     await page.route('https://longhorn-fastlane-plus.vercel.app/api/agent', async route => {
@@ -1034,6 +1035,7 @@ test('an infeasible screenshot request shows actual blockers and recovery option
                                       coreOnly: true,
                                       includeSubjects: ['UGS'],
                                       excludeSubjects: ['HIS'],
+                                      maxGapMinutes: 15,
                                   },
                               },
                           ],
@@ -1055,7 +1057,10 @@ test('an infeasible screenshot request shows actual blockers and recovery option
         await input.fill(text);
         await page.getByRole('button', { name: 'Send message' }).click();
         // Select the rendered assistant text by its local diagnostic, independent of model prose.
-        await expect(page.getByText('Why this attempt stopped:', { exact: false })).toHaveCount(++replies);
+        // the planner now searches rule combinations for up to ~45 s before answering
+        await expect(page.getByText('Why no schedule meets every rule:', { exact: false })).toHaveCount(++replies, {
+            timeout: 90_000,
+        });
         await expect(page.getByText(/maximum 15-minute gap/).last()).toBeVisible();
         await expect(page.getByText('Done. All rules met.', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();

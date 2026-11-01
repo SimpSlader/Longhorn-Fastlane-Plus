@@ -11,6 +11,7 @@ import type { ParsedAudit } from '../audit/types';
 import { academicModel } from '../core/academicModel';
 import { runTool, type ToolContext } from '../core/agentTools';
 import { guardReply, STRUCK } from '../core/claimGuard';
+import { parseCourseQuery, resolveCourseCode, sectionMatchesQuery, subjectWords } from '../core/courseSearch';
 import { compareRationale, estimateGpa, GRADE_POINTS } from '../core/gpaModel';
 import type { GradeCounts, GradeStat } from '../core/grades';
 import {
@@ -24,6 +25,7 @@ import {
     statedRules,
     undoLast,
 } from '../core/plannerRules';
+import { isPlanResult, renderPlanReply } from '../core/planReply';
 import { validateBackup, validatePlan } from '../core/planValidator';
 import { assignRequirements } from '../core/requirementFit';
 import { tagsForSection } from '../core/requirements';
@@ -171,6 +173,7 @@ const toolCtx = (over: Partial<ToolContext> = {}): ToolContext => ({
 
 const BUILD = {
     includeSubjects: ['UGS'],
+    excludeSubjects: ['HIS'],
     coreOnly: true,
     onlyDays: ['T', 'TH'],
     minCredits: 13,
@@ -372,29 +375,53 @@ describe('hard rules (regression cases 1–9)', () => {
             expect(out.plan!.pool.find(p => p.section === s)!.applies.length).toBeGreaterThan(0);
     });
 
-    it('9. no feasible schedule: an explicit infeasibility result, closest alternatives labeled, nothing on the calendar', async () => {
+    it('9. no feasible schedule: a closest draft that names every rule it does not follow, never claimed valid', async () => {
+        // 15 credits on Tue/Thu with no online classes is impossible here (only four in-person core classes fit)
         const out = await runTool(
             'build_schedule',
             { ...BUILD, minCredits: 15, maxCredits: 15, onlineMax: 0 },
             toolCtx({
-                catalog: catalog.filter(
-                    s => !['NTR 306', 'E 316L', 'ECO 304L', 'UGS 302'].includes(s.courseCode) || s.uniqueId === 1
-                ),
-                stated: statedFor('Tuesday and Thursday only, core complete only, a UGS, 15 hours'),
+                catalog: catalog.filter(s => !['ECO 304L', 'UGS 302'].includes(s.courseCode) || s.uniqueId === 1),
+                stated: statedFor('Tuesday and Thursday only, core complete only, a UGS, 15 hours, no online'),
             })
         );
-        expect(out.plan).toBeUndefined();
         const r = out.result as {
-            error: string;
+            incomplete?: boolean;
+            rulesItDoesNotFollow: string[];
             reasons: string[];
-            closestAlternatives: Array<{ requiresPermissionTo: string; notOnCalendar: boolean }>;
+            notice: string;
         };
-        expect(r.error).toMatch(/couldn’t find a complete schedule/);
-        expect(r.reasons.length).toBeGreaterThan(0);
-        for (const alt of r.closestAlternatives) {
-            expect(alt.notOnCalendar).toBe(true);
-            expect(alt.requiresPermissionTo).toMatch(/^(Allow|Widen|Drop)/);
-        }
+        expect(r.incomplete).toBe(true);
+        expect(r.rulesItDoesNotFollow.length).toBeGreaterThan(0);
+        expect(r.reasons.join(' ')).toMatch(/sections \(/); // the funnel
+        expect(out.plan).toBeDefined(); // shown as a draft...
+        expect(out.plan!.validation.hardOk).toBe(false); // ...validated against the ORIGINAL rules
+        expect(out.plan!.validation.allRulesMet).toBe(false);
+        expect(out.plan!.validation.failures.join()).toMatch(/asynchronous online|credit hours/);
+        expect(out.plan!.constraints.maxOnline).toBe(0); // the student's rules stay in place
+    });
+
+    it('9b. when nothing at all can be built, the funnel names the rule that emptied the list', async () => {
+        const out = await runTool(
+            'build_schedule',
+            { ...BUILD, minCredits: 15, maxCredits: 15 },
+            toolCtx({ catalog: [], stated: statedFor(REQUEST) })
+        );
+        expect(out.plan).toBeUndefined();
+        const r = out.result as { error: string; reasons: string[] };
+        expect(r.error).toMatch(/couldn’t build any schedule/);
+        expect(r.reasons.join(' ')).toMatch(/nothing is left after this rule/);
+    });
+
+    it('9c. a time limit ends the search and says so instead of claiming impossibility', async () => {
+        // 25 credits cannot be made from 3-credit classes, so the whole space would be searched
+        const many = Array.from({ length: 60 }, (_, i) => sec(500 + i, `SOC ${300 + i}`, { core: ['080'] }));
+        const open: ScheduleConstraints = { ...statedFor('Tuesday and Thursday only'), minCredits: 25, maxCredits: 25 };
+        const started = Date.now();
+        const out = await solveSchedule(asCandidates(many), open, { timeLimitMs: 200, maxNodes: 50_000_000 });
+        expect(Date.now() - started).toBeLessThan(5000);
+        expect(out.best).toBeNull();
+        expect(out.report!.reasons[0]).toMatch(/search limit was reached/);
     });
 
     it('a stated rule cannot be loosened by the model', () => {
@@ -611,6 +638,12 @@ describe("claims in the model's text", () => {
         expect(guardReply('Every constraint was satisfied.', null)).toContain(STRUCK);
     });
 
+    it('leave denials alone: "no schedule meets every rule" is not a claim', () => {
+        const text = 'Why no schedule meets every rule: nothing satisfies all constraints.';
+        expect(guardReply(text, bad)).toContain('Why no schedule meets every rule');
+        expect(guardReply(text, bad)).not.toContain(STRUCK);
+    });
+
     it('stand when every check passed', () => {
         const ok = validatePlan(
             ['UGS 302', 'GOV 312L', 'MUS 306M', 'SOC 302', 'NTR 306'].map(c => catalog.find(s => s.courseCode === c)!),
@@ -767,5 +800,176 @@ describe('chat and calendar use the same validated result', () => {
         // "All rules met" can only come from the independent report
         expect(panel).toMatch(/props\.report\?\.allRulesMet/);
         expect(panel).not.toMatch(/valid\s*\?\s*'All rules met'/);
+    });
+});
+
+describe('finding a course the way a student writes it (the "web based nutrition" miss)', () => {
+    const nutrition = sec(40, 'NTR 306', { core: ['030'], title: 'FUNDAMENTALS OF NUTRITION' });
+    const inPerson = sec(41, 'NTR 306', { times: TTH(SLOT.a), core: ['030'], title: 'FUNDAMENTALS OF NUTRITION' });
+    const index: Array<[string, string]> = [
+        ['nutritional sciences', 'NTR'],
+        ['sociology', 'SOC'],
+    ];
+    const all = [nutrition, inPerson, ...catalog];
+
+    it('"fundamental of nutrition" matches the plural title; "web based" means online', () => {
+        const q = parseCourseQuery('Fundamental of Nutrition WB');
+        expect(q.online).toBe(true);
+        expect(sectionMatchesQuery(nutrition, q, subjectWords(index))).toBe(true);
+        expect(sectionMatchesQuery(catalog[0]!, q, subjectWords(index))).toBe(false);
+    });
+
+    it('a subject name finds its courses, and a free-text name resolves to a course code', () => {
+        expect(sectionMatchesQuery(nutrition, parseCourseQuery('nutrition'), subjectWords(index))).toBe(true);
+        expect(resolveCourseCode('web based NTR', all, index)).toBe('NTR 306');
+        expect(resolveCourseCode('fundamentals of nutrition', all, index)).toBe('NTR 306');
+        expect(resolveCourseCode('underwater basket weaving', all, index)).toBeNull();
+    });
+
+    it("search_courses finds the web-based section from the student's own words", async () => {
+        const out = await runTool(
+            'search_courses',
+            { query: 'fundamental of nutrition web based' },
+            toolCtx({ catalog: [...catalog, nutrition, inPerson], subjectIndex: index })
+        );
+        const r = out.result as { courses: Array<{ code: string; modes: string[] }> };
+        expect(r.courses.map(c => c.code)).toContain('NTR 306');
+        expect(r.courses.find(c => c.code === 'NTR 306')!.modes.join()).toMatch(/asynchronous/);
+    });
+
+    it('modify_schedule by name swaps the course in, or says plainly why it could not — never silently ignores it', async () => {
+        const rules = statedFor(REQUEST);
+        const built = await runTool(
+            'build_schedule',
+            { ...BUILD },
+            toolCtx({ stated: rules, catalog: [...catalog, nutrition], subjectIndex: index })
+        );
+        const current = {
+            sections: built.plan!.sections,
+            constraints: built.plan!.constraints,
+            pool: built.plan!.pool,
+        };
+        const swapped = await runTool(
+            'modify_schedule',
+            { remove: ['SOC 302'], addCourse: 'fundamentals of nutrition web based' },
+            toolCtx({ stated: rules, catalog: [...catalog, nutrition], subjectIndex: index, current })
+        );
+        if (swapped.plan) {
+            expect(swapped.plan.sections.map(s => s.courseCode)).toContain('NTR 306');
+            expect(swapped.plan.sections.map(s => s.courseCode)).not.toContain('SOC 302');
+            expect(swapped.plan.validation.hardOk).toBe(true);
+        } else expect(JSON.stringify(swapped.result)).toMatch(/NOT added|no complete schedule/i);
+        const missing = await runTool(
+            'modify_schedule',
+            { addCourse: 'underwater basket weaving' },
+            toolCtx({ stated: rules, current })
+        );
+        expect(missing.plan).toBeUndefined();
+        expect((missing.result as { error: string }).error).toMatch(/No Spring 2027 course matches/);
+    });
+});
+
+describe('chat text comes from the checked result, not from the model', () => {
+    it('lists exactly the calendar sections with their real unique numbers, credits and requirements', async () => {
+        const out = await runTool('build_schedule', BUILD, toolCtx({ stated: statedFor(REQUEST) }));
+        expect(isPlanResult(out.result)).toBe(true);
+        const text = renderPlanReply(out.result as never);
+        for (const s of out.plan!.sections) expect(text).toContain(String(s.uniqueId).padStart(5, '0'));
+        expect(text).toContain(`${out.plan!.validation.credits} credit hours`);
+        expect(text).not.toMatch(/All rules met/); // the verdict comes from the validator line, not from this text
+    });
+});
+
+describe('natural request: degree classes first, electives ranked by GPA, alternatives offered', () => {
+    const elec = (id: number, code: string, slot: string) => sec(id, code, { times: TTH(slot), title: code });
+    const pool = [
+        sec(1, 'UGS 302', { times: TTH(SLOT.a), core: ['090'] }),
+        sec(3, 'GOV 312L', { times: TTH(SLOT.b), core: ['070'] }),
+        elec(60, 'SED 303', SLOT.c), // electives, different grade histories
+        elec(61, 'AMS 310', SLOT.d),
+        elec(62, 'ANT 301', SLOT.e),
+        sec(63, 'KIN 302', { title: 'KIN 302' }), // asynchronous elective
+    ];
+    const grades: Record<string, GradeCounts> = {
+        'SED 303': { A: 900, 'A-': 80, B: 20 },
+        'AMS 310': { A: 100, B: 300, C: 150, D: 40 },
+        'ANT 301': { A: 600, 'A-': 200, B: 150 },
+        'KIN 302': { A: 700, 'A-': 150, B: 100 },
+    };
+    const statFor = (s: SectionRecord) =>
+        ({
+            result: { percent: 80, graded: 1000 },
+            scope: 'course',
+            source: 'test',
+            semesters: ['Fall 2025'],
+            counts: grades[s.courseCode] ?? { A: 300, B: 300, C: 100 },
+        }) as unknown as GradeStat;
+    const ask = {
+        minCredits: 15,
+        maxCredits: 15,
+        onlyDays: ['T', 'TH'],
+        onlineMax: 2,
+        allowElectives: true,
+    };
+    const ctx = (over: Partial<ToolContext> = {}) =>
+        toolCtx({
+            catalog: pool,
+            outstanding: ['CORE 090', 'CORE 070'],
+            gradeStat: async s => statFor(s),
+            stated: statedFor('15 hours, Tuesday and Thursday only'),
+            ...over,
+        });
+
+    it('with electives wanted: the degree classes are included and electives are chosen by GPA outlook', async () => {
+        const out = await runTool('build_schedule', ask, ctx());
+        expect(out.plan).toBeDefined();
+        const codes = out.plan!.sections.map(s => s.courseCode);
+        expect(codes).toEqual(expect.arrayContaining(['UGS 302', 'GOV 312L']));
+        expect(codes).not.toContain('AMS 310'); // worst grade history is the one left out
+        expect(out.plan!.validation.hardOk).toBe(true);
+        expect(out.plan!.validation.credits).toBe(15);
+    });
+
+    it('without electives wanted, the same request does not silently pad with electives', async () => {
+        const out = await runTool('build_schedule', { ...ask, allowElectives: false }, ctx());
+        const r = out.result as { incomplete?: boolean; rulesItDoesNotFollow?: string[] };
+        // nothing but the two degree classes fits the rules, so the planner offers a labelled draft instead
+        expect(r.incomplete).toBe(true);
+        expect(r.rulesItDoesNotFollow!.join()).toMatch(/electives/i);
+        expect(out.plan!.validation.allRulesMet).toBe(false);
+    });
+
+    it('returns different, validated schedules optimized for GPA, convenience and degree progress', async () => {
+        const out = await runTool('build_schedule', ask, ctx());
+        const alt = (
+            out.result as {
+                alternatives: Array<{ label: string; allRulesPass: boolean; classes: Array<{ unique: string }> }>;
+            }
+        ).alternatives;
+        const main = out
+            .plan!.sections.map(s => s.uniqueId)
+            .sort()
+            .join();
+        for (const a of alt) {
+            expect(a.allRulesPass).toBe(true);
+            expect(
+                a.classes
+                    .map(c => Number(c.unique))
+                    .sort()
+                    .join()
+            ).not.toBe(main);
+        }
+    });
+
+    it("the chat shows what was understood, and a model's explicit choice beats keyword matching", async () => {
+        const out = await runTool(
+            'build_schedule',
+            ask,
+            ctx({ stated: statedFor('core complete only, 15 hours, Tuesday and Thursday only') })
+        );
+        // the model understood that electives are wanted: keyword matching does not turn core-only back on
+        expect(out.plan!.constraints.coreOnly).toBe(false);
+        const text = renderPlanReply(out.result as never);
+        expect(text).toMatch(/What I understood:.*15–15 credit hours/);
     });
 });

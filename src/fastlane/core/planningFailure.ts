@@ -2,9 +2,12 @@
 export function planningFailure(value: unknown): string {
     const result = value as Record<string, unknown>;
     const strings = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []);
-    const lines = [String(result.error ?? 'The schedule could not be built.')];
+    const lines = [String(result.error ?? result.notice ?? 'The schedule could not be built.')];
+    const broken = strings(result.rulesItDoesNotFollow);
+    if (broken.length)
+        lines.push('Rules this draft does NOT follow (everything else is kept):', ...broken.map(s => `- ${s}`));
     const reasons = strings(result.reasons ?? result.failures);
-    if (reasons.length) lines.push('Why this attempt stopped:', ...reasons.slice(0, 5).map(s => `- ${s}`));
+    if (reasons.length) lines.push('Why no schedule meets every rule:', ...reasons.slice(0, 10).map(s => `- ${s}`));
     const alternatives = Array.isArray(result.closestAlternatives) ? result.closestAlternatives : [];
     if (alternatives.length) {
         lines.push('Closest checked options — not added to your calendar:');
@@ -21,6 +24,10 @@ export function planningFailure(value: unknown): string {
     const suggestions = strings(result.suggestions);
     if (suggestions.length) lines.push('Changes you can ask me to try:', ...suggestions.slice(0, 3).map(s => `- ${s}`));
     if (typeof result.note === 'string') lines.push(result.note);
-    lines.push('Your saved schedules have not changed.');
+    lines.push(
+        result.incomplete
+            ? 'This draft is on your calendar; nothing was registered or saved.'
+            : 'Your saved schedules have not changed.'
+    );
     return lines.join('\n\n');
 }

@@ -89,7 +89,7 @@ export function constraintsFromRules(
 ): ScheduleConstraints {
     const p = rules.prefs;
     return {
-        minCredits: Math.max(MIN_CREDITS, p.credits?.min ?? base?.minCredits ?? MIN_CREDITS),
+        minCredits: Math.max(1, p.credits?.min ?? base?.minCredits ?? MIN_CREDITS),
         maxCredits: p.credits?.max ?? base?.maxCredits ?? DEFAULT_MAX_CREDITS,
         creditsRequested: !!p.credits || !!base?.creditsRequested,
         avoidDays: p.avoidDays as DayCode[],
@@ -114,7 +114,12 @@ export function constraintsFromRules(
  * Hard rules the student stated are folded into whatever constraints the model asked for. The model may add
  * detail but can never loosen a stated rule.
  */
-export function enforceStated(model: ScheduleConstraints, stated: ScheduleConstraints): ScheduleConstraints {
+export function enforceStated(
+    model: ScheduleConstraints,
+    stated: ScheduleConstraints,
+    /** what the model set explicitly this turn: the model's reading of the request wins over keyword matching */
+    explicit: { coreOnly?: boolean; allowElectives?: boolean } = {}
+): ScheduleConstraints {
     const union = <T>(a: T[] = [], b: T[] = []) => [...new Set([...a, ...b])];
     return {
         ...model,
@@ -123,7 +128,9 @@ export function enforceStated(model: ScheduleConstraints, stated: ScheduleConstr
         excludedTitleWords: union(model.excludedTitleWords, stated.excludedTitleWords),
         excludedCourses: union(model.excludedCourses, stated.excludedCourses),
         excludedSections: union(model.excludedSections, stated.excludedSections),
-        coreOnly: !!(model.coreOnly || stated.coreOnly),
+        // keyword matching only fills a gap: it never overrides what the model understood from the whole request
+        coreOnly:
+            explicit.coreOnly || explicit.allowElectives ? !!model.coreOnly : !!(model.coreOnly || stated.coreOnly),
         subjectCounts: { ...(model.subjectCounts ?? {}), ...(stated.subjectCounts ?? {}) },
         maxOnline:
             stated.onlineIsPreference && stated.maxOnline == null
