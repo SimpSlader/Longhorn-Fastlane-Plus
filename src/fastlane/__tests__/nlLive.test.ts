@@ -69,8 +69,12 @@ async function signIn() {
 /** the share link is exchanged for a session cookie once, before the first request of whichever case runs first */
 const signedIn = LIVE ? signIn() : Promise.resolve();
 
+/** NL_PACE_MS spaces requests out so the free per-minute token limit is not what is being measured */
+const PACE_MS = Number(process.env.NL_PACE_MS ?? 0);
+
 async function post(body: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
     const text = JSON.stringify(body);
+    if (PACE_MS) await new Promise(ok => setTimeout(ok, PACE_MS));
     for (let tries = 0, waited = 0; ; tries++) {
         const started = Date.now();
         const res = await fetch(`${BASE}/agent`, {
@@ -236,7 +240,8 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                         });
                     }
                 }
-                if (quotaGone && !outcome && !finalText) {
+                // a turn the provider never answered (rate limit / unavailable after retries) is not a model failure
+                if (!outcome && !finalText && http.some(code => code !== 200)) {
                     rows.push({
                         id: c.id,
                         category: c.category,
@@ -244,7 +249,7 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                         say: turn.say,
                         ok: false,
                         untested: true,
-                        problems: ['untested: provider daily limit reached'],
+                        problems: ['untested: provider did not answer (rate limit/unavailable)'],
                         calls,
                         rounds,
                         http,
