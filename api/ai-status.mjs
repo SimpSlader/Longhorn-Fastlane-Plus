@@ -35,6 +35,12 @@ export default async function handler(req, res) {
     }
     const status = await routerStatus();
     return send(res, 200, {
+        // which deployment answered (Vercel system variables; no secrets): lets a client prove it reached the candidate
+        deployment: {
+            environment: process.env.VERCEL_ENV ?? 'unknown',
+            commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || null,
+            branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+        },
         strictFreeTier: strictFreeTier(),
         storage: storeKind(),
         openai: { enabled: false, reason: OPENAI_UNAVAILABLE },

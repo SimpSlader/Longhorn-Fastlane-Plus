@@ -35,10 +35,17 @@ export default function DevServerCard() {
         if (!state.base) return setMessage({ text: 'Production is in use. Nothing to check here.', tone: 'ok' });
         try {
             const res = await aiFetch('ai-status', { accessCode: state.code });
-            const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+            const body = (await res.json().catch(() => ({}))) as {
+                error?: unknown;
+                deployment?: { environment?: string; commit?: string | null; branch?: string | null };
+            };
             if (res.ok)
                 setMessage({
-                    text: `Connected to ${new URL(state.base).host}. The AI chat now uses this test server (its header says TEST SERVER and shows the model).`,
+                    text: `Connected to ${new URL(state.base).host}${
+                        body.deployment
+                            ? ` — backend reports: ${body.deployment.environment ?? 'unknown'} build ${body.deployment.commit ?? '?'}${body.deployment.branch ? ` (${body.deployment.branch})` : ''}`
+                            : ''
+                    }. The AI chat now uses this test server (its header says TEST SERVER and shows the model).`,
                     tone: 'ok',
                 });
             else if (res.status === 401 || res.status === 403) {
