@@ -35,6 +35,12 @@ test('the AI goes to the configured preview with the test code, and production i
     await expect(page.locator('#setupStatus')).toContainText('Created');
     await page.waitForTimeout(2500);
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#settings`);
+    const localBuild = await page.evaluate(() => !!chrome.runtime.getManifest().optional_host_permissions?.length);
+    if (!localBuild) {
+        // a store/packaged build: no developer card, no extra permission — the AI can only be production
+        await expect(page.getByRole('heading', { name: 'Developer: AI test server' })).toHaveCount(0);
+        return;
+    }
     await expect(page.getByRole('heading', { name: 'Developer: AI test server' })).toBeVisible();
     await expect(page.getByText('Currently using: production')).toBeVisible();
 
