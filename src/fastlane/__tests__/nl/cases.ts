@@ -235,9 +235,8 @@ export const cases: Case[] = [
                     objective: 'gpa',
                     onlineMin: 1,
                     onlineMax: 2,
-                    excludeSubjects: ['HIS'],
                 },
-                { subjectCount: { UGS: 1 }, exclude: ['HIS 315L', 'HIS 315K'], coreAll: true, days: TTH }
+                { subjectCount: { UGS: 1 }, coreAll: true, days: TTH }
             ),
         ],
     },
