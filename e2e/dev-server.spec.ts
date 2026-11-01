@@ -26,7 +26,11 @@ test('the AI goes to the configured preview with the test code, and production i
                 status: 200,
                 contentType: 'application/json',
                 headers: cors,
-                body: JSON.stringify({ type: 'answer', text: 'Hello from the test server.' }),
+                body: JSON.stringify({
+                    type: 'answer',
+                    text: 'Hello from the test server.',
+                    meta: { provider: 'groq', model: 'groq:test-model' },
+                }),
             });
         });
     // cached UT sections (the chat needs a course list) via the offline demo
@@ -72,6 +76,24 @@ test('the AI goes to the configured preview with the test code, and production i
         'Hello from the test server.'
     );
     expect(hits).toEqual([{ host: PREVIEW, code: 'dev-test-code-123', credentials: true }]);
+    // the chat names the backend AND the model that answered
+    await expect(page.getByText(/TEST SERVER: longhorn-fastlane-plus-git-feat.*model: groq:test-model/)).toBeVisible();
+
+    // a protected preview that has not been signed in to: a clear error, and production is still never contacted
+    await page.unroute(`${PREVIEW}/api/agent`);
+    await page.route(`${PREVIEW}/api/agent`, route =>
+        route.fulfill({
+            status: 401,
+            contentType: 'text/html',
+            headers: cors,
+            body: '<html>Authentication Required</html>',
+        })
+    );
+    await page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' }).fill('And what about Fall?');
+    await page.getByRole('button', { name: 'Send message' }).click();
+    await expect(page.getByRole('alert')).toContainText('is protected');
+    await expect(page.getByRole('alert')).toContainText('Production was not contacted');
+    expect(hits.filter(h => h.host === PROD)).toEqual([]);
 
     // back to production: the saved production code is used and the marker disappears
     await page.goto(`chrome-extension://${extensionId}/fastlane.html#settings`);

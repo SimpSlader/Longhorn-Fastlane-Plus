@@ -100,8 +100,25 @@ export async function postAi<T extends { meta?: AiMeta; error?: string; retryAft
     signal?: AbortSignal
 ): Promise<{ response: Response; payload: T }> {
     const started = Date.now();
-    const response = await aiFetch(path, { ...body, routing: await routingSettings() }, signal);
+    // resolves (and validates) the target first: a bad test-server setting throws here, before anything is sent
+    const target = await aiTarget();
+    let response: Response;
+    try {
+        response = await aiFetch(path, { ...body, routing: await routingSettings() }, signal, target);
+    } catch (e) {
+        if (signal?.aborted) throw e;
+        throw new Error(
+            target.dev
+                ? `Cannot reach the test server ${new URL(target.base).host}. Check Settings → Developer: AI test server (permission granted? signed in?). Production was not contacted.`
+                : 'Cannot reach Fastlane’s AI server. Check your connection and try again.'
+        );
+    }
     const payload = (await response.json().catch(() => ({}))) as T;
+    // a protected preview answers HTML (not JSON) with 401 until this browser has signed in to Vercel
+    if (target.dev && (response.status === 401 || response.status === 403) && !payload.error)
+        payload.error = `The test server ${new URL(target.base).host} is protected. Open it once in a Chrome tab and sign in to Vercel (Settings → Developer: AI test server → Open preview to sign in), then try again. Production was not contacted.`;
+    if (target.dev && response.status === 404)
+        payload.error = `The test server ${new URL(target.base).host} has no AI endpoint at ${path} (wrong or outdated preview URL?). Production was not contacted.`;
     const meta = payload.meta;
     await recordUsage({
         at: Date.now(),

@@ -30,6 +30,37 @@ export default function DevServerCard() {
         }
     };
 
+    const check = async (justConnected = false) => {
+        const state = await FastlaneDevServerStore.all();
+        if (!state.base) return setMessage({ text: 'Production is in use. Nothing to check here.', tone: 'ok' });
+        try {
+            const res = await aiFetch('ai-status', { accessCode: state.code });
+            const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+            if (res.ok)
+                setMessage({
+                    text: `Connected to ${new URL(state.base).host}. The AI chat now uses this test server (its header says TEST SERVER and shows the model).`,
+                    tone: 'ok',
+                });
+            else if (res.status === 401 || res.status === 403) {
+                // a protected preview: send the person to sign in, in the browser they already use for Vercel
+                if (justConnected) window.open(state.base, '_blank', 'noopener');
+                setMessage({
+                    text: 'The preview is protected by Vercel login. A tab with the preview was opened: sign in there, close it, then press “Check connection”.',
+                    tone: 'bad',
+                });
+            } else
+                setMessage({
+                    text: `The test server answered HTTP ${res.status}${typeof body.error === 'string' ? `: ${body.error}` : ''}.`,
+                    tone: 'bad',
+                });
+        } catch (e) {
+            setMessage({
+                text: `${e instanceof Error ? e.message : 'Could not reach the test server.'} (Chrome permission granted? Press Connect again.)`,
+                tone: 'bad',
+            });
+        }
+    };
+
     const connect = async () => {
         const o = origin();
         if (!o) return setMessage({ text: 'Only this project’s own Vercel preview URLs are allowed.', tone: 'bad' });
@@ -37,30 +68,7 @@ export default function DevServerCard() {
         if (!granted) return setMessage({ text: 'Chrome permission was not granted.', tone: 'bad' });
         await FastlaneDevServerStore.set({ base: o, ...(code.trim() ? { code: code.trim() } : {}) });
         setCode('');
-        setMessage({
-            text: `The AI now uses ${new URL(o).host}. Open it once to sign in, then check the connection.`,
-            tone: 'ok',
-        });
-    };
-
-    const check = async () => {
-        const state = await FastlaneDevServerStore.all();
-        if (!state.base) return setMessage({ text: 'Production is in use. Nothing to check here.', tone: 'ok' });
-        try {
-            const res = await aiFetch('ai-status', { accessCode: state.code });
-            const body = (await res.json().catch(() => ({}))) as { error?: unknown };
-            if (res.ok) setMessage({ text: 'Connected: the test server accepted the request.', tone: 'ok' });
-            else
-                setMessage({
-                    text:
-                        res.status === 401
-                            ? 'The preview is protected: open it once in a tab and sign in to Vercel, then check again.'
-                            : `The test server answered HTTP ${res.status}${typeof body.error === 'string' ? `: ${body.error}` : ''}.`,
-                    tone: 'bad',
-                });
-        } catch (e) {
-            setMessage({ text: e instanceof Error ? e.message : 'Could not reach the test server.', tone: 'bad' });
-        }
+        await check(true);
     };
 
     return (
@@ -92,7 +100,7 @@ export default function DevServerCard() {
                 >
                     Open preview to sign in
                 </button>
-                <button type='button' className='btn' onClick={() => void check()}>
+                <button type='button' className='btn' onClick={() => void check(false)}>
                     Check connection
                 </button>
                 <button
