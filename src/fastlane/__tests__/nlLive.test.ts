@@ -27,6 +27,10 @@ const CODE = process.env.FASTLANE_AI_CODE ?? '';
 const SUBJECTS = new Set(UT_SUBJECTS.map(s => s.code));
 const pad = (n: number) => String(n).padStart(5, '0');
 const LIMIT = Number(process.env.NL_LIMIT ?? Infinity);
+/** NL_ONLY=F02,M05,… runs just those cases, in that order (to spend a limited daily quota on what matters) */
+const ONLY = process.env.NL_ONLY?.split(',').map(x => x.trim());
+/** set once the provider's free DAILY limit is gone: nothing more is sent, remaining turns are reported as untested */
+let quotaGone = false;
 
 interface Stat {
     status: number;
@@ -47,6 +51,7 @@ const rows: Array<{
     calls: Array<{ name: string; args: unknown }>;
     rounds: number;
     http: number[];
+    untested?: boolean;
 }> = [];
 let cookie = '';
 
@@ -82,6 +87,10 @@ async function post(body: unknown): Promise<{ status: number; json: Record<strin
             provider: json.meta?.provider,
             model: json.meta?.model,
         });
+        if (res.status === 503 && /daily free limit/i.test(JSON.stringify(json))) {
+            quotaGone = true;
+            return { status: res.status, json };
+        }
         if ((res.status === 429 || res.status === 503) && tries < 6) {
             const wait = Math.min(45, Math.max(3, Math.ceil(json.retryAfterSeconds ?? 8)));
             waited += wait;
@@ -108,7 +117,9 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
             at: new Date().toISOString(),
             endpoint: BASE.replace(/\/\/[^/]*preview[^/]*/, '//<preview>'),
             turnsPassed: passed,
-            turnsTotal: rows.length,
+            turnsTotal: rows.filter(r => !r.untested).length,
+            turnsUntested: rows.filter(r => r.untested).length,
+            quotaExhausted: quotaGone,
             requests: stats.length,
             http: Object.fromEntries(
                 [...new Set(stats.map(s => s.status))].map(code => [code, stats.filter(s => s.status === code).length])
@@ -132,7 +143,10 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
         console.info(JSON.stringify(summary));
     });
 
-    for (const c of cases.slice(0, LIMIT))
+    const chosen = ONLY
+        ? ONLY.map(id => cases.find(c => c.id === id)).filter((c): c is (typeof cases)[number] => !!c)
+        : cases.slice(0, LIMIT);
+    for (const c of chosen)
         it(`${c.id} · ${c.category}: ${c.turns[0]!.say.slice(0, 60)}`, async () => {
             if (!CODE) throw new Error('Set FASTLANE_AI_CODE');
             if (c.id === cases[0]!.id) await signIn();
@@ -141,6 +155,22 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
             let current: ToolContext['current'] = null;
             const all: string[] = [];
             for (const [i, turn] of c.turns.entries()) {
+                if (quotaGone) {
+                    // the free daily limit is gone: report this turn as untested rather than as a model failure
+                    rows.push({
+                        id: c.id,
+                        category: c.category,
+                        turn: i + 1,
+                        say: turn.say,
+                        ok: false,
+                        untested: true,
+                        problems: ['untested: provider daily limit reached'],
+                        calls: [],
+                        rounds: 0,
+                        http: [],
+                    });
+                    continue;
+                }
                 said.push(turn.say);
                 const stated = constraintsFromRules(statedRules(said, SUBJECTS, UT_SUBJECTS), 'Spring 2027');
                 const ctx = makeContext({ stated, current });
@@ -203,6 +233,21 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                         });
                     }
                 }
+                if (quotaGone && !outcome && !finalText) {
+                    rows.push({
+                        id: c.id,
+                        category: c.category,
+                        turn: i + 1,
+                        say: turn.say,
+                        ok: false,
+                        untested: true,
+                        problems: ['untested: provider daily limit reached'],
+                        calls,
+                        rounds,
+                        http,
+                    });
+                    continue;
+                }
                 const expect_: Expect = {
                     ...turn.expect,
                     electivesDraftOk:
@@ -244,6 +289,6 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                 const shown = outcome && isPlanResult(outcome.result) ? renderPlanReply(outcome.result) : finalText;
                 history.push({ role: 'user', content: turn.say }, { role: 'assistant', content: shown.slice(0, 1500) });
             }
-            expect(all).toEqual([]);
+            expect(all.filter(p => !p.includes('untested'))).toEqual([]);
         }, 900_000);
 });

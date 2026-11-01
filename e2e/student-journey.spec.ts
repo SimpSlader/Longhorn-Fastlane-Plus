@@ -24,6 +24,7 @@ const ROWS: Row[] = [
     [90106, 'NTR 306', 'FUNDAMENTALS OF NUTRITION', '030', 'async', '', 'VEASY, V'],
     [90107, 'ECO 304L', 'INTRODUCTION TO MACROECONOMICS', '', 'TTH', '11:00 a.m.-12:30 p.m.', 'HARD, H'],
     [90108, 'ECO 304L', 'INTRODUCTION TO MACROECONOMICS', '', 'TTH', '12:30 p.m.-2:00 p.m.', 'EASY, A'],
+    [90111, 'ECO 304L', 'INTRODUCTION TO MACROECONOMICS', '', 'async', '', 'EASY, A'],
     [90109, 'SED 303', 'EXPLORING LEARNING', '', 'async', '', 'VEASY, V'],
     [90110, 'KIN 302', 'PHYSICAL ACTIVITY AND WELLNESS', '', 'TTH', '9:30 a.m.-11:00 a.m.', 'EASY, A'],
 ];
@@ -126,10 +127,11 @@ test('student journey: IDA → natural request → conversational changes → co
                 onlyDays: ['T', 'TH'],
                 onlineMax: 2,
                 backToBack: true,
-                allowElectives: true,
-                objective: 'gpa',
+                requiredCourses: ['ECO 304L'],
+                objective: 'convenience',
             },
         ],
+        [/easier professor/i, 'modify_schedule', { swapSectionFor: 'economics', sectionGoal: 'easier' }],
         [/start later/i, 'modify_schedule', { dayWindows: { T: { from: '11:00 am' } } }],
         [/24 hours/i, 'modify_schedule', { changeCredits: { min: 24, max: 24 } }],
     ];
@@ -232,10 +234,28 @@ test('student journey: IDA → natural request → conversational changes → co
         await expect(log.locator('.bubble.me')).toHaveCount(1);
     }
 
+    // 3b. an easier professor for the same course: only the section changes, everything else stays
+    const before = (await classes()).length;
+    await input.fill('Find me an easier professor for economics.');
+    await send.click();
+    await expect(log.locator('.bubble.bot')).toHaveCount(3, { timeout: 60_000 });
+    const swapReply = log.locator('.bubble.bot').last();
+    await expect(log.locator('.bubble.bot.typing')).toHaveCount(0, { timeout: 60_000 });
+    // Real grade data decides "easier". The offline demo has course-wide data only, so no section is provably
+    // easier here and the honest answer is "no better section, calendar unchanged"; with instructor-specific data
+    // the section changes (covered by the engine benchmark). Either way ECO 304L stays and nothing else moves.
+    const swapText = await swapReply.innerText();
+    if (/Added: ECO 304L/.test(swapText)) {
+        await expect(swapReply.locator('table tbody tr')).toHaveCount(5);
+        await expect(swapReply).toContainText('Removed: ECO 304L');
+    } else await expect(swapReply).toContainText(/No other ECO 304L section|calendar is unchanged/i);
+    expect(new Set(await classes()).size).toBe(new Set(first).size);
+    await page.screenshot({ path: 'reports/screenshots/journey-3b-professor-swap.png' });
+
     // 4. a conversational change updates the calendar at once and keeps earlier rules
     await input.fill('Actually, make my Tuesdays start later.');
     await send.click();
-    await expect(log.locator('.bubble.bot')).toHaveCount(3, { timeout: 60_000 });
+    await expect(log.locator('.bubble.bot')).toHaveCount(4, { timeout: 60_000 });
     await expect(log.locator('.bubble.bot').last()).toContainText(/What I understood|couldn’t|could not/i);
     const understood = await log.locator('.bubble.bot').last().innerText();
     if (/What I understood/.test(understood)) expect(understood).toMatch(/15–15 credit hours/);
@@ -243,7 +263,7 @@ test('student journey: IDA → natural request → conversational changes → co
     // 5. an impossible follow-up never pretends: no "All rules met", no registration copy for a draft
     await input.fill('Make it 24 hours please.');
     await send.click();
-    await expect(log.locator('.bubble.bot')).toHaveCount(4, { timeout: 60_000 });
+    await expect(log.locator('.bubble.bot')).toHaveCount(5, { timeout: 60_000 });
     const last = log.locator('.bubble.bot').last();
     await expect(last).not.toContainText('Done. All rules met.');
     await expect(last).toContainText(/couldn’t|does NOT follow|Rules NOT met|NOT/i);
