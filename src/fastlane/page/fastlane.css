@@ -2892,6 +2892,27 @@ button.course-pill {
     font-size: 12.5px;
     width: 100%;
 }
+/* schedule tables: scroll inside the bubble, keep numbers readable */
+.bubble.md .md-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+}
+.bubble.md .md-table-wrap table {
+    min-width: 780px;
+}
+.bubble.md .md-table-wrap th,
+.bubble.md .md-table-wrap td {
+    vertical-align: top;
+}
+.bubble.md .md-table-wrap td:nth-child(2),
+.bubble.md .md-table-wrap td:nth-child(3),
+.bubble.md .md-table-wrap th:nth-child(2),
+.bubble.md .md-table-wrap th:nth-child(3) {
+    white-space: nowrap; /* unique number and credit hours never wrap */
+}
+.bubble.md:has(.md-table-wrap) {
+    max-width: 100%;
+}
 .bubble.md th,
 .bubble.md td {
     padding: 4px 8px;

@@ -180,10 +180,13 @@ test('student journey: IDA → natural request → conversational changes → co
     await expect(answer).toContainText('What I understood');
     await expect(answer).toContainText(/schedule — 15 credit hours/);
     // grades, GPA outlook and RMP sit side by side for every class; nothing is invented or malformed
-    const table = answer.locator('table');
+    const table = answer.locator('table').first();
     await expect(table.locator('th')).toContainText(['Past A/A− rate', 'GPA outlook', 'Rate My Professors', 'Seats']);
     expect(await table.innerText()).not.toMatch(/undefined|NaN|null/);
     await expect(table.locator('tbody tr')).toHaveCount(5);
+    // and a second table compares the versions on what each one optimizes
+    await expect(answer.locator('table').nth(1)).toContainText('Degree-requirement classes');
+    expect(await answer.locator('table').nth(1).innerText()).not.toMatch(/undefined|NaN|null/);
     const first = await classes();
     expect(first.length).toBeGreaterThanOrEqual(4);
     // hard rules pass; "All rules met" additionally needs verified audit evidence, which a synthetic audit lacks

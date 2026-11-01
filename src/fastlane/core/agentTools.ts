@@ -841,34 +841,49 @@ async function solveWithRequired(
         exempt: new Set(required),
         ...extra,
     };
-    const fixed = [...(extra?.fixed ?? [])];
-    for (const code of required) {
-        if (fixed.some(s => normalizeCourseCode(s.courseCode) === code)) continue;
-        const options = pool
-            .filter(p => normalizeCourseCode(p.section.courseCode) === code && fitsWith(p.section, fixed))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 6);
-        let placed = false;
-        for (const o of options) {
-            const trial = await solveSchedule(pool, c, {
-                ...base,
-                fixed: [...fixed, o.section],
-                maxNodes: 6_000,
-                timeLimitMs: 2_000,
-                keep: 1,
-            });
-            if (trial.best) {
-                fixed.push(o.section);
-                placed = true;
-                break;
+    // Each must-have class gets a section, but committing to the single best-scoring section first can lock in a
+    // worse WEEK (gaps, conflicts with better choices). So the first must-have tries its few best sections, each is
+    // completed into a full schedule, and the best complete schedule wins; later must-haves are placed greedily.
+    const trial = (fixed: SectionRecord[]) =>
+        solveSchedule(pool, c, { ...base, fixed, maxNodes: 6_000, timeLimitMs: 2_000, keep: 1 });
+    let failedRequired: string | undefined;
+    let sets: SectionRecord[][] = [[...(extra?.fixed ?? [])]];
+    for (const [position, code] of required.entries()) {
+        const next: SectionRecord[][] = [];
+        for (const fixed of sets) {
+            if (fixed.some(x => normalizeCourseCode(x.courseCode) === code)) {
+                next.push(fixed);
+                continue;
+            }
+            const options = pool
+                .filter(p => normalizeCourseCode(p.section.courseCode) === code && fitsWith(p.section, fixed))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 8);
+            let kept = 0;
+            for (const o of options) {
+                if (!(await trial([...fixed, o.section])).best) continue;
+                next.push([...fixed, o.section]);
+                // breadth only for the first must-have; the rest are placed greedily
+                if (++kept >= (position === 0 ? 4 : 1)) break;
             }
         }
-        if (!placed) {
-            const none = await solveSchedule([], c, base);
-            return { ...none, failedRequired: code };
+        if (!next.length) {
+            failedRequired = code;
+            break;
         }
+        sets = next;
     }
-    return solveSchedule(pool, c, { ...base, fixed });
+    const placements = failedRequired ? [] : sets;
+    if (failedRequired) {
+        const none = await solveSchedule([], c, base);
+        return { ...none, failedRequired };
+    }
+    let best: Awaited<ReturnType<typeof solveSchedule>> | null = null;
+    for (const fixed of placements.length ? placements : [[]]) {
+        const result = await solveSchedule(pool, c, { ...base, fixed });
+        if (result.best && (!best?.best || result.best.score > best.best.score)) best = result;
+    }
+    return best ?? solveSchedule(pool, c, { ...base, fixed: [] });
 }
 
 type Objective = 'gpa' | 'convenience' | 'degree';

@@ -274,3 +274,24 @@ describe('no redundant duplicates dressed up as electives', () => {
         }
     });
 });
+
+describe('schedule quality: a must-have class must not lock in a worse week', () => {
+    it('with a required class and a convenience goal, the recommended week is as compact as any alternative', async () => {
+        const out = await runTool(
+            'build_schedule',
+            {
+                minCredits: 15,
+                maxCredits: 15,
+                onlyDays: ['T', 'TH'],
+                onlineMax: 2,
+                requiredCourses: ['ECO 304L'],
+                objective: 'convenience',
+                backToBack: true,
+            },
+            makeContext()
+        );
+        const r = out.result as { recommended: { gapMinutes: number }; alternatives: Array<{ gapMinutes: number }> };
+        expect(out.plan!.sections.map(s => s.courseCode)).toContain('ECO 304L');
+        for (const alt of r.alternatives) expect(r.recommended.gapMinutes).toBeLessThanOrEqual(alt.gapMinutes + 15);
+    });
+});

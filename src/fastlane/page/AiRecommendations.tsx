@@ -2129,6 +2129,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
+                                    // wide tables scroll sideways inside the bubble instead of crushing their columns
+                                    table: ({ children }) => (
+                                        <div className='md-table-wrap'>
+                                            <table>{children}</table>
+                                        </div>
+                                    ),
                                     a: ({ href, children }) => (
                                         <a href={href} target='_blank' rel='noopener noreferrer'>
                                             {children}
