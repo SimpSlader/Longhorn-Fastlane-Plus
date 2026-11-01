@@ -1211,5 +1211,114 @@
                 }
             }
         ]
+    },
+    {
+        "id": "M07",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours, Tuesday/Thursday only, up to two online, I need ECO 304L, easy classes for the rest, back to back",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 2,
+                    "requiredCourses": ["ECO 304L"],
+                    "objective": "gpa",
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Make my Tuesdays start later.",
+                "tool": "modify_schedule",
+                "args": {
+                    "dayWindows": {
+                        "T": {
+                            "from": "11:00 am"
+                        }
+                    }
+                }
+            },
+            {
+                "say": "Actually I only need 12 hours.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 12,
+                        "max": 12
+                    }
+                }
+            },
+            {
+                "say": "Find me an easier professor for economics.",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "economics",
+                    "sectionGoal": "easier"
+                }
+            },
+            {
+                "say": "Back to 15 hours please.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 15,
+                        "max": 15
+                    }
+                }
+            },
+            {
+                "say": "Give me a different option.",
+                "tool": "modify_schedule",
+                "args": {
+                    "anotherOption": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "M08",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours Tuesday and Thursday, no online classes",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 0
+                }
+            },
+            {
+                "say": "Okay, one online class is fine.",
+                "tool": "modify_schedule",
+                "args": {
+                    "onlineMax": 1
+                }
+            },
+            {
+                "say": "Wednesdays are fine too.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "W", "TH"]
+                }
+            },
+            {
+                "say": "Actually no, back to just Tuesday and Thursday.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "TH"]
+                }
+            },
+            {
+                "say": "And nothing after 4.",
+                "tool": "modify_schedule",
+                "args": {
+                    "latestEnd": "4:00 pm"
+                }
+            }
+        ]
     }
 ]

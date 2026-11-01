@@ -459,12 +459,15 @@ export async function solveSchedule(
         if (options.audit) {
             const check = evaluateDegree(options.audit, [...chosenNow, s], { term: c.term });
             const asked = new Set([...chosenNow, s].filter(isExempt).map(x => x.uniqueId));
+            const couldFill = new Set([...chosenNow, s].filter(x => applies(x).length > 0).map(x => x.uniqueId));
             if (
                 check.courses.some(
                     x =>
                         !asked.has(x.uniqueId) &&
                         (x.contributions.length === 0
-                            ? !!c.coreOnly || !c.allowElectives
+                            ? // an elective is a class that fills no requirement at all; a class that COULD fill one
+                              // but is redundant (a second signature course) is a duplicate, never a "free" elective
+                              !!c.coreOnly || !c.allowElectives || couldFill.has(x.uniqueId)
                             : !x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE ')))
                 )
             )

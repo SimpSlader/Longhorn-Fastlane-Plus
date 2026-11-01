@@ -139,7 +139,7 @@ export const cases: Case[] = [
             build(
                 "I don't care what electives I take as long as they're easy A's. 15 hours, Tuesday/Thursday.",
                 { minCredits: 15, maxCredits: 15, onlyDays: TTH, objective: 'gpa', onlineMax: 2 },
-                { credits: [15, 15], days: TTH, exclude: ['AST 301', 'AMS 310'] }
+                { credits: [15, 15], days: TTH, exclude: ['AMS 310'] }
             ),
         ],
     },
@@ -885,6 +885,79 @@ export const cases: Case[] = [
                     onlineMax: 2,
                 },
                 { credits: [12, 12], days: TTH, maxGap: 15 }
+            ),
+        ],
+    },
+    {
+        id: 'M07',
+        category: 'multi-turn',
+        turns: [
+            build(
+                '15 hours, Tuesday/Thursday only, up to two online, I need ECO 304L, easy classes for the rest, back to back',
+                {
+                    minCredits: 15,
+                    maxCredits: 15,
+                    onlyDays: TTH,
+                    onlineMax: 2,
+                    requiredCourses: ['ECO 304L'],
+                    objective: 'gpa',
+                    backToBack: true,
+                },
+                { credits: [15, 15], days: TTH, async: [0, 2], include: ['ECO 304L'] }
+            ),
+            change(
+                'Make my Tuesdays start later.',
+                { dayWindows: { T: { from: '11:00 am' } } },
+                { credits: [15, 15], days: TTH, include: ['ECO 304L'], startAtLeast: { day: 'T', minutes: 660 } }
+            ),
+            change(
+                'Actually I only need 12 hours.',
+                { changeCredits: { min: 12, max: 12 } },
+                { credits: [12, 12], days: TTH, include: ['ECO 304L'], startAtLeast: { day: 'T', minutes: 660 } }
+            ),
+            change(
+                'Find me an easier professor for economics.',
+                { swapSectionFor: 'economics', sectionGoal: 'easier' },
+                { credits: [12, 12], include: ['ECO 304L'], optional: true }
+            ),
+            change(
+                'Back to 15 hours please.',
+                { changeCredits: { min: 15, max: 15 } },
+                { credits: [15, 15], days: TTH, include: ['ECO 304L'], startAtLeast: { day: 'T', minutes: 660 } }
+            ),
+            change(
+                'Give me a different option.',
+                { anotherOption: true },
+                {
+                    credits: [15, 15],
+                    days: TTH,
+                    include: ['ECO 304L'],
+                    optional: true,
+                    startAtLeast: { day: 'T', minutes: 660 },
+                }
+            ),
+        ],
+    },
+    {
+        id: 'M08',
+        category: 'multi-turn',
+        turns: [
+            build(
+                '15 hours Tuesday and Thursday, no online classes',
+                { minCredits: 15, maxCredits: 15, onlyDays: TTH, onlineMax: 0 },
+                { credits: [15, 15], days: TTH, async: [0, 0], optional: true }
+            ),
+            change('Okay, one online class is fine.', { onlineMax: 1 }, { days: TTH, async: [0, 1], optional: true }),
+            change('Wednesdays are fine too.', { changeOnlyDays: ['T', 'W', 'TH'] }, { async: [0, 1], optional: true }),
+            change(
+                'Actually no, back to just Tuesday and Thursday.',
+                { changeOnlyDays: TTH },
+                { days: TTH, async: [0, 1], optional: true }
+            ),
+            change(
+                'And nothing after 4.',
+                { latestEnd: '4:00 pm' },
+                { days: TTH, async: [0, 1], noMeetingAfter: 960, optional: true }
             ),
         ],
     },

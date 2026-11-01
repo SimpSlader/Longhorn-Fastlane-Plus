@@ -211,3 +211,66 @@ describe('tolerance for a wrong-but-clear tool call', () => {
         expect(swapped.plan!.sections.filter(s => s.courseCode === 'ECO 304L')).toHaveLength(1);
     });
 });
+
+describe('the three versions are meaningfully different, each better at what it optimizes', () => {
+    it('GPA-first has the best expected GPA, convenience the fewest gaps, degree-first the most requirement classes', async () => {
+        const out = await runTool(
+            'build_schedule',
+            { minCredits: 15, maxCredits: 15, onlyDays: ['T', 'TH'], onlineMax: 2 },
+            makeContext()
+        );
+        const r = out.result as {
+            recommended: { gapMinutes: number; averageExpectedGradePoints: number | null; degreeClasses: number };
+            alternatives: Array<{
+                label: string;
+                gapMinutes: number;
+                averageExpectedGradePoints: number | null;
+                degreeClasses: number;
+                classes: Array<{ unique: string }>;
+            }>;
+        };
+        const all = [r.recommended, ...r.alternatives];
+        const get = (word: string) => r.alternatives.find(a => a.label.startsWith(word));
+        const gpa = get('GPA-first');
+        const conv = get('Convenience-first');
+        const degree = get('Degree-progress-first');
+        // the versions are different schedules...
+        const key = (a: { classes: Array<{ unique: string }> }) =>
+            a.classes
+                .map(c => c.unique)
+                .sort()
+                .join();
+        expect(new Set(r.alternatives.map(key)).size).toBe(r.alternatives.length);
+        // ...and each is at least as good as the others at its own goal
+        if (gpa)
+            for (const o of all)
+                expect(gpa.averageExpectedGradePoints!).toBeGreaterThanOrEqual(
+                    (o.averageExpectedGradePoints ?? 0) - 0.15
+                );
+        if (conv) for (const o of all) expect(conv.gapMinutes).toBeLessThanOrEqual(o.gapMinutes + 30);
+        if (degree) for (const o of all) expect(degree.degreeClasses).toBeGreaterThanOrEqual(o.degreeClasses - 0);
+        expect(r.alternatives.length).toBeGreaterThan(0);
+    });
+});
+
+describe('no redundant duplicates dressed up as electives', () => {
+    it('never two signature courses unless the student asks for two', async () => {
+        for (const objective of [undefined, 'gpa', 'convenience', 'degree']) {
+            const out = await runTool(
+                'build_schedule',
+                {
+                    minCredits: 15,
+                    maxCredits: 15,
+                    onlyDays: ['T', 'TH'],
+                    onlineMax: 2,
+                    ...(objective ? { objective } : {}),
+                },
+                makeContext()
+            );
+            expect(out.plan).toBeDefined();
+            expect(out.plan!.sections.filter(s => s.courseCode.startsWith('UGS')).length).toBeLessThanOrEqual(1);
+            for (const alt of out.plan!.alternatives ?? [])
+                expect(alt.sections.filter(s => s.courseCode.startsWith('UGS')).length).toBeLessThanOrEqual(1);
+        }
+    });
+});

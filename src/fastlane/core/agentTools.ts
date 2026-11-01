@@ -925,6 +925,8 @@ async function alternativeSchedules(ctx: ToolContext, pool: Scored[], c: Schedul
             averageExpectedGradePoints: points.length
                 ? Number((points.reduce((a, b) => a + b, 0) / points.length).toFixed(2))
                 : null,
+            degreeClasses: pick.sections.filter(s => (byId.get(s.uniqueId)?.applies.length ?? 0) > 0).length,
+            onlineClasses: pick.sections.filter(isAsync).length,
             allRulesPass: report.hardOk,
             classes: pick.sections.map(s => ({ code: s.courseCode, unique: pad(s.uniqueId), when: when(s) })),
         });
@@ -1090,8 +1092,27 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
     if (ctx.isStale?.()) return { result: { error: 'A newer instruction arrived; this result was discarded.' } };
     const description = await describePlan(ctx, result.best.sections, pool, c, required, report);
     const alternatives = await alternativeSchedules(ctx, pool, c, result.best.sections);
+    const byId = new Map(pool.map(p => [p.section.uniqueId, p]));
+    const recommendedPoints = result.best.sections
+        .map(s => byId.get(s.uniqueId)?.gpa?.expectedGradePoints)
+        .filter((x): x is number => x != null);
+    const recommended = {
+        label: 'Recommended',
+        totalCredits: result.best.credits,
+        gapMinutes: Math.round(result.best.gapMinutes),
+        averageExpectedGradePoints: recommendedPoints.length
+            ? Number((recommendedPoints.reduce((a, b) => a + b, 0) / recommendedPoints.length).toFixed(2))
+            : null,
+        degreeClasses: result.best.sections.filter(s => (byId.get(s.uniqueId)?.applies.length ?? 0) > 0).length,
+        onlineClasses: result.best.sections.filter(isAsync).length,
+    };
     return {
-        result: { ...description, understood: rulesSummary(c), alternatives: alternatives.summaries },
+        result: {
+            ...description,
+            understood: rulesSummary(c),
+            recommended,
+            alternatives: alternatives.summaries,
+        },
         plan: {
             sections: result.best.sections,
             note: `Built from ${pool.length} real UT sections. ${verdictText(report)}`,

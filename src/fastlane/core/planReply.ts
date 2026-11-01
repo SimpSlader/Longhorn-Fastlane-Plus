@@ -44,11 +44,20 @@ export interface PlanResult {
     couldNotInclude?: string[];
     electives?: { count: number; hours: number };
     understood?: string;
+    recommended?: {
+        totalCredits: number;
+        gapMinutes: number;
+        averageExpectedGradePoints: number | null;
+        degreeClasses: number;
+        onlineClasses: number;
+    };
     alternatives?: Array<{
         label: string;
         totalCredits: number;
         gapMinutes: number;
         averageExpectedGradePoints: number | null;
+        degreeClasses?: number;
+        onlineClasses?: number;
         classes: Array<{ code: string; unique: string; when: string }>;
     }>;
 }
@@ -120,11 +129,27 @@ export function renderPlanReply(r: PlanResult): string {
             lines.push(`- Any slot: ${b.code} (${b.unique}, ${b.when}) — ${b.why}`);
     }
     if (r.alternatives?.length) {
-        lines.push('**Other ways to optimize the same request** (all follow your rules; ask for any of them):');
-        for (const a of r.alternatives)
-            lines.push(
-                `- ${a.label} — ${a.totalCredits} hrs, ${a.gapMinutes} min of gaps${a.averageExpectedGradePoints != null ? `, avg ${a.averageExpectedGradePoints.toFixed(2)} expected GPA pts` : ''}: ${a.classes.map(c => `${c.code} (${c.unique})`).join(', ')}`
-            );
+        // one comparison table: how the versions actually differ on what each one optimizes
+        const row = (
+            label: string,
+            m: {
+                totalCredits: number;
+                gapMinutes: number;
+                averageExpectedGradePoints: number | null;
+                degreeClasses?: number;
+                onlineClasses?: number;
+            }
+        ) =>
+            `| ${label} | ${m.degreeClasses ?? '?'} | ${m.averageExpectedGradePoints != null ? m.averageExpectedGradePoints.toFixed(2) : 'n/a'} | ${m.gapMinutes} min | ${m.onlineClasses ?? '?'} |`;
+        lines.push(
+            '**Compare the versions** (use the buttons above the calendar to switch; each was independently validated):\n' +
+                [
+                    '| Version | Degree-requirement classes | Avg expected GPA pts | Gaps | Online |',
+                    '| --- | --- | --- | --- | --- |',
+                    ...(r.recommended ? [row('Recommended', r.recommended)] : []),
+                    ...r.alternatives.map(a => row(a.label.split(':')[0]!, a)),
+                ].join('\n')
+        );
     }
     lines.push(
         '_Past grades are history, not promises. Seat status is only what you saw on UT’s site, never live. Everything above comes from the same checked data as your calendar._'
