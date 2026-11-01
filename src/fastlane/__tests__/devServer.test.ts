@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { aiTarget, AI_BASE, isPreviewOrigin } from '../services/aiClient';
+import { AI_BASE, aiTarget, isPreviewOrigin } from '../services/aiClient';
 import { FastlaneDevServerStore } from '../storage/stores';
 
 describe('developer test server: only this project’s own previews are accepted', () => {
@@ -36,14 +36,15 @@ describe('test server failure must never silently use production', () => {
         expect(await aiTarget()).toEqual({ base: AI_BASE, dev: false });
     });
 
-    it.each(['not a url', 'https://evil.vercel.app', 'https://longhorn-fastlane-plus.vercel.app'])(
-        'fails closed for saved invalid test URL %s',
-        async base => {
-            vi.stubEnv('VITE_FASTLANE_DEV_AUTORELOAD', 'true');
-            vi.spyOn(FastlaneDevServerStore, 'all').mockResolvedValue({ base, code: 'test' });
-            await expect(aiTarget()).rejects.toThrow(/production was not contacted/i);
-        }
-    );
+    it.each([
+        'not a url',
+        'https://evil.vercel.app',
+        'https://longhorn-fastlane-plus.vercel.app',
+    ])('fails closed for saved invalid test URL %s', async base => {
+        vi.stubEnv('VITE_FASTLANE_DEV_AUTORELOAD', 'true');
+        vi.spyOn(FastlaneDevServerStore, 'all').mockResolvedValue({ base, code: 'test' });
+        await expect(aiTarget()).rejects.toThrow(/production was not contacted/i);
+    });
 
     it('fails closed if test-server settings cannot be read', async () => {
         vi.stubEnv('VITE_FASTLANE_DEV_AUTORELOAD', 'true');
