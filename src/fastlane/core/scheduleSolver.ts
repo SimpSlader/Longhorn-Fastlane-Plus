@@ -379,9 +379,11 @@ export interface SolveResult {
 const verdictCache = new WeakMap<object, Map<string, boolean>>();
 function verdictsFor(audit: ParsedAudit | null | undefined): Map<string, boolean> {
     if (!audit) return new Map();
-    let map = verdictCache.get(audit);
-    if (!map || map.size > 300_000) verdictCache.set(audit, (map = new Map()));
-    return map;
+    const known = verdictCache.get(audit);
+    if (known && known.size <= 300_000) return known;
+    const fresh = new Map<string, boolean>();
+    verdictCache.set(audit, fresh);
+    return fresh;
 }
 
 export class SolveCancelled extends Error {
