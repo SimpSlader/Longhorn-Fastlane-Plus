@@ -25,7 +25,7 @@ for (const h of manifest.host_permissions ?? [])
     if (!HOST_OK.test(h) && h !== AI_HOST && h !== RMP_HOST) errors.push(`unexpected host permission: ${h}`);
 // local (developer) builds may carry ONE optional, never-granted-by-default host: this project's Vercel previews.
 // Store packages must not: scripts/fastlane/package.mjs rejects any manifest that has it.
-const PREVIEW_OPTIONAL = 'https://longhorn-fastlane-plus*-simpsladers-projects.vercel.app/*';
+const PREVIEW_OPTIONAL = 'https://*.vercel.app/*';
 for (const h of manifest.optional_host_permissions ?? [])
     if (h !== PREVIEW_OPTIONAL) errors.push(`unexpected optional host permission: ${h}`);
 if ((manifest.optional_host_permissions ?? []).length)

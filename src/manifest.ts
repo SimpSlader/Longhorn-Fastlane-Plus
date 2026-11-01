@@ -34,7 +34,10 @@ const RMP_HOST_PERMISSION = 'https://www.ratemyprofessors.com/*';
 // LOCAL BUILDS ONLY (update-fastlane.sh sets this): an OPTIONAL permission, never granted by default, that lets the
 // developer point the AI at this project's protected Vercel preview. Store builds never include it.
 const isLocalBuild = process.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true';
-const PREVIEW_OPTIONAL_HOST = 'https://longhorn-fastlane-plus*-simpsladers-projects.vercel.app/*';
+// Chrome match patterns only allow a wildcard as a whole host or a leading "*.", so the pattern is all of *.vercel.app;
+// the app itself only ever uses this project's own preview hosts (see isPreviewOrigin in aiClient.ts) and Chrome asks
+// the user before granting it.
+const PREVIEW_OPTIONAL_HOST = 'https://*.vercel.app/*';
 
 const manifest = defineManifest(async env => {
     const isDev = env.mode === 'development';
