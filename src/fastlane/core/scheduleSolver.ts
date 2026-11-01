@@ -375,6 +375,15 @@ export interface SolveResult {
     explored: number;
 }
 
+/** degree-evaluation verdicts per imported audit, shared by every solve of a session (cleared when it grows large) */
+const verdictCache = new WeakMap<object, Map<string, boolean>>();
+function verdictsFor(audit: ParsedAudit | null | undefined): Map<string, boolean> {
+    if (!audit) return new Map();
+    let map = verdictCache.get(audit);
+    if (!map || map.size > 300_000) verdictCache.set(audit, (map = new Map()));
+    return map;
+}
+
 export class SolveCancelled extends Error {
     constructor() {
         super('Cancelled');
@@ -444,6 +453,7 @@ export async function solveSchedule(
                 (a.score + (options.stable?.has(a.section.uniqueId) ? stableWeight : 0))
         );
 
+    const verdicts = verdictsFor(options.audit);
     const estimate: TravelEstimator = options.travel ?? campusTravelMinutes;
     const travelOn = c.checkTravel !== false;
     const appliesOf = new Map(candidates.map(x => [x.section.uniqueId, x.applies]));
@@ -457,21 +467,29 @@ export async function solveSchedule(
         if (c.maxOnline != null && isAsync(s) && chosenNow.filter(isAsync).length + 1 > c.maxOnline) return false;
         if (travelOn && travelInfeasible(s, chosenNow, estimate)) return false;
         if (options.audit) {
-            const check = evaluateDegree(options.audit, [...chosenNow, s], { term: c.term });
-            const asked = new Set([...chosenNow, s].filter(isExempt).map(x => x.uniqueId));
-            const couldFill = new Set([...chosenNow, s].filter(x => applies(x).length > 0).map(x => x.uniqueId));
-            if (
-                check.courses.some(
-                    x =>
-                        !asked.has(x.uniqueId) &&
-                        (x.contributions.length === 0
-                            ? // an elective is a class that fills no requirement at all; a class that COULD fill one
-                              // but is redundant (a second signature course) is a duplicate, never a "free" elective
-                              !!c.coreOnly || !c.allowElectives || couldFill.has(x.uniqueId)
-                            : !x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE ')))
-                )
-            )
-                return false;
+            const set = [...chosenNow, s];
+            // degree evaluation dominates the search, and the same set of classes is reached again by other branches,
+            // other objectives and the must-have trials of one build: remember the verdict per set
+            const key = `${c.term}|${c.coreOnly ? 1 : 0}${c.allowElectives ? 1 : 0}|${set
+                .map(x => `${x.uniqueId}${isExempt(x) ? 'e' : ''}${applies(x).length ? 'a' : ''}`)
+                .sort()
+                .join(',')}`;
+            const known = verdicts.get(key);
+            if (known !== undefined) return known;
+            const check = evaluateDegree(options.audit, set, { term: c.term });
+            const asked = new Set(set.filter(isExempt).map(x => x.uniqueId));
+            const couldFill = new Set(set.filter(x => applies(x).length > 0).map(x => x.uniqueId));
+            const ok = !check.courses.some(
+                x =>
+                    !asked.has(x.uniqueId) &&
+                    (x.contributions.length === 0
+                        ? // an elective is a class that fills no requirement at all; a class that COULD fill one
+                          // but is redundant (a second signature course) is a duplicate, never a "free" elective
+                          !!c.coreOnly || !c.allowElectives || couldFill.has(x.uniqueId)
+                        : !x.contributions.some(k => !c.coreOnly || k.tag.startsWith('CORE ')))
+            );
+            verdicts.set(key, ok);
+            if (!ok) return false;
         } else if (c.coreOnly && assignRequirements([...chosenNow, s], applies, true).unassigned.length) return false;
         return true;
     };

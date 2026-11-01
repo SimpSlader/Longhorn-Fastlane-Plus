@@ -67,6 +67,18 @@ export interface ToolContext {
     /** true when a newer instruction has arrived: results are dropped, never shown */
     isStale?: () => boolean;
     now?: number;
+    /** when set, build_schedule records how long each phase took here */
+    timings?: Record<string, number>;
+}
+
+/** Optional per-phase timing (milliseconds), filled in when a caller passes `ctx.timings`. */
+async function lap<T>(ctx: ToolContext, label: string, work: () => Promise<T> | T): Promise<T> {
+    const started = performance.now();
+    try {
+        return await work();
+    } finally {
+        if (ctx.timings) ctx.timings[label] = (ctx.timings[label] ?? 0) + (performance.now() - started);
+    }
 }
 
 export interface ToolOutcome {
@@ -1039,7 +1051,7 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
     const args = checked.args;
     const c = withStated(constraintsFrom(args, ctx), ctx, args);
     ctx.onProgress?.('Finding classes that fit your rules…');
-    const pool = await candidatePool(args, ctx, c);
+    const pool = await lap(ctx, 'pool', () => candidatePool(args, ctx, c));
     const required = Object.keys(c.subjectCounts ?? {});
     ctx.onProgress?.('Building a schedule that follows every rule…');
     const objective = ['gpa', 'convenience', 'degree'].includes(String(args.objective))
@@ -1047,10 +1059,12 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
         : null;
     const ranked = objective ? pool.map(p => rescore(p, objective)) : pool;
     const result = pool.length
-        ? await solveWithRequired(ranked, objective === 'convenience' ? { ...c, backToBack: true } : c, ctx, {
-              maxNodes: 400_000,
-              timeLimitMs: 15_000,
-          })
+        ? await lap(ctx, 'solve', () =>
+              solveWithRequired(ranked, objective === 'convenience' ? { ...c, backToBack: true } : c, ctx, {
+                  maxNodes: 400_000,
+                  timeLimitMs: 15_000,
+              })
+          )
         : null;
     if (!result?.best) {
         const reasons = [
@@ -1105,8 +1119,12 @@ async function build(rawArgs: Record<string, unknown>, ctx: ToolContext): Promis
             },
         };
     if (ctx.isStale?.()) return { result: { error: 'A newer instruction arrived; this result was discarded.' } };
-    const description = await describePlan(ctx, result.best.sections, pool, c, required, report);
-    const alternatives = await alternativeSchedules(ctx, pool, c, result.best.sections);
+    const description = await lap(ctx, 'describe+backups', () =>
+        describePlan(ctx, result.best!.sections, pool, c, required, report)
+    );
+    const alternatives = await lap(ctx, 'alternatives', () =>
+        alternativeSchedules(ctx, pool, c, result.best!.sections)
+    );
     const byId = new Map(pool.map(p => [p.section.uniqueId, p]));
     const recommendedPoints = result.best.sections
         .map(s => byId.get(s.uniqueId)?.gpa?.expectedGradePoints)
