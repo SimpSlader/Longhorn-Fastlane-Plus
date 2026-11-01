@@ -1258,9 +1258,13 @@ async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promi
     for (const subj of Object.keys(subjectCounts)) {
         const gone = removedSubjects.includes(subj) || removedCourses.some(x => subjectOf(x) === subj);
         if (gone && !('exactCounts' in args))
-            subjectCounts[subj] = ctx.current.sections.filter(
-                s => subjectOf(s.courseCode) === subj && !removedCourses.includes(normalizeCourseCode(s.courseCode))
-            ).length;
+            subjectCounts[subj] = removedSubjects.includes(subj)
+                ? 0 // the whole subject is being dropped
+                : ctx.current.sections.filter(
+                      s =>
+                          subjectOf(s.courseCode) === subj &&
+                          !removedCourses.includes(normalizeCourseCode(s.courseCode))
+                  ).length;
     }
     c = {
         ...c,

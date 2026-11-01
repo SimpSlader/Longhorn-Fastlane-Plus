@@ -99,6 +99,18 @@ describe('follow-up fixes found by the live run', () => {
         expect(dropped.plan!.constraints.subjectCounts).toEqual({ UGS: 0 });
         expect(dropped.plan!.validation.credits).toBe(15);
     });
+    it('dropping the whole UGS subject (not one course code) also relaxes the exact count', async () => {
+        const built = await runTool('build_schedule', rules, makeContext());
+        const current = {
+            sections: built.plan!.sections,
+            constraints: built.plan!.constraints,
+            pool: built.plan!.pool,
+        };
+        const dropped = await runTool('modify_schedule', { remove: ['UGS'] }, makeContext({ current }));
+        expect(dropped.plan).toBeDefined();
+        expect(dropped.plan!.sections.some(s => s.courseCode.startsWith('UGS'))).toBe(false);
+        expect(dropped.plan!.constraints.subjectCounts).toEqual({ UGS: 0 });
+    });
     it('a made-up department code resolves to the one real course of that subject, and the table shows which', async () => {
         const built = await runTool('build_schedule', { ...rules, includeSubjects: [] }, makeContext());
         const current = {
