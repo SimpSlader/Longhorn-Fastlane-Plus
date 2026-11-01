@@ -10,6 +10,7 @@
  *  - Pending transfer credit is NEVER counted as completed. A requirement that depends on pending
  *    transfer work is downgraded to in-progress and flagged.
  */
+import { degreeRules, recordedCourseCodes } from '../core/degreeRules';
 import { coreCodesInText, coreTag, courseTag, normalizeCourseCode } from '../core/requirements';
 import type {
     AuditCourse,
@@ -24,7 +25,9 @@ import type {
 
 const clean = (s: string | null | undefined) => (s ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
-export function parseProgress(text: string): Progress | undefined {
+export function parseProgress(text: string, fallbackUnit: Progress['unit'] = 'hours'): Progress | undefined {
+    // the IDA prints "none" in the Counted column of a requirement nothing has been applied to yet: that is zero
+    if (/^\s*(?:none|no\s+(?:hours?|courses?))\s*$/i.test(clean(text))) return { value: 0, unit: fallbackUnit };
     const match = clean(text).match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|courses?)?/i);
     if (!match) return undefined;
     return { value: Number(match[1]), unit: /course/i.test(match[2] ?? '') ? 'courses' : 'hours' };
@@ -66,8 +69,12 @@ function finalizeRequirement(
 ): AuditRequirement {
     const tags = coreCodesInText(base.text).map(coreTag);
     // Named courses are recommendation candidates; OR/AND and applicability still require audit review.
-    for (const match of base.text.matchAll(/\b([A-Z][A-Z ]{0,5})\s+(\d{3}[A-Z]{0,2})\b/g)) {
-        tags.push(courseTag(`${match[1]} ${match[2]}`));
+    for (const match of base.text.matchAll(
+        /\b([A-Z][A-Z ]{0,5}?)\s+(\d{3}[A-Z]{0,2})((?:\s*(?:,|and|or|\/)\s*(?:or\s+|and\s+)?\d{3}[A-Z]{0,2})*)\b/g
+    )) {
+        if (match[1] === 'CORE') continue;
+        for (const number of `${match[2]} ${match[3] ?? ''}`.match(/\d{3}[A-Z]{0,2}/g) ?? [])
+            tags.push(courseTag(`${match[1]} ${number}`));
     }
     const issues = [...(base.issues ?? [])];
     let confidence: Confidence = baseConfidence;
@@ -256,15 +263,16 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
                           .map(r => normalizeCourseCode(clean(r.querySelector('td')?.textContent)))
                           .filter(c => /\d/.test(c))
                     : [];
+                const required = parseProgress(cells[3]!.textContent ?? '');
                 requirements.push(
                     finalizeRequirement(
                         {
                             id: `html-${tableIndex}-${i}`,
                             section,
                             text,
-                            required: parseProgress(cells[3]!.textContent ?? ''),
-                            applied: parseProgress(cells[4]!.textContent ?? ''),
-                            remaining: parseProgress(cells[5]!.textContent ?? ''),
+                            required,
+                            applied: parseProgress(cells[4]!.textContent ?? '', required?.unit),
+                            remaining: parseProgress(cells[5]!.textContent ?? '', required?.unit),
                             courses: [...new Set(appliedCourses)],
                         },
                         statusFromMarkup,
@@ -276,7 +284,30 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         }
     });
 
-    const program = clean(doc.querySelector('#audit_title, .audit_title, h1')?.textContent) || undefined;
+    for (const r of requirements) {
+        const identity = `${r.section}|${r.text}`;
+        let hash = 2166136261;
+        for (const ch of identity) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+        r.id = `ida-${(hash >>> 0).toString(16)}-${requirements.slice(0, requirements.indexOf(r)).filter(prev => prev.section === r.section && prev.text === r.text).length}`;
+    }
+    for (const r of requirements) {
+        if (
+            r.status === 'completed' &&
+            r.courses.some(code =>
+                courses.some(c => c.code === code && (c.status === 'planned' || c.status === 'in-progress'))
+            )
+        ) {
+            r.status = 'in-progress';
+            r.issues.push('Counted amount includes in-progress or planned coursework; it is not all earned credit.');
+        }
+    }
+    const program =
+        clean(
+            (
+                doc.querySelector('#degree_info .major') ??
+                doc.querySelector('#audit_title, .audit_title, #audit_header h1')
+            )?.textContent
+        ) || undefined;
     return {
         source: 'html',
         fileName,
@@ -289,7 +320,11 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
         creditHours: deriveCreditHours(requirements),
         hourTotals: readHourTotals(doc),
         included: readIncluded(doc),
-        catalogYear: clean(doc.body?.textContent).match(/\bcatalog(?: year)?:?\s*(20\d\d(?:\s*-\s*20?\d\d)?)/i)?.[1],
+        catalogYear:
+            clean(doc.querySelector('#catalog_info .catalog')?.textContent)
+                .match(/20\d\d\s*-\s*20\d\d/)?.[0]
+                ?.replace(/\s*-\s*/, '-') ??
+            clean(doc.body?.textContent).match(/\bcatalog(?: year)?:?\s*(20\d\d(?:\s*-\s*20?\d\d)?)/i)?.[1],
         restrictions: collectRestrictions(requirements.map(r => r.text)),
         warnings,
     };
@@ -391,7 +426,10 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
                           ? 'in-progress'
                           : iconWord
                             ? 'planned'
-                            : 'completed',
+                            : grade && !/^(IP|PEND)/i.test(grade)
+                              ? 'completed'
+                              : 'in-progress',
+                    ...(/^0+$/.test(m[6] ?? '') ? { equivalent: true } : {}),
                 });
                 continue;
             }
@@ -440,19 +478,18 @@ export function parseAuditText(lines: string[], fileName?: string, now = Date.no
 
 /** Requirement tags that are still outstanding (anything not completed). */
 export function outstandingTags(audit: ParsedAudit): string[] {
-    const tags: string[] = [];
-    for (const r of audit.requirements) {
-        if (r.status === 'completed') continue;
-        for (const t of r.tags) if (!tags.includes(t)) tags.push(t);
-    }
-    return tags;
+    return [
+        ...new Set(
+            degreeRules(audit)
+                .filter(r => r.evidence.validity === 'verified' && r.remaining > 0)
+                .flatMap(r => r.tags)
+        ),
+    ];
 }
 
 /** Course codes the student has completed or is taking (excluding pending transfer). */
 export function takenCourseCodes(audit: ParsedAudit): string[] {
-    return [
-        ...new Set(audit.courses.filter(c => c.status === 'completed' || c.status === 'in-progress').map(c => c.code)),
-    ];
+    return recordedCourseCodes(audit);
 }
 
 /** Applies a student's correction from the review screen. */
@@ -464,7 +501,7 @@ export function correctRequirement(
     return {
         ...audit,
         requirements: audit.requirements.map(r =>
-            r.id === id ? { ...r, ...patch, reviewed: true, confidence: 'high' as const } : r
+            r.id === id ? { ...r, ...patch, reviewed: true, manuallyChanged: true, confidence: 'high' as const } : r
         ),
     };
 }

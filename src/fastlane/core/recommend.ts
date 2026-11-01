@@ -46,6 +46,7 @@ export type Eligibility = { status: 'eligible' | 'unknown' | 'restricted'; notes
 export interface RecommendInput {
     /** outstanding requirement tags, highest priority first */
     requirements: string[];
+    degreeFor?: (s: SectionRecord) => string[];
     catalog: SectionRecord[];
     /** e.g. "Spring 2027"; null = any semester */
     semester: string | null;
@@ -135,7 +136,10 @@ export function recommend(input: RecommendInput): Recommendation[] {
         if (seen.has(section.uniqueId) || exclude.has(section.uniqueId)) continue;
         if (excludeCourses.has(normalizeCourseCode(section.courseCode))) continue;
         if (section.status?.value === 'CANCELLED') continue;
-        const satisfies = outstanding.filter(req => sectionMatchesRequirement(section, req));
+        if (input.semester && semesterKey(section.semester) !== input.semester) continue;
+        const satisfies = input.degreeFor
+            ? input.degreeFor(section).filter(t => outstanding.includes(t))
+            : outstanding.filter(req => sectionMatchesRequirement(section, req));
         if (satisfies.length === 0) continue;
         seen.add(section.uniqueId);
 
@@ -168,7 +172,7 @@ export function recommend(input: RecommendInput): Recommendation[] {
 
         const broadOnly = satisfies.every(tag => tag.startsWith('DEPT '));
         const reasons = [
-            `${broadOnly ? 'Possible fit for' : 'Satisfies'} ${satisfies.map(describeRequirement).join(', ')}`,
+            `${input.degreeFor ? 'Planned toward' : broadOnly ? 'Possible fit for' : 'Listed in'} ${satisfies.map(describeRequirement).join(', ')}`,
         ];
         const warnings: string[] = [];
         if (satisfies.some(tag => tag.startsWith('DEPT ')))

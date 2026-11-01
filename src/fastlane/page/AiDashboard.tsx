@@ -4,7 +4,7 @@
  * requests were routed, and the student's router settings. No keys or prompts are ever shown or stored here.
  */
 import { useEffect, useState } from 'react';
-import { AI_BASE } from '../services/aiClient';
+import { aiFetch } from '../services/aiClient';
 import { FastlaneAiAccessStore, FastlaneAiUsageStore, FastlaneSettingsStore } from '../storage/stores';
 
 interface ModelStatus {
@@ -78,11 +78,7 @@ export default function AiDashboard() {
         if (!code) return;
         setError('');
         try {
-            const res = await fetch(`${AI_BASE}/ai-status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accessCode: code }),
-            });
+            const res = await aiFetch('ai-status', { accessCode: code });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
             setStatus(body as Status);
@@ -98,11 +94,7 @@ export default function AiDashboard() {
     const test = async (provider: string) => {
         setTesting(provider);
         try {
-            const res = await fetch(`${AI_BASE}/ai-status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accessCode: code, test: provider }),
-            });
+            const res = await aiFetch('ai-status', { accessCode: code, test: provider });
             const body = await res.json();
             setTests(t => ({ ...t, [provider]: body.ok ? `Working. ${body.message}` : (body.message ?? body.error) }));
             await load();

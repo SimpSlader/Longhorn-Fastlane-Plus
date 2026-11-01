@@ -29,6 +29,64 @@ const fn = (name, description, properties = {}, required = []) => ({
 });
 
 /** Everything the copilot can look up or do. The extension implements each one locally. */
+const CONSTRAINTS = {
+    minCredits: num,
+    maxCredits: num,
+    onlyDays: {
+        ...strs,
+        description: 'only days classes may meet, e.g. ["T","TH"] (async online has no days)',
+    },
+    avoidDays: strs,
+    onlineMin: { ...num, description: 'async online classes, at least (preference)' },
+    onlineMax: { ...num, description: 'async online classes, at most (hard cap)' },
+    maxGapMinutes: {
+        ...num,
+        description: 'hard cap on minutes between classes on a day',
+    },
+    backToBack: { type: 'boolean', description: 'prefer little waiting between classes' },
+    coreFocus: { type: 'boolean', description: 'core first, nothing major-specific' },
+    coreOnly: {
+        type: 'boolean',
+        description: 'every class must fill an unmet core requirement; only if the student wants nothing but core',
+    },
+    allowElectives: {
+        type: 'boolean',
+        description: 'fill leftover credits with electives ranked by grade outlook',
+    },
+    requiredCourses: {
+        ...strs,
+        description: 'must-have classes, by code or plain name',
+    },
+    dayWindows: {
+        type: 'object',
+        description: 'per-day limits, e.g. {"T":{"from":"11:00 am"}}',
+        additionalProperties: { type: 'object', properties: { from: str, to: str }, additionalProperties: false },
+    },
+    objective: {
+        type: 'string',
+        enum: ['gpa', 'convenience', 'degree'],
+        description: 'grades, a compact week, or degree progress',
+    },
+    exactCounts: {
+        type: 'object',
+        description: 'exact class count per subject, e.g. {"UGS":1}, {"UGS":0} for none',
+        additionalProperties: { type: 'number' },
+    },
+    includeSubjects: { ...strs, description: 'one class of each, e.g. ["UGS"]' },
+    excludeSubjects: { ...strs, description: 'e.g. ["HIS"]' },
+    excludeCourses: strs,
+    earliestStart: { ...str, description: 'no class starts earlier' },
+    latestEnd: { ...str, description: 'no class ends later' },
+};
+
+/** modify_schedule repeats the same fields without their descriptions (build_schedule carries them): fewer tokens per request. */
+const BARE_CONSTRAINTS = Object.fromEntries(
+    Object.entries(CONSTRAINTS).map(([name, def]) => [
+        name,
+        Object.fromEntries(Object.entries(def).filter(([key]) => key !== 'description')),
+    ])
+);
+
 export const TOOLS = [
     fn(
         'get_student_profile',
@@ -60,40 +118,46 @@ export const TOOLS = [
     ),
     fn(
         'build_schedule',
-        'Build a conflict-free schedule from real sections with the solver, show it on the calendar with backups, return it. Pass every stated constraint.',
+        'Build a schedule from real sections (solver + validator) and show it. Pass every constraint the student expressed.',
         {
-            minCredits: num,
-            maxCredits: num,
-            onlyDays: { ...strs, description: 'e.g. ["T","TH"]; async online always allowed' },
-            avoidDays: strs,
-            onlineMin: { ...num, description: 'asynchronous online classes, at least' },
-            onlineMax: num,
-            backToBack: { type: 'boolean' },
+            ...CONSTRAINTS,
             prioritizeGrades: { type: 'boolean', description: 'high past A/A− rates' },
             prioritizeRatings: { type: 'boolean', description: 'good Rate My Professors ratings' },
-            coreFocus: { type: 'boolean', description: 'core first, nothing major-specific' },
-            includeSubjects: { ...strs, description: 'must include one each, e.g. ["UGS"]' },
             preferCourses: { ...strs, description: 'include if they fit, e.g. ["ECO 304L"]' },
-            excludeSubjects: { ...strs, description: 'e.g. ["HIS"]' },
-            excludeCourses: strs,
-            earliestStart: str,
-            latestEnd: str,
         }
     ),
     fn(
         'modify_schedule',
-        'Change the schedule on screen, keeping other classes: remove, add, replace one class, or change days/credits.',
+        'Change the schedule on screen; earlier rules persist, pass only what changed (any build_schedule field too).',
         {
+            ...BARE_CONSTRAINTS,
             remove: { ...strs, description: 'course or subject codes' },
-            addCourse: str,
+            addCourse: {
+                ...str,
+                description: 'a course the student wants added (code or plain name, e.g. "nutrition")',
+            },
             addSubject: str,
-            replaceCourse: str,
+            replaceCourse: { ...str, description: 'swap this class for a DIFFERENT course' },
             replaceReason: {
                 type: 'string',
                 enum: ['easier', 'better professor', 'online', 'in person', 'earlier', 'later', 'any'],
             },
-            changeOnlyDays: strs,
+            swapSectionFor: {
+                ...str,
+                description:
+                    'keep this course (code or plain name, e.g. "economics") but change which section/professor it is',
+            },
+            sectionGoal: {
+                type: 'string',
+                enum: ['easier', 'better rated', 'online', 'in-person', 'earlier', 'later'],
+                description: 'what the new section should be better at',
+            },
+            changeOnlyDays: { ...strs, description: 'replace the allowed meeting days, e.g. ["T","W","TH"]' },
             changeCredits: { type: 'object', properties: { min: num, max: num }, additionalProperties: false },
+            anotherOption: {
+                type: 'boolean',
+                description: 'a genuinely different valid schedule, not the sections shown',
+            },
         }
     ),
     fn(
@@ -108,7 +172,10 @@ const TOOL_NAMES = new Set(TOOLS.map(t => t.function.name));
 export const SYSTEM_PROMPT = `You are Fastlane, an AI copilot for UT Austin students: a capable, natural conversational assistant with tools for UT courses, sections, past grade distributions, Rate My Professors, the student's degree audit, a schedule solver and graduation math.
 
 - Understand the whole request, even if long or messy, and cover every part in one reply. Don't ask for things already given.
-- Use tools for UT- or student-specific facts; call several if needed. For a schedule, call build_schedule once with every constraint (credits, days, online count, back-to-back, grades, ratings, core focus, required subjects like UGS, preferred courses, exclusions). For changes ("that professor", "Mondays are fine"), use modify_schedule or rebuild with the updated rules; the schedule on screen is in context.
+- Use tools for UT- or student-specific facts; several if needed. ANY request to build, plan, change or compare a schedule MUST call build_schedule or modify_schedule — never answer a schedule request with chat text, and never ask for details you can reasonably default (a vague request still gets a build with defaults).
+- Map the student's words to tool arguments yourself, however they are phrased. Set ONLY what they actually expressed; leave everything else unset — never invent a time window, day limit, online cap or exclusion. "15 hours" means minCredits=maxCredits=15. "Signature course" is subject UGS. "Core only" is coreOnly; "I don't care about electives / easy A's" is allowElectives with objective gpa. ANY class they name as wanted ("I need / must take / with / include X") goes in requiredCourses by plain name or code; never make up a code — use search_courses if unsure. Classes taken elsewhere ("at ACC") are not UT courses: ignore them.
+- A follow-up edits the schedule on screen: call modify_schedule with ONLY what changed (earlier rules persist automatically). "Another option" is anotherOption. "Easier/better professor for X" is swapSectionFor X with sectionGoal (never addCourse). "Allow Wednesdays" is changeOnlyDays with every allowed day, e.g. ["T","W","TH"]. "Start later on Tuesdays" is dayWindows. Never call build_schedule for a change.
+- The solver and an independent validator own correctness: you never choose the final classes or decide whether rules are met. Schedule results carry a validation block: repeat its verdict exactly, and say "all rules met" only when allRulesMet is true. On an error or closestAlternatives, say no schedule satisfies every rule, give the reasons, and offer alternatives only as options needing the student's permission to relax one named rule.
 - Tool results are evidence: synthesize them. Never reply with only a raw list of sections from one lookup. For schedules list each class (code, name, professor, unique, credits, days/times or online, past A/A− rate, RMP rating, why), total credits, backups, and anything not met.
 - Never invent courses, sections, times, professors, ratings, grades, seats or rules; say when data is missing. Past grades aren't promises; seat status is only what the student saw. Easy grading isn't good teaching.
 - Credit and graduation math only from tools; figures the student confirmed are authoritative.

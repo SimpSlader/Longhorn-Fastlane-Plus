@@ -1,0 +1,1323 @@
+[
+    {
+        "id": "N01",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "I only want classes Tuesday and Thursday, preferably back-to-back, with two online classes, 15 hours, just core",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "N02",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Can you set me up with 15 credits? I can only be on campus Tuesdays and Thursdays and I need a signature course.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "includeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "N03",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Something around 12 hours, no history please, only stuff that counts for my core",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "coreOnly": true,
+                    "excludeSubjects": ["HIS"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "N04",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "I don't care what electives I take as long as they're easy A's. 15 hours, Tuesday/Thursday.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "objective": "gpa",
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "N05",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "I need ECO 304L and GOV 312L. Everything else can be whatever helps my GPA. 15 hours on Tue/Thu.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L", "GOV 312L"],
+                    "objective": "gpa",
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "N06",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Monday Wednesday Friday only, 12 to 13 hours, nothing online",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 13,
+                    "onlyDays": ["M", "W", "F"],
+                    "onlineMax": 0
+                }
+            }
+        ]
+    },
+    {
+        "id": "N07",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "I hate mornings, nothing before 11 please. 12 hours.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "earliestStart": "11:00 am"
+                }
+            }
+        ]
+    },
+    {
+        "id": "N08",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Done by 3:30 every day, 12 hours, I work afternoons",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "latestEnd": "3:30 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "N09",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Light semester, 9 hours, I am taking an ACC class too",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 9,
+                    "maxCredits": 9
+                }
+            }
+        ]
+    },
+    {
+        "id": "N10",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Mondays and Wednesdays are out for me. 15 hours, mostly core.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "avoidDays": ["M", "W"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "N11",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Highest A rates possible, 15 hours, Tue Thu only, core only, I need a UGS and I am fine with 1-2 online",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "includeSubjects": ["UGS"],
+                    "objective": "gpa",
+                    "onlineMin": 1,
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "N12",
+        "category": "natural",
+        "turns": [
+            {
+                "say": "Put me in nutrition and some other easy online stuff, 12 credits",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "requiredCourses": ["nutrition"],
+                    "objective": "gpa",
+                    "onlineMin": 1
+                }
+            }
+        ]
+    },
+    {
+        "id": "F01",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours Tuesday and Thursday, electives are fine, two online max, back to back",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Actually, make my Tuesdays start later.",
+                "tool": "modify_schedule",
+                "args": {
+                    "dayWindows": {
+                        "T": {
+                            "from": "11:00 am"
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "F02",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "12 hours, Tue/Thu, I need economics but I have to be done by 12:30 for now",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L"],
+                    "onlineMax": 2,
+                    "latestEnd": "12:30 pm"
+                }
+            },
+            {
+                "say": "Find me an easier professor for economics — I can stay later.",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "economics",
+                    "sectionGoal": "easier",
+                    "latestEnd": "5:00 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F03",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "12 hours TTh please",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Keep everything else the same, but get me to 15 hours.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 15,
+                        "max": 15
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "F04",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh core only",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Actually Wednesdays are fine too.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "W", "TH"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "F05",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh core only",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Swap out the government class for something else.",
+                "tool": "modify_schedule",
+                "args": {
+                    "remove": ["GOV 312L"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "F06",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh with UGS 302",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["UGS 302"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Can I take the other signature course instead?",
+                "tool": "modify_schedule",
+                "args": {
+                    "replaceCourse": "UGS 302",
+                    "addCourse": "UGS 303"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F07",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Make it easier overall.",
+                "tool": "modify_schedule",
+                "args": {
+                    "objective": "gpa"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F08",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Give me another option.",
+                "tool": "modify_schedule",
+                "args": {
+                    "anotherOption": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "F09",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh core",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Add a nutrition class.",
+                "tool": "modify_schedule",
+                "args": {
+                    "addCourse": "nutrition"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F10",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh up to two online",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Actually no online classes at all.",
+                "tool": "modify_schedule",
+                "args": {
+                    "onlineMax": 0
+                }
+            }
+        ]
+    },
+    {
+        "id": "F11",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Never mind, I only want things that count for my degree core.",
+                "tool": "modify_schedule",
+                "args": {
+                    "coreOnly": true,
+                    "allowElectives": false
+                }
+            }
+        ]
+    },
+    {
+        "id": "F12",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh with a signature course",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "includeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "I changed my mind, drop the signature course.",
+                "tool": "modify_schedule",
+                "args": {
+                    "exactCounts": {
+                        "UGS": 0
+                    },
+                    "remove": ["UGS"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "F13",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "12 hours TTh, I need ECO 304L, done by 12:30 for now",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L"],
+                    "onlineMax": 2,
+                    "latestEnd": "12:30 pm"
+                }
+            },
+            {
+                "say": "Find me a better rated professor for ECO 304L",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "ECO 304L",
+                    "sectionGoal": "better rated",
+                    "latestEnd": "5:00 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F14",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh core only",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Nothing after 3:30 anymore.",
+                "tool": "modify_schedule",
+                "args": {
+                    "latestEnd": "3:30 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F15",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "12 hours TTh with economics, done by 12:30",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L"],
+                    "onlineMax": 2,
+                    "latestEnd": "12:30 pm"
+                }
+            },
+            {
+                "say": "Actually I want economics online instead.",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "economics",
+                    "sectionGoal": "online",
+                    "latestEnd": "5:00 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "F16",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh with a signature course",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "includeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Drop the signature course, I already took it.",
+                "tool": "modify_schedule",
+                "args": {
+                    "remove": ["UGS 302"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "M01",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "Build me a 15 hour TTh schedule, I need economics, electives are fine",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Make Tuesdays start later",
+                "tool": "modify_schedule",
+                "args": {
+                    "dayWindows": {
+                        "T": {
+                            "from": "11:00 am"
+                        }
+                    }
+                }
+            },
+            {
+                "say": "Easier professor for economics",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "economics",
+                    "sectionGoal": "easier"
+                }
+            },
+            {
+                "say": "Now another option please",
+                "tool": "modify_schedule",
+                "args": {
+                    "anotherOption": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "M02",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "12 hours, TTh",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Get me to 15 hours but keep the rest",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 15,
+                        "max": 15
+                    }
+                }
+            },
+            {
+                "say": "No classes after 5",
+                "tool": "modify_schedule",
+                "args": {
+                    "latestEnd": "5:00 pm"
+                }
+            }
+        ]
+    },
+    {
+        "id": "M03",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "Core only, 15 hours TTh",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Add nutrition",
+                "tool": "modify_schedule",
+                "args": {
+                    "addCourse": "nutrition"
+                }
+            },
+            {
+                "say": "Actually allow Wednesdays",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "W", "TH"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "M04",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours TTh with economics",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["ECO 304L"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Only online economics please",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "ECO 304L",
+                    "sectionGoal": "online"
+                }
+            }
+        ]
+    },
+    {
+        "id": "M05",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Make it easier",
+                "tool": "modify_schedule",
+                "args": {
+                    "objective": "gpa"
+                }
+            },
+            {
+                "say": "And no more than one online class",
+                "tool": "modify_schedule",
+                "args": {
+                    "onlineMax": 1
+                }
+            }
+        ]
+    },
+    {
+        "id": "M06",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours TTh, I must take GOV 312L",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["GOV 312L"],
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Swap that professor for a better rated one",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "GOV 312L",
+                    "sectionGoal": "better rated"
+                }
+            }
+        ]
+    },
+    {
+        "id": "C01",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Add M 408C",
+                "tool": "modify_schedule",
+                "args": {
+                    "addCourse": "M 408C"
+                }
+            }
+        ]
+    },
+    {
+        "id": "C02",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "Tuesday and Thursday only but I need M 408C calculus, 15 hours",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["M 408C"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "C03",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "I need AMS 310 and HIS 315L, both, 12 hours Tue/Thu",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "requiredCourses": ["AMS 310", "HIS 315L"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "C04",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "15 hours online only, but no more than 2 online classes",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlineMax": 2,
+                    "avoidDays": ["M", "T", "W", "TH", "F"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "C05",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "Core only, no history, 15 hours, Tue/Thu — and a UGS",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": true,
+                    "excludeSubjects": ["HIS"],
+                    "includeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "C06",
+        "category": "conflict",
+        "turns": [
+            {
+                "say": "Everything must end by 10 am and I need 15 hours",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "latestEnd": "10:00 am"
+                }
+            }
+        ]
+    },
+    {
+        "id": "V01",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "Build me a good schedule",
+                "tool": "build_schedule",
+                "args": {}
+            }
+        ]
+    },
+    {
+        "id": "V02",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "something easy",
+                "tool": "build_schedule",
+                "args": {
+                    "objective": "gpa"
+                }
+            }
+        ]
+    },
+    {
+        "id": "V03",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "I want to finish my core as fast as possible",
+                "tool": "build_schedule",
+                "args": {
+                    "coreOnly": true,
+                    "objective": "degree",
+                    "minCredits": 12,
+                    "maxCredits": 16
+                }
+            }
+        ]
+    },
+    {
+        "id": "V04",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "I work Fridays",
+                "tool": "build_schedule",
+                "args": {
+                    "avoidDays": ["F"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "V05",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "a normal full load",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15
+                }
+            }
+        ]
+    },
+    {
+        "id": "V06",
+        "category": "vague",
+        "turns": [
+            {
+                "say": "as few days on campus as possible, 15 hours",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 3
+                }
+            }
+        ]
+    },
+    {
+        "id": "I01",
+        "category": "impossible",
+        "turns": [
+            {
+                "say": "30 credit hours, Tuesday Thursday only",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 30,
+                    "maxCredits": 30,
+                    "onlyDays": ["T", "TH"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "I02",
+        "category": "impossible",
+        "turns": [
+            {
+                "say": "I need a class called underwater basket weaving, 12 hours",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "requiredCourses": ["underwater basket weaving"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "I03",
+        "category": "impossible",
+        "turns": [
+            {
+                "say": "In-person classes only between 7 and 8 am",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "earliestStart": "7:00 am",
+                    "latestEnd": "8:00 am",
+                    "onlineMax": 0
+                }
+            }
+        ]
+    },
+    {
+        "id": "I04",
+        "category": "impossible",
+        "turns": [
+            {
+                "say": "15 hours TTh electives ok",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "coreOnly": false,
+                    "onlineMax": 2,
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Make it 24 hours",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 24,
+                        "max": 24
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "I05",
+        "category": "impossible",
+        "turns": [
+            {
+                "say": "No online and no in-person classes",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlineMax": 0,
+                    "avoidDays": ["M", "T", "W", "TH", "F"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "P01",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "Tuesday and Thursday are the only days I can't do. 12 hours.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "avoidDays": ["T", "TH"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "P02",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "I already finished my signature course, so no UGS. 12 hours, TTh.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "excludeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "P03",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "I'd rather not have only core classes — mix in some fun electives. 15 hours.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "coreOnly": false
+                }
+            }
+        ]
+    },
+    {
+        "id": "P04",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "Skip the signature course, I took it in high school. 12 hours TTh.",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "excludeSubjects": ["UGS"],
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "P05",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "Anything but economics please",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 15,
+                    "excludeSubjects": ["ECO"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "P06",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "Fridays off, and nothing before 10, 14 or 15 credits",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 14,
+                    "maxCredits": 15,
+                    "avoidDays": ["F"],
+                    "earliestStart": "10:00 am"
+                }
+            }
+        ]
+    },
+    {
+        "id": "P07",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "I can do two online classes at most",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 15,
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "P08",
+        "category": "phrasing",
+        "turns": [
+            {
+                "say": "Put my classes back to back, no gaps over 15 minutes, TTh, 12 hours",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 12,
+                    "maxCredits": 12,
+                    "onlyDays": ["T", "TH"],
+                    "backToBack": true,
+                    "maxGapMinutes": 15,
+                    "onlineMax": 2
+                }
+            }
+        ]
+    },
+    {
+        "id": "M07",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours, Tuesday/Thursday only, up to two online, I need ECO 304L, easy classes for the rest, back to back",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 2,
+                    "requiredCourses": ["ECO 304L"],
+                    "objective": "gpa",
+                    "backToBack": true
+                }
+            },
+            {
+                "say": "Make my Tuesdays start later.",
+                "tool": "modify_schedule",
+                "args": {
+                    "dayWindows": {
+                        "T": {
+                            "from": "11:00 am"
+                        }
+                    }
+                }
+            },
+            {
+                "say": "Actually I only need 12 hours.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 12,
+                        "max": 12
+                    }
+                }
+            },
+            {
+                "say": "Find me an easier professor for economics.",
+                "tool": "modify_schedule",
+                "args": {
+                    "swapSectionFor": "economics",
+                    "sectionGoal": "easier"
+                }
+            },
+            {
+                "say": "Back to 15 hours please.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeCredits": {
+                        "min": 15,
+                        "max": 15
+                    }
+                }
+            },
+            {
+                "say": "Give me a different option.",
+                "tool": "modify_schedule",
+                "args": {
+                    "anotherOption": true
+                }
+            }
+        ]
+    },
+    {
+        "id": "M08",
+        "category": "multi-turn",
+        "turns": [
+            {
+                "say": "15 hours Tuesday and Thursday, no online classes",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "onlineMax": 0
+                }
+            },
+            {
+                "say": "Okay, one online class is fine.",
+                "tool": "modify_schedule",
+                "args": {
+                    "onlineMax": 1
+                }
+            },
+            {
+                "say": "Wednesdays are fine too.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "W", "TH"]
+                }
+            },
+            {
+                "say": "Actually no, back to just Tuesday and Thursday.",
+                "tool": "modify_schedule",
+                "args": {
+                    "changeOnlyDays": ["T", "TH"]
+                }
+            },
+            {
+                "say": "And nothing after 4.",
+                "tool": "modify_schedule",
+                "args": {
+                    "latestEnd": "4:00 pm"
+                }
+            }
+        ]
+    }
+]

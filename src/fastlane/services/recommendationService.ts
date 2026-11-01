@@ -9,6 +9,7 @@ import type { UserSchedule } from '@shared/types/UserSchedule';
 import { gradeStatFrom, lookupGrades, scheduleTimes } from '../adapters/utrp';
 import { takenCourseCodes } from '../audit/parseAudit';
 import type { ParsedAudit } from '../audit/types';
+import { createDegreeMatcher } from '../core/degreeRules';
 import type { GradeStat } from '../core/grades';
 import type { PlanMeta } from '../core/plans';
 import { usedUniqueIds } from '../core/plans';
@@ -61,6 +62,13 @@ export async function buildRecommendations(ctx: RecommendationContext): Promise<
     const index = subjectNameIndex(UT_SUBJECTS);
     const input = {
         requirements: ctx.requirements,
+        degreeFor: ctx.audit
+            ? createDegreeMatcher(
+                  ctx.audit,
+                  { term: ctx.settings.targetSemester ?? undefined },
+                  catalog.filter(s => ctx.schedule?.courses.some(c => c.uniqueId === s.uniqueId))
+              )
+            : undefined,
         semester: ctx.settings.targetSemester,
         activeSchedule: scheduleTimes(ctx.schedule),
         excludeUniqueIds: exclude,
@@ -71,7 +79,7 @@ export async function buildRecommendations(ctx: RecommendationContext): Promise<
             avoidFriday: ctx.settings.avoidFriday,
             gradeThreshold: ctx.settings.gradeThreshold,
         },
-        eligibilityFor: (s: SectionRecord) => prerequisiteEligibility(s, taken, index),
+        eligibilityFor: (s: SectionRecord) => prerequisiteEligibility(s, taken, index, ctx.audit?.courses),
     };
 
     // pass 1 ranks every relevant section without grades; grades are looked up only for the best GRADE_POOL

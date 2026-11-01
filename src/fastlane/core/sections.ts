@@ -43,6 +43,9 @@ export interface OfferingListing {
 
 export interface SectionRecord {
     uniqueId: number;
+    /** Explicitly verified aliases; never inferred from similar names. */
+    equivalentCodes?: string[];
+    repeatableForCredit?: boolean;
     source?: SectionSource;
     /** set when the section appears in an imported official course-offerings document */
     listing?: OfferingListing;

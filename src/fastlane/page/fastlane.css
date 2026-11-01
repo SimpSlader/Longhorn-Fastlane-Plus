@@ -2892,6 +2892,27 @@ button.course-pill {
     font-size: 12.5px;
     width: 100%;
 }
+/* schedule tables: scroll inside the bubble, keep numbers readable */
+.bubble.md .md-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+}
+.bubble.md .md-table-wrap table {
+    min-width: 780px;
+}
+.bubble.md .md-table-wrap th,
+.bubble.md .md-table-wrap td {
+    vertical-align: top;
+}
+.bubble.md .md-table-wrap td:nth-child(2),
+.bubble.md .md-table-wrap td:nth-child(3),
+.bubble.md .md-table-wrap th:nth-child(2),
+.bubble.md .md-table-wrap th:nth-child(3) {
+    white-space: nowrap; /* unique number and credit hours never wrap */
+}
+.bubble.md:has(.md-table-wrap) {
+    max-width: 100%;
+}
 .bubble.md th,
 .bubble.md td {
     padding: 4px 8px;
@@ -3050,4 +3071,43 @@ button.course-pill {
 }
 .credits-panel tr:first-child td {
     border-top: 0;
+}
+
+/* one-click schedule versions + copy-all registration numbers */
+.fl-plan-versions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0 2px;
+}
+.fl-seg {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border, #d7dbe0);
+    border-radius: 8px;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+}
+.fl-seg button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.fl-seg button + button {
+    border-left: 1px solid var(--border, #d7dbe0);
+}
+.fl-seg button.on {
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+.fl-seg button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }

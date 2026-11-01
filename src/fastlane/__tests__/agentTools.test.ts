@@ -140,7 +140,8 @@ describe('copilot tools', () => {
         const ugs = r.classes.find(c => c.code.startsWith('UGS'))!.code;
         const ugsBackups = r.backups.perClass.find(b => b.for === ugs)!.options.map(o => o.code);
         expect(ugsBackups.filter(c => c.startsWith('UGS')).length).toBeGreaterThanOrEqual(1);
-        expect([...ugsBackups, ...r.backups.general.map(g => g.code)]).toContain('GOV 312L');
+        // another GOV 312L section is offered as a backup (validated against the same rules)
+        expect(r.backups.perClass.flatMap(b => b.options.map(o => o.code))).toContain('GOV 312L');
         expect(r.couldNotInclude).toEqual([]);
     });
 
@@ -187,7 +188,7 @@ describe('copilot tools', () => {
         expect(taken.alreadyTakenOrInProgress).toBe(true);
         // Mondays only can't reach 21 credits (two Monday sections plus three online classes)
         const impossible = await runTool('build_schedule', { minCredits: 21, maxCredits: 21, onlyDays: ['M'] }, ctx());
-        expect((impossible.result as { error?: string }).error).toMatch(/No complete schedule/);
+        expect((impossible.result as { error?: string }).error).toMatch(/couldn’t (?:find|build)/);
         expect(impossible.plan).toBeUndefined();
     });
 });

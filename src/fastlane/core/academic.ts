@@ -6,6 +6,7 @@
  */
 import { degreeTotals } from '../audit/progress';
 import type { AuditCourse, ParsedAudit } from '../audit/types';
+import { creditIdentity } from './degreeRules';
 import { normalizeCourseCode } from './requirements';
 
 /** Grades that earn no hours (failed, withdrawn, dropped, incomplete). */
@@ -99,9 +100,15 @@ export function academicSummary(audit: ParsedAudit | null, userReported: UserRep
         };
     }
     const courses = realCourses(audit);
-    const earned = courses.filter(c => c.status === 'completed' && !NO_CREDIT_GRADE.test(c.grade.trim()));
-    const current = courses.filter(c => c.status === 'in-progress');
-    const planned = courses.filter(c => c.status === 'planned');
+    const identity = creditIdentity(audit);
+    const uniqueCredits = (rows: AuditCourse[]) => [...new Map(rows.map(c => [identity(c.code), c])).values()];
+    const earned = uniqueCredits(
+        courses.filter(c => c.status === 'completed' && !NO_CREDIT_GRADE.test(c.grade.trim()))
+    );
+    const posted = new Set(earned.map(c => identity(c.code)));
+    const current = uniqueCredits(courses.filter(c => c.status === 'in-progress' && !posted.has(identity(c.code))));
+    const reserved = new Set([...posted, ...current.map(c => identity(c.code))]);
+    const planned = uniqueCredits(courses.filter(c => c.status === 'planned' && !reserved.has(identity(c.code))));
     const totals = degreeTotals(audit);
     const completedHours = sum(earned);
     const discrepancies: string[] = [];

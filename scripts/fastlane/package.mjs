@@ -11,6 +11,10 @@ import { join, relative } from 'node:path';
 const dist = 'dist';
 const out = 'package';
 const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
+if ((manifest.optional_host_permissions ?? []).length)
+    throw new Error(
+        'Refusing to package a developer build: it carries the developer test-server permission. Run a normal `pnpm build` first.'
+    );
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const name = `${pkg.name}-${pkg.version}.zip`;
 // store packages must never contain the local self-reload helper
