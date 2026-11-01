@@ -64,7 +64,7 @@ export default function DevServerCard() {
     };
 
     return (
-        <div className='card stack' aria-label='Developer test server'>
+        <section className='card stack' aria-label='Developer test server'>
             <h2>Developer: AI test server</h2>
             <p className='small muted'>
                 Currently using: <b>{saved ? new URL(saved).host : 'production'}</b>
@@ -107,6 +107,6 @@ export default function DevServerCard() {
                 </button>
             </div>
             {message && <div className={`notice small ${message.tone}`}>{message.text}</div>}
-        </div>
+        </section>
     );
 }
