@@ -6,8 +6,8 @@
  * requirement (UGS 302 and UGS 303 are alternatives for the one Signature Course requirement). The assignment is
  * a bipartite matching, so a course with two possible tags can take whichever leaves the other course a slot.
  */
-import { coreTag, normalizeCourseCode } from './requirements';
-import { type SectionRecord, subjectOf } from './sections';
+import { coreTag } from './requirements';
+import type { SectionRecord } from './sections';
 
 const CORE_TAG = /^CORE \d{3}$/;
 export const isCoreTag = (t: string) => CORE_TAG.test(t);
@@ -51,10 +51,3 @@ export function assignRequirements(
     for (const [tag, id] of owner) assigned.set(id, tag);
     return { assigned, unassigned: sections.filter(s => !assigned.has(s.uniqueId)) };
 }
-
-/** UGS Signature Courses in a list (by subject UGS) */
-export const signatureCourses = (sections: SectionRecord[]) => sections.filter(s => subjectOf(s.courseCode) === 'UGS');
-
-/** Courses that are the same requirement alternative: same subject-level "pick one" group. */
-export const sameCourse = (a: SectionRecord, b: SectionRecord) =>
-    normalizeCourseCode(a.courseCode) === normalizeCourseCode(b.courseCode);

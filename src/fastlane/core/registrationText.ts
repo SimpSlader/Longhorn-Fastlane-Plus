@@ -23,7 +23,3 @@ export function registrationText(sections: SectionRecord[], term = ''): string {
         'Seat status is only what was seen on UT’s site at the time shown, never live. Check it on UT before registering.',
     ].join('\n');
 }
-
-/** Just the numbers, for pasting into a single field that accepts a list. */
-export const uniqueNumbers = (sections: SectionRecord[]): string =>
-    sections.map(s => formatUnique(s.uniqueId)).join(', ');

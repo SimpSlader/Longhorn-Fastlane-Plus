@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runTool } from '../core/agentTools';
 import { renderPlanReply } from '../core/planReply';
-import { registrationText, uniqueNumbers } from '../core/registrationText';
+import { registrationText } from '../core/registrationText';
 import { validateBuildArgs, validateModifyArgs } from '../core/toolArgs';
 import { catalog, makeContext } from './nl/fixture';
 
@@ -13,7 +13,6 @@ describe('registration text', () => {
         expect(lines.map(l => l.slice(0, 5))).toEqual(['00001', '00004', '00012']);
         expect(text).toMatch(/open as last seen 2026-10-30/);
         expect(text).toMatch(/never live/);
-        expect(uniqueNumbers(picks)).toBe('00001, 00004, 00012');
     });
     it('does not claim seat status for a section that was never checked', () => {
         const unchecked = { ...catalog[0]!, status: undefined };
