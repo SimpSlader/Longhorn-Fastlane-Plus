@@ -32,17 +32,23 @@ export async function aiTarget(): Promise<AiTarget> {
     try {
         ({ base, code } = await FastlaneDevServerStore.all());
     } catch {
-        throw new Error('Cannot read AI test-server settings. Check extension storage and reload; production was not contacted.');
+        throw new Error(
+            'Cannot read AI test-server settings. Check extension storage and reload; production was not contacted.'
+        );
     }
     if (!base) return { base: AI_BASE, dev: false };
     let origin: string;
     try {
         origin = new URL(base).origin;
     } catch {
-        throw new Error('Invalid AI test-server URL. Open Settings → Developer: AI test server to correct it; production was not contacted.');
+        throw new Error(
+            'Invalid AI test-server URL. Open Settings → Developer: AI test server to correct it; production was not contacted.'
+        );
     }
     if (!isPreviewOrigin(origin))
-        throw new Error('AI test-server URL is not an authorized candidate preview. Correct it in Settings; production was not contacted.');
+        throw new Error(
+            'AI test-server URL is not an authorized candidate preview. Correct it in Settings; production was not contacted.'
+        );
     return { base: `${origin}/api`, code: code || undefined, dev: true };
 }
 
