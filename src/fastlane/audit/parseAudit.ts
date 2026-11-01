@@ -25,7 +25,9 @@ import type {
 
 const clean = (s: string | null | undefined) => (s ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
-export function parseProgress(text: string): Progress | undefined {
+export function parseProgress(text: string, fallbackUnit: Progress['unit'] = 'hours'): Progress | undefined {
+    // the IDA prints "none" in the Counted column of a requirement nothing has been applied to yet: that is zero
+    if (/^\s*(?:none|no\s+(?:hours?|courses?))\s*$/i.test(clean(text))) return { value: 0, unit: fallbackUnit };
     const match = clean(text).match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|courses?)?/i);
     if (!match) return undefined;
     return { value: Number(match[1]), unit: /course/i.test(match[2] ?? '') ? 'courses' : 'hours' };
@@ -261,15 +263,16 @@ export function parseAuditHtml(doc: Document, fileName?: string, now = Date.now(
                           .map(r => normalizeCourseCode(clean(r.querySelector('td')?.textContent)))
                           .filter(c => /\d/.test(c))
                     : [];
+                const required = parseProgress(cells[3]!.textContent ?? '');
                 requirements.push(
                     finalizeRequirement(
                         {
                             id: `html-${tableIndex}-${i}`,
                             section,
                             text,
-                            required: parseProgress(cells[3]!.textContent ?? ''),
-                            applied: parseProgress(cells[4]!.textContent ?? ''),
-                            remaining: parseProgress(cells[5]!.textContent ?? ''),
+                            required,
+                            applied: parseProgress(cells[4]!.textContent ?? '', required?.unit),
+                            remaining: parseProgress(cells[5]!.textContent ?? '', required?.unit),
                             courses: [...new Set(appliedCourses)],
                         },
                         statusFromMarkup,

@@ -13,6 +13,7 @@ import {
     parseProgress,
     takenCourseCodes,
 } from '../audit/parseAudit';
+import { degreeRules } from '../core/degreeRules';
 
 const fixture = (name: string) =>
     new DOMParser().parseFromString(readFileSync(join(__dirname, 'fixtures', name), 'utf8'), 'text/html');
@@ -202,5 +203,34 @@ describe('parseAuditText (PDF)', () => {
         expect(parseProgress('3 Courses')).toEqual({ value: 3, unit: 'courses' });
         expect(parseProgress('  6 hours ')).toEqual({ value: 6, unit: 'hours' });
         expect(parseProgress('')).toBeUndefined();
+    });
+});
+
+describe('requirements with "none" counted (the IDA prints "none" when nothing is applied yet)', () => {
+    const row = (n: number, text: string, req: string, counted: string, lacking: string, done: boolean) =>
+        `<tr class="rule ${done ? 'fulfilled' : 'notstarted'}"><td>${n}</td><td></td><td>${text}</td><td>${req}</td><td>${counted}</td><td>${lacking}</td></tr>
+         <tr class="details"><td colspan="6"><table><tbody></tbody></table></td></tr>`;
+    const html = `<html><body><div id="coursework"><table class="results"><tbody></tbody></table></div>
+      <div id="requirements"><table class="results"><thead><tr><th class="section_title"><a>Core Curriculum</a></th></tr></thead>
+        <tbody class="section">
+          ${row(1, 'CORE (090): A first-year signature course (UGS 302 or 303 or the equivalent) is required.', '3 hours', 'none', '3 hours', false)}
+          ${row(8, 'CORE (030 and 031/093): 9 hrs from Science &amp; Technology Part I OR 6 hrs from NST Part I &amp; 3 hrs from NST Part II.', '9 hours', 'none', '9 hours', false)}
+          ${row(9, 'CORE (050): 3 hours in the visual and performing arts are required.', '3 hours', 'none', '3 hours', false)}
+        </tbody></table></div></body></html>`;
+    const audit = parseAuditHtml(new DOMParser().parseFromString(html, 'text/html'));
+
+    it('reads "none" as zero hours, not as a missing amount', () => {
+        expect(parseProgress('none')).toEqual({ value: 0, unit: 'hours' });
+        expect(parseProgress('No courses')).toEqual({ value: 0, unit: 'hours' });
+        const sig = audit.requirements.find(r => r.tags.includes('CORE 090'))!;
+        expect(sig.applied).toEqual({ value: 0, unit: 'hours' });
+        expect(sig.remaining).toEqual({ value: 3, unit: 'hours' });
+    });
+
+    it('keeps the signature course and the other unmet core areas as outstanding requirements', () => {
+        const rules = degreeRules(audit);
+        const sig = rules.find(r => r.tags.includes('CORE 090'))!;
+        expect(sig.issues.join(' ')).not.toMatch(/missing or use different units/);
+        expect(outstandingTags(audit)).toEqual(expect.arrayContaining(['CORE 090', 'CORE 050']));
     });
 });
