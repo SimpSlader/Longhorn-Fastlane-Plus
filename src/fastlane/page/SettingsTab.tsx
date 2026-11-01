@@ -13,6 +13,7 @@ import type { FastlaneSettings } from '../storage/stores';
 import { FastlaneSettingsStore } from '../storage/stores';
 import AiDashboard from './AiDashboard';
 import { downloadText, PageHead } from './common';
+import DevServerCard, { isLocalBuild } from './DevServerCard';
 import { useOnline } from './hooks';
 
 function Toggle({ k, label, help }: { k: keyof FastlaneSettings; label: string; help?: string }) {
@@ -258,6 +259,7 @@ export default function SettingsTab() {
                 </div>
                 {status && <div className={`notice small ${status.tone}`}>{status.text}</div>}
             </div>
+            {isLocalBuild && <DevServerCard />}
             <div className='card small muted'>
                 Fastlane Course Planner is an independent, student-developed project. It is not affiliated with,
                 endorsed by, or approved by The University of Texas at Austin or the UT Registration Plus team. It is

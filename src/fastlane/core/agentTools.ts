@@ -1222,7 +1222,18 @@ async function swapSection(
 async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
     const checked = validateModifyArgs(rawArgs);
     if (!checked.ok) return badArguments(checked.issues);
-    const args = checked.args;
+    const args = { ...checked.args };
+    // A section goal ("easier", "online"…) on a class that is already on the schedule can only mean "same course,
+    // different section" — the model named the right class and goal but picked the wrong argument for it.
+    if (args.sectionGoal && !args.swapSectionFor && ctx.current) {
+        const named = String(args.addCourse ?? args.replaceCourse ?? '');
+        const code = named ? resolveCourseCode(named, ctx.current.sections, ctx.subjectIndex) : null;
+        if (code && ctx.current.sections.some(s => normalizeCourseCode(s.courseCode) === code)) {
+            args.swapSectionFor = code;
+            args.addCourse = undefined;
+            args.replaceCourse = undefined;
+        }
+    }
     if (!ctx.current?.sections.length)
         return { result: { error: 'There is no schedule on screen yet; call build_schedule first.' } };
     // earlier rules carry over; only what this change mentions is edited

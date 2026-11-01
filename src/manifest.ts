@@ -31,6 +31,11 @@ const AI_API_HOST_PERMISSION = 'https://longhorn-fastlane-plus.vercel.app/*';
 // Public professor ratings shown next to grades; only professor names are sent, from the background worker.
 const RMP_HOST_PERMISSION = 'https://www.ratemyprofessors.com/*';
 
+// LOCAL BUILDS ONLY (update-fastlane.sh sets this): an OPTIONAL permission, never granted by default, that lets the
+// developer point the AI at this project's protected Vercel preview. Store builds never include it.
+const isLocalBuild = process.env.VITE_FASTLANE_DEV_AUTORELOAD === 'true';
+const PREVIEW_OPTIONAL_HOST = 'https://longhorn-fastlane-plus*-simpsladers-projects.vercel.app/*';
+
 const manifest = defineManifest(async env => {
     const isDev = env.mode === 'development';
     const mode = isBeta ? 'beta' : isDev ? 'development' : 'production';
@@ -56,6 +61,7 @@ const manifest = defineManifest(async env => {
         host_permissions: isDev
             ? [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION, '<all_urls>']
             : [...HOST_PERMISSIONS, AI_API_HOST_PERMISSION, RMP_HOST_PERMISSION],
+        ...(isLocalBuild ? { optional_host_permissions: [PREVIEW_OPTIONAL_HOST] } : {}),
         action: {
             default_popup: 'src/pages/popup/index.html',
             default_icon: `icons/icon_${mode}_32.png`,

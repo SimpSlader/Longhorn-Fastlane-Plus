@@ -79,6 +79,13 @@ export const FastlaneSettingsStore = createSyncStore<FastlaneSettings>('Fastlane
  */
 export const FastlaneAiAccessStore = createLocalStore('FastlaneAiAccess', { accessCode: '' });
 
+/**
+ * Developer test server (local builds only; see Settings). Points the AI at a protected Vercel PREVIEW of this
+ * project instead of production, with its own access code. Local to this browser: never synced, never sent anywhere
+ * but the preview it names. Empty `base` = production.
+ */
+export const FastlaneDevServerStore = createLocalStore('FastlaneDevServer', { base: '', code: '' });
+
 /** Preferences the student asked Fastlane to remember ("I want to graduate early"). Only in this Chrome profile;
  * each item is shown in the chat's Memory panel and can be deleted. */
 /** The planner chat and its proposed schedule, so leaving Find classes and coming back keeps the conversation.

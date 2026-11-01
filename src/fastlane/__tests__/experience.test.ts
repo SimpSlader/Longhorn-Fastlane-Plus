@@ -170,3 +170,33 @@ describe('electives: degree first, then labelled electives to reach the credit t
         expect(renderPlanReply(out.result as never)).toMatch(/Requested by you: no unmet requirement/);
     });
 });
+
+describe('tolerance for a wrong-but-clear tool call', () => {
+    it('a section goal on a class already on screen is a section swap, not an add', async () => {
+        const built = await runTool(
+            'build_schedule',
+            {
+                minCredits: 12,
+                maxCredits: 12,
+                onlyDays: ['T', 'TH'],
+                requiredCourses: ['ECO 304L'],
+                latestEnd: '12:30 pm',
+            },
+            makeContext()
+        );
+        const current = {
+            sections: built.plan!.sections,
+            constraints: built.plan!.constraints,
+            pool: built.plan!.pool,
+        };
+        const swapped = await runTool(
+            'modify_schedule',
+            { addCourse: 'ECO 304L', sectionGoal: 'easier', latestEnd: '5:00 pm' },
+            makeContext({ current })
+        );
+        expect(swapped.plan).toBeDefined();
+        const eco = swapped.plan!.sections.find(s => s.courseCode === 'ECO 304L')!;
+        expect(eco.instructors).toContain('EASY, ALEX');
+        expect(swapped.plan!.sections.filter(s => s.courseCode === 'ECO 304L')).toHaveLength(1);
+    });
+});

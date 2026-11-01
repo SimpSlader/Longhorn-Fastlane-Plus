@@ -78,6 +78,7 @@ import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
     FastlaneChatStore,
+    FastlaneDevServerStore,
     FastlaneFactsStore,
     FastlaneMemoryStore,
     FastlaneSettingsStore,
@@ -328,6 +329,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
+    // a visible reminder whenever the AI is NOT talking to production
+    const devBase = FastlaneDevServerStore.useStore(s => s.base);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     // everything AI has been shown in this conversation, so earlier picks keep their facts and grades
@@ -2034,7 +2037,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 </span>
                 <div className='fl-chat-title'>
                     <h2>Fastlane</h2>
-                    <span>Builds your semester from UT’s real classes and your IDA</span>
+                    <span>
+                        Builds your semester from UT’s real classes and your IDA
+                        {devBase ? ` · TEST SERVER: ${new URL(devBase).host}` : ''}
+                    </span>
                 </div>
                 <button
                     type='button'
