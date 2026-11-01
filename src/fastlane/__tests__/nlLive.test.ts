@@ -110,7 +110,9 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
             turnsPassed: passed,
             turnsTotal: rows.length,
             requests: stats.length,
-            http: stats.reduce<Record<string, number>>((m, s) => ((m[s.status] = (m[s.status] ?? 0) + 1), m), {}),
+            http: Object.fromEntries(
+                [...new Set(stats.map(s => s.status))].map(code => [code, stats.filter(s => s.status === code).length])
+            ),
             latencyMs: { p50: pct(0.5), p95: pct(0.95), max: ms.at(-1) ?? 0 },
             secondsWaitedForRateLimits: stats.reduce((n, s) => n + (s.waited ?? 0), 0),
             requestChars: {
@@ -118,12 +120,12 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                 max: Math.max(0, ...stats.map(s => s.chars)),
             },
             models: [...new Set(stats.map(s => s.model).filter(Boolean))],
-            byCategory: rows.reduce<Record<string, { ok: number; total: number }>>((m, r) => {
-                const c = (m[r.category] ??= { ok: 0, total: 0 });
-                c.total += 1;
-                c.ok += r.ok ? 1 : 0;
-                return m;
-            }, {}),
+            byCategory: Object.fromEntries(
+                [...new Set(rows.map(r => r.category))].map(category => {
+                    const mine = rows.filter(r => r.category === category);
+                    return [category, { ok: mine.filter(r => r.ok).length, total: mine.length }];
+                })
+            ),
         };
         if (process.env.NL_LIVE_REPORT)
             writeFileSync(process.env.NL_LIVE_REPORT, JSON.stringify({ ...summary, rows }, null, 2));
