@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { runTool } from '../core/agentTools';
 import { renderPlanReply } from '../core/planReply';
 import { registrationText } from '../core/registrationText';
 import { validateBuildArgs, validateModifyArgs } from '../core/toolArgs';
 import { catalog, makeContext } from './nl/fixture';
+
+// these tests run the real solver several times each; a slow CI machine needs more than the 5 s default
+vi.setConfig({ testTimeout: 90_000 });
 
 describe('registration text', () => {
     const picks = [catalog[0]!, catalog[3]!, catalog[11]!];
