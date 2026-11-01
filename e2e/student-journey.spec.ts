@@ -177,6 +177,11 @@ test('student journey: IDA → natural request → conversational changes → co
     const answer = log.locator('.bubble.bot').last();
     await expect(answer).toContainText('What I understood');
     await expect(answer).toContainText(/schedule — 15 credit hours/);
+    // grades, GPA outlook and RMP sit side by side for every class; nothing is invented or malformed
+    const table = answer.locator('table');
+    await expect(table.locator('th')).toContainText(['Past A/A− rate', 'GPA outlook', 'Rate My Professors', 'Seats']);
+    expect(await table.innerText()).not.toMatch(/undefined|NaN|null/);
+    await expect(table.locator('tbody tr')).toHaveCount(5);
     const first = await classes();
     expect(first.length).toBeGreaterThanOrEqual(4);
     // hard rules pass; "All rules met" additionally needs verified audit evidence, which a synthetic audit lacks

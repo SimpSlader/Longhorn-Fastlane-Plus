@@ -34,54 +34,58 @@ const CONSTRAINTS = {
     maxCredits: num,
     onlyDays: {
         ...strs,
-        description:
-            'the only days classes may meet, e.g. ["T","TH"]; asynchronous online classes have no days and always fit',
+        description: 'only days classes may meet, e.g. ["T","TH"] (async online has no days)',
     },
     avoidDays: strs,
-    onlineMin: { ...num, description: 'asynchronous online classes, at least (a preference)' },
-    onlineMax: { ...num, description: 'asynchronous online classes, at most (a hard cap)' },
+    onlineMin: { ...num, description: 'async online classes, at least (preference)' },
+    onlineMax: { ...num, description: 'async online classes, at most (hard cap)' },
     maxGapMinutes: {
         ...num,
-        description:
-            'HARD cap on the wait between consecutive classes on a day, in minutes ("no more than 15 minutes between classes")',
+        description: 'hard cap on minutes between classes on a day',
     },
-    backToBack: { type: 'boolean', description: 'prefer classes back to back with little waiting' },
+    backToBack: { type: 'boolean', description: 'prefer little waiting between classes' },
     coreFocus: { type: 'boolean', description: 'core first, nothing major-specific' },
     coreOnly: {
         type: 'boolean',
-        description:
-            'HARD rule: every class must fill an outstanding core requirement. Set only when the student wants nothing but core classes.',
+        description: 'every class must fill an unmet core requirement; only if the student wants nothing but core',
     },
     allowElectives: {
         type: 'boolean',
-        description:
-            'true when the student is happy to fill remaining credits with electives (ranked by grade outlook); degree-required classes still come first',
+        description: 'fill leftover credits with electives ranked by grade outlook',
     },
     requiredCourses: {
         ...strs,
-        description: 'classes the student says they must take, by code or plain name; placed first and kept',
+        description: 'must-have classes, by code or plain name',
     },
     dayWindows: {
         type: 'object',
-        description: 'per-day time limits, e.g. {"T":{"from":"11:00 am"}} for Tuesdays starting later',
+        description: 'per-day limits, e.g. {"T":{"from":"11:00 am"}}',
         additionalProperties: { type: 'object', properties: { from: str, to: str }, additionalProperties: false },
     },
     objective: {
         type: 'string',
         enum: ['gpa', 'convenience', 'degree'],
-        description: 'what to optimize hardest: grades, a compact week, or degree progress',
+        description: 'grades, a compact week, or degree progress',
     },
     exactCounts: {
         type: 'object',
-        description: 'HARD exact class count per subject, e.g. {"UGS":1}; {"UGS":0} for none',
+        description: 'exact class count per subject, e.g. {"UGS":1}, {"UGS":0} for none',
         additionalProperties: { type: 'number' },
     },
-    includeSubjects: { ...strs, description: 'exactly one class of each subject, e.g. ["UGS"]' },
+    includeSubjects: { ...strs, description: 'one class of each, e.g. ["UGS"]' },
     excludeSubjects: { ...strs, description: 'e.g. ["HIS"]' },
     excludeCourses: strs,
-    earliestStart: { ...str, description: 'no class starts before this time on any day' },
-    latestEnd: { ...str, description: 'no class ends after this time on any day' },
+    earliestStart: { ...str, description: 'no class starts earlier' },
+    latestEnd: { ...str, description: 'no class ends later' },
 };
+
+/** modify_schedule repeats the same fields without their descriptions (build_schedule carries them): fewer tokens per request. */
+const BARE_CONSTRAINTS = Object.fromEntries(
+    Object.entries(CONSTRAINTS).map(([name, def]) => [
+        name,
+        Object.fromEntries(Object.entries(def).filter(([key]) => key !== 'description')),
+    ])
+);
 
 export const TOOLS = [
     fn(
@@ -114,7 +118,7 @@ export const TOOLS = [
     ),
     fn(
         'build_schedule',
-        'Build a conflict-free schedule from real sections with the solver, show it on the calendar with backups, return it. Pass every constraint the student expressed, however it was phrased.',
+        'Build a schedule from real sections (solver + validator) and show it. Pass every constraint the student expressed.',
         {
             ...CONSTRAINTS,
             prioritizeGrades: { type: 'boolean', description: 'high past A/A− rates' },
@@ -124,9 +128,9 @@ export const TOOLS = [
     ),
     fn(
         'modify_schedule',
-        'Change the schedule on screen. Earlier rules are kept automatically; pass only what changed. Can also take any build_schedule constraint (days, credits, online count, time windows, electives, objective).',
+        'Change the schedule on screen; earlier rules persist, pass only what changed (any build_schedule field too).',
         {
-            ...CONSTRAINTS,
+            ...BARE_CONSTRAINTS,
             remove: { ...strs, description: 'course or subject codes' },
             addCourse: {
                 ...str,

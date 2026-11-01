@@ -30,6 +30,8 @@ export interface Expect {
     different?: boolean;
     /** either a valid schedule or an honest explanation that leaves the calendar unchanged is acceptable */
     optional?: boolean;
+    /** the student did not mention electives: a draft that only asks permission to use them is acceptable */
+    electivesDraftOk?: boolean;
     /** this course is taught by an asynchronous online section */
     asyncCourse?: string;
 }

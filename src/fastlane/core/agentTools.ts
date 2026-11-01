@@ -1215,7 +1215,9 @@ async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promi
     if (!ctx.current?.sections.length)
         return { result: { error: 'There is no schedule on screen yet; call build_schedule first.' } };
     // earlier rules carry over; only what this change mentions is edited
-    let c = withStated(constraintsFrom(args, ctx, ctx.current.constraints), ctx, args);
+    // The constraints already on screen are the source of truth for a follow-up: keyword matching over the chat is
+    // never layered on top (it could re-apply an old phrase and silently overwrite a rule the student kept).
+    let c = withStated(constraintsFrom(args, ctx, ctx.current.constraints), { ...ctx, stated: undefined }, args);
     const another = !!args.anotherOption;
     if (another)
         c = {

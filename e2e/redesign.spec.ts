@@ -906,12 +906,12 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     const toolResult = JSON.parse(requests.at(-1)!.messages.at(-1)!.content) as {
         totalCredits: number;
         classes: Array<{ code: string; unique: string }>;
-        backups: { perClass: unknown[] };
+        backupsCount: number;
     };
     expect(toolResult.totalCredits).toBeGreaterThanOrEqual(12);
     expect(toolResult.classes.every(c => /^\d{5}$/.test(c.unique))).toBe(true);
     expect(toolResult.classes.some(c => c.code.startsWith('HIS'))).toBe(false);
-    expect(Array.isArray(toolResult.backups.perClass)).toBe(true);
+    expect(typeof toolResult.backupsCount).toBe('number'); // the model sees a short view; the student sees the backups
     await expect(proposal.getByRole('complementary', { name: 'Backups' })).toBeVisible();
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/copilot-schedule.png' });
 

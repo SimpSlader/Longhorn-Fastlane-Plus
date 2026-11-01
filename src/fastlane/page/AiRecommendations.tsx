@@ -41,7 +41,7 @@ import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/me
 import { composeReply, quickReplies } from '../core/plannerReply';
 import { constraintsFromRules, statedRules } from '../core/plannerRules';
 import { planningFailure } from '../core/planningFailure';
-import { isPlanResult, renderPlanReply } from '../core/planReply';
+import { forModel, isPlanResult, renderPlanReply } from '../core/planReply';
 import { type ValidationReport, validatePlan, verdictText } from '../core/planValidator';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
@@ -1321,7 +1321,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             return next;
                         });
                     }
-                    return outcome.result;
+                    // the model sees a short, decisions-first view; the student's chat text uses the full result
+                    return forModel(outcome.result);
                 },
             });
             if (isStale()) return true;

@@ -118,3 +118,41 @@ export function renderPlanReply(r: PlanResult): string {
     );
     return lines.join('\n\n');
 }
+
+/**
+ * What the model gets to see of a tool result. The student's chat text is built from the full result, so the model
+ * only needs the decisions and the facts it may refer to — and the copilot trims long results from the END, so the
+ * decisive fields (error, verdict, what changed) must come first and the whole thing must stay short.
+ */
+export function forModel(result: unknown): unknown {
+    const r = result as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object' || !Array.isArray(r.classes)) return result;
+    const classes = (r.classes as Array<Record<string, unknown>>).map(c => ({
+        code: c.code,
+        unique: c.unique,
+        credits: c.credits,
+        when: c.when,
+        instructor: c.instructor,
+        counts: c.countsToward,
+        aRate: (c.historicalARate as { percent?: number } | null)?.percent ?? null,
+    }));
+    const backups = r.backups as
+        | { perClass?: Array<{ for: string; options: unknown[] }>; general?: unknown[] }
+        | undefined;
+    const validation = r.validation as { allRulesMet?: boolean; verdict?: string } | undefined;
+    return {
+        ...(r.notice ? { notice: r.notice } : {}),
+        ...(r.rulesItDoesNotFollow ? { rulesItDoesNotFollow: r.rulesItDoesNotFollow } : {}),
+        validation: { allRulesMet: validation?.allRulesMet, verdict: validation?.verdict },
+        ...(r.understood ? { understood: r.understood } : {}),
+        ...(r.changed ? { changed: r.changed } : {}),
+        totalCredits: r.totalCredits,
+        classes,
+        backupsCount:
+            (backups?.perClass ?? []).reduce((n, g) => n + g.options.length, 0) + (backups?.general?.length ?? 0),
+        ...(Array.isArray(r.alternatives)
+            ? { alternatives: (r.alternatives as Array<{ label: string }>).map(a => a.label) }
+            : {}),
+        note: 'The student already sees the full table, backups and verdict; summarize briefly and never restate a verdict the validator did not give.',
+    };
+}
