@@ -101,6 +101,19 @@ export function resolveCourseCode(
     if (/\d{3}/.test(direct) && sections.some(s => normalizeCourseCode(s.courseCode) === direct)) return direct;
     const q = parseCourseQuery(text);
     const subjects = subjectWords(subjectIndex);
+    // "NUTR 301": the department letters are a prefix of a subject's name ("nutritional sciences") and that subject
+    // has exactly one course listed → it is that course. Never guessed when several courses could be meant.
+    const dept = direct
+        .match(/^([A-Z ]+?)\s+\d{3}[A-Z]*$/)?.[1]
+        ?.trim()
+        .toLowerCase();
+    if (dept && dept.length >= 3) {
+        const codes = [...subjects.entries()].filter(([, ws]) => [...ws].some(w => w.startsWith(dept))).map(([c]) => c);
+        const courses = new Set(
+            sections.filter(s => codes.includes(subjectOf(s.courseCode))).map(s => normalizeCourseCode(s.courseCode))
+        );
+        if (courses.size === 1) return [...courses][0]!;
+    }
     const counts = new Map<string, number>();
     for (const s of sections)
         if (sectionMatchesQuery(s, q, subjects))

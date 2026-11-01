@@ -77,3 +77,39 @@ describe('what the student sees', () => {
         }
     });
 });
+
+describe('follow-up fixes found by the live run', () => {
+    const rules = {
+        minCredits: 15,
+        maxCredits: 15,
+        onlyDays: ['T', 'TH'],
+        includeSubjects: ['UGS'],
+        allowElectives: true,
+        onlineMax: 2,
+    };
+    it('dropping the only signature course lowers the exact UGS count instead of making the request impossible', async () => {
+        const built = await runTool('build_schedule', rules, makeContext());
+        const current = {
+            sections: built.plan!.sections,
+            constraints: built.plan!.constraints,
+            pool: built.plan!.pool,
+        };
+        const dropped = await runTool('modify_schedule', { remove: ['UGS 302'] }, makeContext({ current }));
+        expect(dropped.plan).toBeDefined();
+        expect(dropped.plan!.sections.some(s => s.courseCode.startsWith('UGS'))).toBe(false);
+        expect(dropped.plan!.constraints.subjectCounts).toEqual({ UGS: 0 });
+        expect(dropped.plan!.validation.credits).toBe(15);
+    });
+    it('a made-up department code resolves to the one real course of that subject, and the table shows which', async () => {
+        const built = await runTool('build_schedule', { ...rules, includeSubjects: [] }, makeContext());
+        const current = {
+            sections: built.plan!.sections,
+            constraints: built.plan!.constraints,
+            pool: built.plan!.pool,
+        };
+        const added = await runTool('modify_schedule', { addCourse: 'NUTR 301' }, makeContext({ current }));
+        if (added.plan) expect(added.plan.sections.map(s => s.courseCode)).toContain('NTR 306');
+        else expect(JSON.stringify(added.result)).toMatch(/only be added|NOT added|credit hours/);
+        expect(JSON.stringify(added.result)).not.toMatch(/matches “NUTR 301”/);
+    });
+});

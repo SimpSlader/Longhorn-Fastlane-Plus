@@ -608,6 +608,31 @@
         ]
     },
     {
+        "id": "F16",
+        "category": "follow-up",
+        "turns": [
+            {
+                "say": "15 hours TTh with a signature course",
+                "tool": "build_schedule",
+                "args": {
+                    "minCredits": 15,
+                    "maxCredits": 15,
+                    "onlyDays": ["T", "TH"],
+                    "includeSubjects": ["UGS"],
+                    "allowElectives": true,
+                    "onlineMax": 2
+                }
+            },
+            {
+                "say": "Drop the signature course, I already took it.",
+                "tool": "modify_schedule",
+                "args": {
+                    "remove": ["UGS 302"]
+                }
+            }
+        ]
+    },
+    {
         "id": "M01",
         "category": "multi-turn",
         "turns": [

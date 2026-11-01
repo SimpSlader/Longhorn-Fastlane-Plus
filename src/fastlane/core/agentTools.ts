@@ -1230,8 +1230,19 @@ async function modify(rawArgs: Record<string, unknown>, ctx: ToolContext): Promi
     const removeList = strings(args.remove);
     const removedCourses = removeList.filter(x => /\d/.test(x)).map(normalizeCourseCode);
     const removedSubjects = removeList.filter(x => !/\d/.test(x)).map(x => x.toUpperCase());
+    // "drop the signature course": removing the class that satisfied an exact subject count lowers that count too,
+    // otherwise the old "exactly one UGS" rule would make the request impossible
+    const subjectCounts = { ...(c.subjectCounts ?? {}) };
+    for (const subj of Object.keys(subjectCounts)) {
+        const gone = removedSubjects.includes(subj) || removedCourses.some(x => subjectOf(x) === subj);
+        if (gone && !('exactCounts' in args))
+            subjectCounts[subj] = ctx.current.sections.filter(
+                s => subjectOf(s.courseCode) === subj && !removedCourses.includes(normalizeCourseCode(s.courseCode))
+            ).length;
+    }
     c = {
         ...c,
+        subjectCounts,
         excludedCourses: [...new Set([...c.excludedCourses, ...removedCourses])],
         // a class that is being removed or swapped for a different course is no longer a must-have
         requiredCourses: (c.requiredCourses ?? []).filter(

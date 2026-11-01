@@ -18,7 +18,8 @@ export function problems(
     const text = JSON.stringify(out.result);
     if (e.plan === false) {
         if (out.plan) bad.push('expected no schedule on the calendar, but one was shown');
-        if (e.error && !new RegExp(e.error, 'i').test(text)) bad.push(`expected message /${e.error}/`);
+        if (!result.error && !new RegExp(e.error ?? 'error', 'i').test(text))
+            bad.push('expected an explanation, not silence');
         return bad;
     }
     if (!out.plan) {

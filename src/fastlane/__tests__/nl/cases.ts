@@ -458,6 +458,29 @@ export const cases: Case[] = [
             ),
         ],
     },
+    {
+        id: 'F16',
+        category: 'follow-up',
+        turns: [
+            build(
+                '15 hours TTh with a signature course',
+                {
+                    minCredits: 15,
+                    maxCredits: 15,
+                    onlyDays: TTH,
+                    includeSubjects: ['UGS'],
+                    allowElectives: true,
+                    onlineMax: 2,
+                },
+                { subjectCount: { UGS: 1 } }
+            ),
+            change(
+                'Drop the signature course, I already took it.',
+                { remove: ['UGS 302'] },
+                { exclude: ['UGS 302', 'UGS 303'], credits: [15, 15] }
+            ),
+        ],
+    },
     // ---- multi-turn conversations ----
     {
         id: 'M01',

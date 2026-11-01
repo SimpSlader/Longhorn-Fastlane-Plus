@@ -9,7 +9,7 @@
  * deployment's share link>; the link is exchanged for a short-lived cookie in memory and is not logged or saved.
  * NL_LIVE_REPORT=<path> writes per-turn results, tool calls, latency and rate-limit counts.
  */
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { runTool, type ToolContext } from '../core/agentTools';
 import { formatMeeting } from '../core/meetings';
@@ -46,6 +46,7 @@ const rows: Array<{
     problems: string[];
     calls: Array<{ name: string; args: unknown }>;
     rounds: number;
+    http: number[];
 }> = [];
 let cookie = '';
 
@@ -149,6 +150,7 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                     .join(' | ');
                 const messages: Msg[] = [...history, { role: 'user', content: turn.say }];
                 const calls: Array<{ name: string; args: unknown }> = [];
+                const http: number[] = [];
                 let outcome: Awaited<ReturnType<typeof runTool>> | null = null;
                 let finalText = '';
                 let rounds = 0;
@@ -167,6 +169,7 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                         },
                         routing: { mode: 'auto', model: '', disabledProviders: [] },
                     });
+                    http.push(status);
                     if (status !== 200) {
                         all.push(`turn ${i + 1}: HTTP ${status} ${String(json.error ?? '').slice(0, 80)}`);
                         break;
@@ -222,8 +225,14 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
                     problems: found,
                     calls,
                     rounds,
+                    http,
                 });
                 all.push(...found);
+                if (process.env.NL_LIVE_PROGRESS)
+                    appendFileSync(
+                        process.env.NL_LIVE_PROGRESS,
+                        `${c.id} turn ${i + 1}: ${found.length ? `FAIL ${found.join(' | ').slice(0, 160)}` : 'ok'} (${stats.length} requests, ${stats.filter(x => x.status >= 429).length} rate-limited)\n`
+                    );
                 if (outcome?.plan)
                     current = {
                         sections: outcome.plan.sections,
