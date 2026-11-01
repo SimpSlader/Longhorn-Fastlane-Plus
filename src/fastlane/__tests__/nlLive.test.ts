@@ -66,6 +66,9 @@ async function signIn() {
     if (!cookie) throw new Error('The preview share link did not produce a session (expired?).');
 }
 
+/** the share link is exchanged for a session cookie once, before the first request of whichever case runs first */
+const signedIn = LIVE ? signIn() : Promise.resolve();
+
 async function post(body: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
     const text = JSON.stringify(body);
     for (let tries = 0, waited = 0; ; tries++) {
@@ -149,7 +152,7 @@ describe.skipIf(!LIVE)('live model through the real tools (multi-turn)', () => {
     for (const c of chosen)
         it(`${c.id} · ${c.category}: ${c.turns[0]!.say.slice(0, 60)}`, async () => {
             if (!CODE) throw new Error('Set FASTLANE_AI_CODE');
-            if (c.id === cases[0]!.id) await signIn();
+            await signedIn;
             const history: Msg[] = [];
             const said: string[] = [];
             let current: ToolContext['current'] = null;
