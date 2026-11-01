@@ -664,8 +664,8 @@ export const cases: Case[] = [
         turns: [
             build(
                 'Everything must end by 10 am and I need 15 hours',
-                { minCredits: 15, maxCredits: 15, latestEnd: '10:00 am', onlineMax: 2 },
-                { incomplete: true, allRulesMet: false }
+                { minCredits: 15, maxCredits: 15, latestEnd: '10:00 am' },
+                { credits: [15, 15], noMeetingAfter: 600 }
             ),
         ],
     },
@@ -735,7 +735,7 @@ export const cases: Case[] = [
                     maxCredits: 12,
                     requiredCourses: ['underwater basket weaving'],
                 },
-                { incomplete: true, allRulesMet: false }
+                { optional: true, incomplete: true, allRulesMet: false }
             ),
         ],
     },

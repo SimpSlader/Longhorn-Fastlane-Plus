@@ -904,8 +904,7 @@
                 "args": {
                     "minCredits": 15,
                     "maxCredits": 15,
-                    "latestEnd": "10:00 am",
-                    "onlineMax": 2
+                    "latestEnd": "10:00 am"
                 }
             }
         ]
