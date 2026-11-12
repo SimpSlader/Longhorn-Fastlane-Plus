@@ -2,6 +2,8 @@
 
 A local-first Chrome extension (Manifest V3) for UT Austin students: browse the course schedule with historical grade percentages inline, spot asynchronous classes and conflicts at a glance, build an ideal schedule with ranked backup classes, import your Interactive Degree Audit, get degree-aware fallback recommendations, and prepare registration codes quickly — **without any automatic enrollment**.
 
+**Want to install Fastlane, not develop it? [Follow the 5-step install guide](INSTALL.md).** Download a ready-to-run ZIP from [GitHub Releases](https://github.com/SimpSlader/Longhorn-Fastlane-Plus/releases). No terminal, Node.js, or pnpm is needed. **Do not use Code → Download ZIP**; that is unbuilt source code.
+
 > **Independent student project.** Fastlane Course Planner is not affiliated with, endorsed by, or approved by The University of Texas at Austin or the UT Registration Plus team. It is a fork of [UT Registration Plus](https://github.com/Longhorn-Developers/UT-Registration-Plus) (MIT) and borrows its degree-audit parsing approach from [Degree Audit Plus](https://github.com/Longhorn-Developers/Degree-Audit-Plus) (MIT). All of UT Registration Plus's existing features (course search integration, grade graphs, calendar, professor/syllabus links, campus map) are kept.
 
 ## What it adds
@@ -20,12 +22,16 @@ A local-first Chrome extension (Manifest V3) for UT Austin students: browse the 
 | **Phone wallpaper** | Minimal, aesthetic, campus-map and hybrid styles; iPhone / Android / generic sizes; light/dark; optional rooms, professors, course colors. Drawn locally on a canvas. |
 | **Privacy** | No account, no backend, no analytics. Upstream error telemetry (Sentry) is disabled. Export/import JSON, delete Fastlane data, or delete everything. |
 
-## Install (unpacked)
+## Install (prebuilt ZIP — recommended)
 
-1. Download `fastlane-course-planner-<version>.zip` from the release (or build it, below) and unzip it.
-2. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the unzipped folder (the one containing `manifest.json`).
-3. Click the extension icon → **Fastlane**. To try everything offline, open `chrome-extension://<id>/demo.html` (shown on the details page as *Inspect views*) — it mounts the real integration on local fixtures.
-4. If you also have UT Registration Plus installed, disable one of them: both inject into the same pages.
+**For friends/non-developers: [read INSTALL.md](INSTALL.md)** for screenshots-free, step-by-step instructions, updating, and troubleshooting.
+
+1. Open [Fastlane Releases](https://github.com/SimpSlader/Longhorn-Fastlane-Plus/releases) and choose the newest **Fastlane friend install** preview.
+2. Under **Assets**, download `fastlane-course-planner-<version>.zip` (**not** GitHub's **Source code (zip)**). Unzip it into a permanent folder.
+3. In desktop Chrome open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the extracted folder containing `manifest.json`.
+4. Click the extension icon → **Fastlane**. Sign in to UT normally to use live course-schedule integrations. Disable UT Registration Plus if it is already installed to avoid duplicate injection.
+
+No Node.js, pnpm, or local server is needed to install the ZIP. GitHub previews are only published after CI succeeds. Unpacked extensions require manual updates; see [the update instructions](INSTALL.md#updating-your-copy). This is an independent preview, not a Chrome Web Store release.
 
 ## Build from source
 
