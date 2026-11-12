@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -20,7 +21,12 @@ async function fullInventory() {
     }
     return buildInventory(
         parseOfferingsItems(items),
-        { name: 'ut.courses.Spring2027.pdf', sha256: 'perf' },
+        {
+            name: 'ut.courses.Spring2027.pdf',
+            sha256: createHash('sha256')
+                .update(readFileSync(PDF as string))
+                .digest('hex'),
+        },
         Date.now()
     );
 }
@@ -112,7 +118,11 @@ test('AI screen stays responsive with the full UT course list and an IDA', async
     await takeLong();
     const t2 = Date.now();
     await page.getByRole('button', { name: 'Send message' }).click();
-    await expect(page.getByRole('region', { name: 'Proposed weekly calendar' })).toBeVisible({ timeout: 120_000 });
+    const outcome = page
+        .locator('.fl-plan, .bubble.bot.error')
+        .or(page.locator('.bubble.bot').filter({ hasText: /couldn't build a complete schedule/ }));
+    await expect(outcome.first()).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0, { timeout: 120_000 });
     const submitMs = Date.now() - t2;
     const submitLong = await takeLong();
 

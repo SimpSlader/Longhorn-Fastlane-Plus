@@ -3,6 +3,7 @@
  * them here in the browser and send the results back; repeat until it answers (at most 8 tool rounds).
  * Tool results are trimmed so a big search can't crowd out the conversation.
  */
+import { serializeToolResult } from '../core/toolSummary';
 import { type AiMeta, aiErrorMessage, postAi } from './aiClient';
 
 export interface ToolCall {
@@ -85,11 +86,11 @@ export async function runCopilot(opts: {
                 if (opts.signal?.aborted) throw e;
                 result = { error: e instanceof Error ? e.message : 'The tool failed.' };
             }
-            const text = JSON.stringify(result ?? null);
+            const text = serializeToolResult(result, MAX_RESULT_CHARS - 100);
             transcript.push({
                 role: 'tool',
                 tool_call_id: call.id,
-                content: text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}… (trimmed)` : text,
+                content: text,
             });
         }
     }

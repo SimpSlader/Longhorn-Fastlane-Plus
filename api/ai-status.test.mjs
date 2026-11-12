@@ -24,3 +24,16 @@ it('checks Gemini with the fast current model and enough output budget', async (
     );
     expect(res.statusCode).toBe(200);
 });
+
+it('reports which deployment answered (environment and commit, never a secret)', async () => {
+    vi.stubEnv('FASTLANE_AI_ACCESS_CODE', 'test-invite-code');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_GIT_COMMIT_SHA', '303750cfeedface');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'feat/nl-planner-candidate');
+    const req = { method: 'POST', headers: {}, body: { accessCode: 'test-invite-code' } };
+    const res = { setHeader: vi.fn(), end: vi.fn() };
+    await handler(req, res);
+    const body = JSON.parse(res.end.mock.calls[0][0]);
+    expect(body.deployment).toEqual({ environment: 'preview', commit: '303750c', branch: 'feat/nl-planner-candidate' });
+    expect(JSON.stringify(body)).not.toContain('test-invite-code');
+});

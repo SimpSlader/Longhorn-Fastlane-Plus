@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ParsedAudit, RequirementStatus } from '../audit/types';
 import { describeRequirement } from '../core/requirements';
+import { aiFetch } from '../services/aiClient';
 import { FastlaneAiAccessStore } from '../storage/stores';
-
-const URL = 'https://longhorn-fastlane-plus.vercel.app/api/audit-review';
 
 interface Suggestion {
     id: string;
@@ -85,27 +84,23 @@ export default function AiAuditReview({
         try {
             const requests = audit.requirements.filter(r => !r.reviewed && r.status !== 'completed').slice(0, 25);
             if (!requests.length) throw new Error('There are no remaining unreviewed requirements to analyze.');
-            const result = await fetch(URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    accessCode: code,
-                    requirements: requests.map(r => ({
-                        id: r.id,
-                        text: r.text,
-                        section: r.section,
-                        status: r.status,
-                        tags: r.tags,
-                        remaining: r.remaining?.value ?? null,
-                        applied: r.applied?.value ?? null,
-                        issues: r.issues,
-                        reviewed: r.reviewed === true,
-                    })),
-                    completedCodes: audit.courses
-                        .filter(c => c.status === 'completed' || c.status === 'in-progress')
-                        .map(c => c.code),
-                    pendingTransferCodes: audit.transfer.pending.map(c => c.code),
-                }),
+            const result = await aiFetch('audit-review', {
+                accessCode: code,
+                requirements: requests.map(r => ({
+                    id: r.id,
+                    text: r.text,
+                    section: r.section,
+                    status: r.status,
+                    tags: r.tags,
+                    remaining: r.remaining?.value ?? null,
+                    applied: r.applied?.value ?? null,
+                    issues: r.issues,
+                    reviewed: r.reviewed === true,
+                })),
+                completedCodes: audit.courses
+                    .filter(c => c.status === 'completed' || c.status === 'in-progress')
+                    .map(c => c.code),
+                pendingTransferCodes: audit.transfer.pending.map(c => c.code),
             });
             const payload = (await result.json()) as Response;
             if (result.status === 401 && savedCode) {

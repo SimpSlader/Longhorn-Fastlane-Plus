@@ -101,7 +101,7 @@ describe('academic facts', () => {
         expect(s.completedHours).toBe(64);
         expect(s.inProgressHours).toBe(12);
         expect(s.current.map(c => c.code).sort()).toEqual(['C S 331', 'C S 350C', 'SDS 320E', 'SDS 322E']);
-        expect(s.plannedHours).toBe(9);
+        expect(s.plannedHours).toBe(6); // one planned course repeats a course already in progress; no extra credit
         // the IDA's own "Total Hours Taken" adds planned courses: 64 + 12 + 9
         expect(s.idaTotalHoursTaken).toBe(85);
         expect(s.examHours).toBeGreaterThan(0);

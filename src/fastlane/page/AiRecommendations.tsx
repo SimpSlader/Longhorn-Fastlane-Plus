@@ -17,7 +17,9 @@ import { chooseAiCandidates } from '../core/aiCandidates';
 import { buildBackups, SAFE_SECTIONS, sectionCounts } from '../core/backups';
 import type { PlanningPreferences } from '../core/chatPreferences';
 import { courseCodesIn, planningPreferences, requestedAddition } from '../core/chatPreferences';
+import { guardReply, looksLikeSchedule, UNBUILT_SCHEDULE } from '../core/claimGuard';
 import { hasFacts, mergeFacts, statedFacts } from '../core/corrections';
+import { applicableTags, createDegreeMatcher, evaluateDegree, recordedCourseCodes } from '../core/degreeRules';
 import type { GradeStat } from '../core/grades';
 import { gradFacts, requestedTimeline, timelinePlans } from '../core/gradPlan';
 import { graduationAnswer, graduationPlan, parseTerm, termName, currentTerm as termNow } from '../core/graduation';
@@ -37,6 +39,10 @@ import type { DayCode } from '../core/meetings';
 import { formatMeeting } from '../core/meetings';
 import { addMemory, forgetMemory, memoryCommand, wantsMcCombs } from '../core/memory';
 import { composeReply, quickReplies } from '../core/plannerReply';
+import { constraintsFromRules, statedRules } from '../core/plannerRules';
+import { planningFailure } from '../core/planningFailure';
+import { forModel, isPlanResult, renderPlanReply } from '../core/planReply';
+import { type ValidationReport, validatePlan, verdictText } from '../core/planValidator';
 import { subjectNameIndex } from '../core/prerequisites';
 import type { ProposalVersion } from '../core/proposal';
 import {
@@ -47,6 +53,7 @@ import {
     replacementFits,
     resolveTarget,
 } from '../core/proposal';
+import { registrationText } from '../core/registrationText';
 import { normalizeCourseCode } from '../core/requirements';
 import type { RmpRating } from '../core/rmp';
 import { splitProfessorName } from '../core/rmp';
@@ -71,6 +78,7 @@ import {
     FastlaneAiAccessStore,
     FastlaneAuditStore,
     FastlaneChatStore,
+    FastlaneDevServerStore,
     FastlaneFactsStore,
     FastlaneMemoryStore,
     FastlaneSettingsStore,
@@ -321,6 +329,9 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const [consent, setConsent] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
     const savedCode = FastlaneAiAccessStore.useStore(s => s.accessCode);
+    // a visible reminder whenever the AI is NOT talking to production
+    const devBase = FastlaneDevServerStore.useStore(s => s.base);
+    const [lastModel, setLastModel] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     // everything AI has been shown in this conversation, so earlier picks keep their facts and grades
@@ -362,6 +373,26 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const modelRef = useRef(model);
     // the schedule on screen as the copilot built it (its rules and candidate pool), for follow-up changes
     const copilotBuild = useRef<ToolContext['current']>(null);
+    const copilotSeq = useRef(0);
+    // the recommended schedule plus one-click GPA / convenience / degree-progress versions, each validated
+    const [variants, setVariants] = useState<
+        Array<{
+            label: string;
+            short: string;
+            sections: SectionRecord[];
+            validation: ValidationReport;
+            constraints: ScheduleConstraints;
+            pool: SolverCandidate[];
+        }>
+    >([]);
+    const [variantIndex, setVariantIndex] = useState(0);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: any imported-audit identity change invalidates in-flight work
+    useEffect(() => {
+        abortRef.current?.abort();
+        copilotSeq.current += 1;
+        setBusy(false);
+        setProgress('');
+    }, [audit]);
     const versionIndexRef = useRef(0);
     modelRef.current = model;
     versionIndexRef.current = versionIndex;
@@ -433,16 +464,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
         []
     );
 
-    const taken = useMemo(
-        () =>
-            new Set([
-                // only what the IDA says is done or in progress; a mock schedule is a plan, not credit
-                ...(audit?.courses
-                    .filter(c => c.status === 'completed' || c.status === 'in-progress')
-                    .map(c => normalizeCourseCode(c.code)) ?? []),
-            ]),
-        [audit]
-    );
+    const taken = useMemo(() => new Set(audit ? recordedCourseCodes(audit) : []), [audit]);
 
     const listedTerm = useMemo(
         () => [...inventory.metas].sort((a, b) => b.termCode.localeCompare(a.termCode))[0]?.term,
@@ -522,6 +544,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             term: actualTerm,
             online: overrides.online !== undefined ? overrides.online : p.asyncCount,
             backToBack: overrides.backToBack ?? p.backToBack,
+            maxGapMinutes: p.maxGapMinutes,
             timeWindow:
                 time === 'morning'
                     ? { from: 0, to: 12 * 60 }
@@ -563,6 +586,21 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             }),
         }));
     const validation = proposal ? validateSchedule(proposal.sections, constraints, factsById) : null;
+    // the independent validator's verdict for what is on screen: the only thing that may say "All rules met"
+    const report = useMemo<ValidationReport | null>(
+        () =>
+            proposal
+                ? validatePlan(proposal.sections, constraints, {
+                      applies: s => factsById.get(s.uniqueId)?.applies ?? [],
+                      audit,
+                      auditAvailable: !!audit,
+                      pendingCredit: audit?.transfer.pending.map(p => p.code) ?? [],
+                      catalog,
+                  })
+                : null,
+        // biome-ignore lint/correctness/useExhaustiveDependencies: constraints derives from copilotRules and prefs
+        [proposal, constraints, factsById, audit, catalog]
+    );
 
     // --- backups beside the proposed week: same-kind classes, a safe big course, and general backups
     const outstanding = useMemo(() => (audit ? outstandingTags(audit) : []), [audit]);
@@ -592,13 +630,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             null;
         return buildBackups({
             plan: proposal.sections,
+            audit,
             candidates: backupPool,
             outstanding,
             taken,
             gradeOf,
             sectionCounts: counts,
         });
-    }, [proposal, backupPool, outstanding, taken, counts, backupGrades, known.grades, pool]);
+    }, [proposal, backupPool, outstanding, taken, counts, backupGrades, known.grades, pool, audit]);
     // historical A rates for the likely backups (looked up once each, then cached), so the ranking can use them
     useEffect(() => {
         if (!proposal) return;
@@ -1114,7 +1153,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     };
 
     /** Puts a copilot-built schedule on the calendar as a new version (safe to call several times in a row). */
-    const showPlan = (sections: SectionRecord[], note: string) => {
+    const showPlan = (
+        sections: SectionRecord[],
+        note: string,
+        validationReport?: ValidationReport,
+        rules?: ScheduleConstraints
+    ) => {
         setVersions(prev => {
             const base = prev[versionIndexRef.current]?.sections ?? [];
             const kept = prev.length ? prev.slice(0, versionIndexRef.current + 1) : [];
@@ -1123,6 +1167,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 sections,
                 note,
                 ...diffSections(base, sections),
+                validation: validationReport,
+                constraints: rules,
             };
             versionIndexRef.current = kept.length;
             setVersionIndex(kept.length);
@@ -1136,6 +1182,18 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
     const copilot = async (text: string, shown: string, code: string): Promise<boolean> => {
         const controller = new AbortController();
         abortRef.current = controller;
+        // a newer instruction makes this answer stale: its schedule and text are dropped, never shown
+        const mySeq = ++copilotSeq.current;
+        const isStale = () => copilotSeq.current !== mySeq || controller.signal.aborted;
+        let lastReport: ValidationReport | null = null;
+        let toolFailure = '';
+        // the checked result of the last schedule tool call: chat describes exactly this, never the model's memory of it
+        let planResult: unknown = null;
+        // hard rules in the student's own words (and remembered ones) — the model can add detail, never loosen them
+        const stated = constraintsFromRules(
+            statedRules([...memory, ...history_.map(h => h.context), shown], subjectCodes, UT_SUBJECTS),
+            actualTerm
+        );
         setBusy(true);
         setError('');
         setLastKind('schedule');
@@ -1172,6 +1230,8 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             },
             signal: controller.signal,
             onProgress: setProgress,
+            stated,
+            isStale,
         };
         try {
             const out = await runCopilot({
@@ -1198,9 +1258,49 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 onProgress: setProgress,
                 execute: async call => {
                     const outcome = await runTool(call.name, call.arguments, { ...ctx, current: ctx.current });
-                    if (outcome.plan) {
-                        const { sections, note, constraints, pool: planPool } = outcome.plan;
-                        showPlan(sections, note);
+                    const incomplete =
+                        !!outcome.result && typeof outcome.result === 'object' && 'incomplete' in outcome.result;
+                    if (
+                        outcome.result &&
+                        typeof outcome.result === 'object' &&
+                        ('error' in outcome.result || incomplete)
+                    )
+                        toolFailure = planningFailure(outcome.result);
+                    if (outcome.plan && !isStale()) {
+                        // a closest-match draft keeps its own explanation of the rules it does not follow
+                        if (!incomplete) toolFailure = '';
+                        planResult = outcome.result;
+                        const { sections, note, constraints, pool: planPool, validation: planReport } = outcome.plan;
+                        lastReport = planReport;
+                        showPlan(sections, note, planReport, constraints);
+                        const short: Record<string, string> = {
+                            gpa: 'GPA',
+                            convenience: 'Convenience',
+                            degree: 'Degree',
+                        };
+                        setVariants(
+                            outcome.plan.alternatives?.length
+                                ? [
+                                      {
+                                          label: 'Recommended',
+                                          short: 'Recommended',
+                                          sections,
+                                          validation: planReport,
+                                          constraints,
+                                          pool: planPool,
+                                      },
+                                      ...outcome.plan.alternatives.map(a => ({
+                                          label: a.label,
+                                          short: short[a.objective] ?? a.objective,
+                                          sections: a.sections,
+                                          validation: a.validation,
+                                          constraints,
+                                          pool: planPool,
+                                      })),
+                                  ]
+                                : []
+                        );
+                        setVariantIndex(0);
                         copilotBuild.current = { sections, constraints, pool: planPool };
                         setCopilotRules(constraints);
                         ctx.current = { sections, constraints, pool: planPool };
@@ -1225,12 +1325,19 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             return next;
                         });
                     }
-                    return outcome.result;
+                    // the model sees a short, decisions-first view; the student's chat text uses the full result
+                    return forModel(outcome.result);
                 },
             });
+            if (isStale()) return true;
             say(
                 shown,
-                out.text,
+                guardReply(
+                    isPlanResult(planResult)
+                        ? [renderPlanReply(planResult), toolFailure].filter(Boolean).join('\n\n')
+                        : toolFailure || (looksLikeSchedule(out.text) ? UNBUILT_SCHEDULE : out.text),
+                    lastReport
+                ),
                 shown,
                 'chat',
                 diagnose(
@@ -1241,6 +1348,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     out.meta
                 )
             );
+            if (out.meta?.model) setLastModel(`${out.meta.model}`);
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             return true;
         } catch (failure) {
@@ -1401,12 +1509,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             setBusy(true);
             setProgress(`Looking for a ${what} that fits…`);
             try {
-                const open = new Set(outstandingTags(audit));
+                const match = createDegreeMatcher(audit, { term: actualTerm }, proposal.sections);
                 const graded = await Promise.all(
                     options.slice(0, 40).map(async s => ({
                         s,
                         grade: (await gradeForSection(s))?.result.percent ?? null,
-                        counts: s.requirementTags.some(t => open.has(t)),
+                        counts: match(s).length > 0,
                     }))
                 );
                 // requirements you still need first, then the highest historical A rate
@@ -1463,6 +1571,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     c,
                     {
                         stable: new Set(kept.map(s => s.uniqueId)),
+                        audit,
                         signal: controller.signal,
                         removedBy: hardFilterCounts(catalog, c),
                     }
@@ -1530,6 +1639,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 target && targeted && !intent.dropRequirement ? (known.facts.get(target.uniqueId)?.applies ?? []) : [];
             const input: AiCandidateInput = {
                 sections: eligible,
+                audit,
                 term: actualTerm,
                 taken,
                 // a replacement first looks for the same requirement as the class it replaces
@@ -1622,7 +1732,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             if (!response.ok) throw new Error(aiErrorMessage(response.status, payload));
             if (!savedCode) await FastlaneAiAccessStore.set('accessCode', code);
             const sections = new Map(usable.map(x => [x.section.uniqueId, x.section]));
-            const recs = (payload.recommendations ?? []).filter(r => sections.has(r.id));
+            const verified = createDegreeMatcher(audit, { term: actualTerm });
+            const recs = (payload.recommendations ?? []).filter(
+                r => sections.has(r.id) && verified(sections.get(r.id)!).length > 0
+            );
             const picks = new Set(recs.map(r => r.id));
             setKnown({
                 sections: new Map([...known.sections, ...sections]),
@@ -1669,6 +1782,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     {
                         stable,
                         allowNew: s => replacementFits(s, target, intent, gradeOf),
+                        audit,
                         signal: controller.signal,
                         removedBy,
                     }
@@ -1679,12 +1793,14 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                     stable: new Set(proposal.sections.map(s => s.uniqueId)),
                     // "make it easier" should be free to swap classes for higher A rates
                     stableWeight: intent.easier || nowPrefs.easyGrades !== prefsBefore.easyGrades ? 1 : 4,
+                    audit,
                     signal: controller.signal,
                     removedBy,
                 });
                 why = 'Updated for your message, keeping classes that still fit.';
             } else {
                 result = await solveSchedule(solverCandidates(nextPool.values(), flags), rules, {
+                    audit,
                     signal: controller.signal,
                     removedBy,
                 });
@@ -1781,6 +1897,7 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
             const current = proposal?.sections ?? [];
             const result = await solveSchedule(solverCandidates(pool.values()), constraints, {
                 ...(mode === 'fill' ? { fixed: current } : { stable: new Set(current.map(s => s.uniqueId)) }),
+                audit,
                 signal: controller.signal,
                 removedBy: hardFilterCounts(catalog, constraints),
             });
@@ -1801,6 +1918,10 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
 
     const saveProposal = async () => {
         if (!proposal?.sections.length) return;
+        if (!report?.hardOk) {
+            setError('Review the schedule issues before saving this plan.');
+            return;
+        }
         try {
             const name = `AI plan · ${actualTerm || 'Upcoming semester'}`;
             await createPlanningSchedule(name, proposal.sections);
@@ -1918,7 +2039,11 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 </span>
                 <div className='fl-chat-title'>
                     <h2>Fastlane</h2>
-                    <span>Builds your semester from UT’s real classes and your IDA</span>
+                    <span>
+                        Builds your semester from UT’s real classes and your IDA
+                        {devBase ? ` · TEST SERVER: ${new URL(devBase).host}` : ''}
+                        {lastModel ? ` · model: ${lastModel}` : ''}
+                    </span>
                 </div>
                 <button
                     type='button'
@@ -2007,6 +2132,12 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
+                                    // wide tables scroll sideways inside the bubble instead of crushing their columns
+                                    table: ({ children }) => (
+                                        <div className='md-table-wrap'>
+                                            <table>{children}</table>
+                                        </div>
+                                    ),
                                     a: ({ href, children }) => (
                                         <a href={href} target='_blank' rel='noopener noreferrer'>
                                             {children}
@@ -2028,6 +2159,27 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                 {proposal && (
                     <ProposalPanel
                         validation={validation}
+                        report={report}
+                        versions={variants.map(v => ({
+                            label: v.label,
+                            short: v.short,
+                            valid: v.validation.hardOk,
+                        }))}
+                        activeVersion={variantIndex}
+                        onPickVersion={i => {
+                            const v = variants[i];
+                            if (!v) return;
+                            showPlan(
+                                v.sections,
+                                `${v.label}. ${verdictText(v.validation)}`,
+                                v.validation,
+                                v.constraints
+                            );
+                            copilotBuild.current = { sections: v.sections, constraints: v.constraints, pool: v.pool };
+                            proposalRef.current = { sections: v.sections } as ProposalVersion;
+                            setVariantIndex(i);
+                        }}
+                        copyAll={report?.hardOk ? registrationText(proposal.sections, actualTerm) : null}
                         minCredits={constraints.minCredits}
                         onFill={() => void solveLocally('fill')}
                         canFill={pool.size > 0}
@@ -2035,6 +2187,16 @@ export default function AiRecommendations({ subject = '' }: { subject?: string }
                         index={versionIndex}
                         count={versions.length}
                         onVersion={i => {
+                            // Undo/Redo restore the rules that version was built under, not just its classes
+                            const restored = versions[i]?.constraints;
+                            if (restored && versions[i]) {
+                                setCopilotRules(restored);
+                                copilotBuild.current = {
+                                    sections: versions[i]!.sections,
+                                    constraints: restored,
+                                    pool: copilotBuild.current?.pool ?? [],
+                                };
+                            }
                             setVersionIndex(i);
                             setSaveNote('');
                         }}

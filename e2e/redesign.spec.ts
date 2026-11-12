@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-
 import type { BrowserContext, Page } from '@playwright/test';
+import { unmetPlanningFixture } from './degreeFixtures';
 
 import { expect, test } from './fixtures';
 
@@ -130,6 +130,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     sw,
 }) => {
     const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page);
     const sent: Array<Record<string, unknown>> = [];
     await page.route(AI, async route => {
         const body = route.request().postDataJSON() as {
@@ -211,7 +212,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     // the demo catalog cannot reach 12 credits without Monday/Wednesday/Friday: Fastlane explains instead of
     // presenting a short schedule
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
-    await expect(log).toContainText('short of 12');
+    await expect(log).toContainText('complete 12–16-hour combination');
     await expect(proposal).toHaveCount(0);
 
     // a follow-up lifts the day limit and keeps the earlier preferences (ACC plan, online count)
@@ -254,7 +255,7 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     await expect(detail.locator('.class-code')).toHaveText(/^[A-Z ]+ \d{3}[A-Z]? · \d{5}$/);
     await expect(detail.locator('.class-grade')).toContainText(/% *A or A−|No grade data/);
     await expect(detail.getByRole('button', { name: 'Grade distribution' })).toBeVisible();
-    await expect(detail).toContainText(/Counts toward|Elective/);
+    await expect(detail).toContainText(/Planned toward|applicability needs verification/);
     await detail.getByRole('button', { name: 'Remove' }).click();
     await expect(proposal.getByRole('button', { name: 'Undo' })).toBeEnabled();
     // dropping below 12 credits is flagged, saving is blocked, and a refill is offered
@@ -359,7 +360,9 @@ test('AI chat understands preferences and follow-ups, shows real sections and bu
     const save = proposal.getByRole('button', { name: 'Save as a new schedule' });
     if (await save.isEnabled()) {
         await save.click();
-        await expect(proposal.getByRole('status')).toContainText('Your other schedules were not changed');
+        await expect(
+            proposal.getByRole('status').filter({ hasText: 'Your other schedules were not changed' })
+        ).toBeVisible();
         const after = await sw.evaluate(async () => (await chrome.storage.local.get('schedules')).schedules);
         expect(after.length).toBe(before.length + 1);
         for (const s of before) {
@@ -549,12 +552,12 @@ test('questions about your records are answered from the IDA, accurately and wit
     await input.fill('hyow many jours do i have compleeted?');
     await send.click();
     // the IDA counts 82 of 120 with in-progress and planned courses included; Fastlane separates them
-    await expect(last()).toContainText("You've completed 61 credit hours so far");
+    await expect(last()).toContainText("You've completed 64 credit hours so far");
     await expect(last()).toContainText('another 12');
-    await expect(last()).toContainText('73 credit hours');
+    await expect(last()).toContainText('76 credit hours');
     await expect(last()).not.toContainText('ACC');
     await expect(page.getByRole('region', { name: 'Proposed schedule' })).toHaveCount(0);
-    await expect(last().locator('strong').first()).toHaveText('61 credit hours');
+    await expect(last().locator('strong').first()).toHaveText('64 credit hours');
 
     await input.fill('What classes am I taking this semester?');
     await send.click();
@@ -564,7 +567,7 @@ test('questions about your records are answered from the IDA, accurately and wit
     await expect(last()).not.toContainText('schedule');
 
     // a correction is acknowledged and kept beside the IDA, not over it
-    await input.fill("That's wrong. I've completed 9 credits, not 61.");
+    await input.fill("That's wrong. I've completed 9 credits, not 64.");
     await send.click();
     await expect(last()).toContainText('Got it. Using 21 credits toward your 120-credit degree, that leaves 99');
     await expect(last()).toContainText('keep your IDA’s figures separately');
@@ -572,7 +575,7 @@ test('questions about your records are answered from the IDA, accurately and wit
     await input.fill('How many hours have I completed?');
     await send.click();
     await expect(last()).toContainText("You've completed 9 credit hours so far");
-    await expect(last()).toContainText('your IDA shows 61');
+    await expect(last()).toContainText('your IDA shows 64');
     expect(aiCalls).toEqual([]);
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/chat-local-answers.png' });
 
@@ -667,7 +670,7 @@ test('the microphone keeps listening through pauses until 5 seconds of silence o
     // nothing is sent until the student presses send; this one is answered from the IDA
     await page.getByRole('button', { name: 'Send message' }).click();
     await expect(page.getByRole('log', { name: 'Planning conversation' }).locator('.bubble.bot').last()).toContainText(
-        "You've completed 61 credit hours"
+        "You've completed 64 credit hours"
     );
 });
 
@@ -814,6 +817,7 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     extensionId,
 }) => {
     const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page, true);
     const cors = { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` };
     const requests: Array<{
         messages: Array<{ role: string; content: string; tool_calls?: Array<{ name: string }> }>;
@@ -833,7 +837,12 @@ test('the copilot understands a long request, uses tools, builds a full schedule
                 body: JSON.stringify(payload),
             });
         if (last.role === 'tool') {
-            const result = JSON.parse(last.content) as { totalCredits?: number; classes?: Array<{ code: string }> };
+            const result = JSON.parse(last.content) as {
+                totalCredits?: number;
+                classes?: Array<{ code: string }>;
+                error?: string;
+                reasons?: string[];
+            };
             return reply({
                 type: 'answer',
                 text: result.classes
@@ -891,18 +900,18 @@ test('the copilot understands a long request, uses tools, builds a full schedule
     await send.click();
     const proposal = page.getByRole('region', { name: 'Proposed schedule' });
     await expect(proposal).toBeVisible();
-    await expect(log.locator('.bubble.bot').last()).toContainText(/-credit schedule/);
+    await expect(log.locator('.bubble.bot').last()).toContainText(/schedule — \d+ credit hours/);
     await expect(log).not.toContainText('has 3 listed sections');
     // the tool result the model saw was a real schedule from the solver, with backups
     const toolResult = JSON.parse(requests.at(-1)!.messages.at(-1)!.content) as {
         totalCredits: number;
         classes: Array<{ code: string; unique: string }>;
-        backups: { perClass: unknown[] };
+        backupsCount: number;
     };
     expect(toolResult.totalCredits).toBeGreaterThanOrEqual(12);
     expect(toolResult.classes.every(c => /^\d{5}$/.test(c.unique))).toBe(true);
     expect(toolResult.classes.some(c => c.code.startsWith('HIS'))).toBe(false);
-    expect(Array.isArray(toolResult.backups.perClass)).toBe(true);
+    expect(typeof toolResult.backupsCount).toBe('number'); // the model sees a short view; the student sees the backups
     await expect(proposal.getByRole('complementary', { name: 'Backups' })).toBeVisible();
     await page.locator('.fl-chat').screenshot({ path: 'test-results/redesign/copilot-schedule.png' });
 
@@ -975,11 +984,11 @@ test('Degree progress shows simple cards built from the real IDA', async ({ cont
         .setInputFiles(resolve(process.cwd(), 'src/fastlane/__tests__/fixtures/dap-audit-results-real.html'));
     const overall = page.getByRole('region', { name: 'Official IDA degree completion' });
     await expect(overall).toContainText('68%');
-    await expect(overall).toContainText('82 of 120 degree hours · 38 remaining');
+    await expect(overall).toContainText('82 of 120 degree hours counted by IDA · 38 remaining');
     const card = (title: string) => page.locator('details.progress-card').filter({ hasText: title });
-    await expect(card('Core Curriculum')).toContainText('27 / 42 credit hours completed');
+    await expect(card('Core Curriculum')).toContainText('27 / 42 credit hours counted by IDA');
     await expect(card('Core Curriculum')).toContainText('15 credit hours remaining');
-    await expect(card('Major Requirements')).toContainText('6 / 9 requirements complete');
+    await expect(card('Major Requirements')).toContainText('5 / 9 requirements complete');
     await expect(card('Major Requirements')).toContainText('hours need verification');
     await expect(card('GPA, residency and total hours')).toContainText('3.78');
     await expect(card('GPA, residency and total hours')).toContainText('60/60');
@@ -994,4 +1003,69 @@ test('Degree progress shows simple cards built from the real IDA', async ({ cont
     await page.screenshot({ path: 'test-results/redesign/degree-progress-light.png', fullPage: true });
     await page.getByRole('combobox', { name: 'Appearance theme' }).selectOption('dark');
     await page.screenshot({ path: 'test-results/redesign/degree-progress-dark.png', fullPage: true });
+});
+
+test('an infeasible screenshot request shows actual blockers and recovery options even when the model says Done', async ({
+    context,
+    extensionId,
+}) => {
+    test.setTimeout(240_000);
+    const page = await demoWithAudit(context, extensionId);
+    await unmetPlanningFixture(page);
+    await page.route('https://longhorn-fastlane-plus.vercel.app/api/agent', async route => {
+        const body = route.request().postDataJSON();
+        const last = body.messages.at(-1);
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'Access-Control-Allow-Origin': `chrome-extension://${extensionId}` },
+            body: JSON.stringify(
+                last.role === 'tool'
+                    ? { type: 'answer', text: 'Done. All rules met.' }
+                    : {
+                          type: 'tool_calls',
+                          calls: [
+                              {
+                                  id: 'build',
+                                  name: 'build_schedule',
+                                  arguments: {
+                                      minCredits: 15,
+                                      maxCredits: 16,
+                                      onlyDays: ['T', 'TH'],
+                                      coreOnly: true,
+                                      includeSubjects: ['UGS'],
+                                      excludeSubjects: ['HIS'],
+                                      maxGapMinutes: 15,
+                                  },
+                              },
+                          ],
+                      }
+            ),
+        });
+    });
+    await page.goto(`chrome-extension://${extensionId}/fastlane.html#finder`);
+    await page.getByPlaceholder('Enter once to enable AI').fill('test-invite-code-local-only');
+    await page.getByRole('checkbox', { name: /I agree to send/ }).check();
+    const before = await page.evaluate(async () => JSON.stringify(await chrome.storage.local.get('schedules')));
+    const input = page.getByRole('textbox', { name: 'Ask Fastlane for class recommendations' });
+    let replies = 0;
+    expect(JSON.parse(before).schedules.length).toBeGreaterThan(0);
+    for (const text of [
+        'please create a 15-16 hour schedule, Tuesday and Thursday only, classes that only count towards core complete, No history, and I need a UGS, preferably 2 online classes, back to back, the max gap allowed is 15 minutes.',
+        'try your best to follow what i said',
+    ]) {
+        await input.fill(text);
+        await page.getByRole('button', { name: 'Send message' }).click();
+        // Select the rendered assistant text by its local diagnostic, independent of model prose.
+        // the planner now searches rule combinations for up to ~45 s before answering
+        await expect(page.getByText('Why no schedule meets every rule:', { exact: false })).toHaveCount(++replies, {
+            timeout: 90_000,
+        });
+        await expect(page.getByText(/maximum 15-minute gap/).last()).toBeVisible();
+        await expect(page.getByText('Done. All rules met.', { exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+    }
+    expect(await page.evaluate(async () => JSON.stringify(await chrome.storage.local.get('schedules')))).toBe(before);
+    await page.setViewportSize({ width: 1440, height: 1400 });
+    await page.locator('.bubble.bot').last().screenshot({ path: 'reports/screenshots/schedule-recovery.png' });
 });

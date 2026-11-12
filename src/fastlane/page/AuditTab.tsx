@@ -184,11 +184,19 @@ export default function AuditTab({
                         )}
                         {totals.totalHours && (
                             <p className='small muted'>
-                                {totals.totalHours.done} of {totals.totalHours.total} degree hours ·{' '}
+                                {totals.totalHours.done} of {totals.totalHours.total} degree hours counted by IDA ·{' '}
                                 {totals.totalHours.remaining} remaining
                             </p>
                         )}
                     </section>
+                    {audit.included &&
+                        (audit.included.inProgress || audit.included.future || audit.included.planned) && (
+                            <p className='small muted quiet-note'>
+                                This IDA includes in-progress or planned work. Counted hours and the official IDA
+                                percentage are conditional; they are not all earned credit. Re-run your IDA without
+                                future/planned work to verify posted progress.
+                            </p>
+                        )}
                     {model && <CreditsPanel model={model} />}
                     {(review.length > 0 || audit.transfer.pending.length > 0) && (
                         <p className='small muted quiet-note'>
@@ -298,7 +306,7 @@ function ProgressCard({
                 {f ? (
                     <div className='big-figure sm'>
                         {f.done} <span>/ {f.total}</span>
-                        <small>{f.unit === 'hours' ? ' credit hours completed' : ' requirements complete'}</small>
+                        <small>{f.unit === 'hours' ? ' credit hours counted by IDA' : ' requirements complete'}</small>
                     </div>
                 ) : (
                     <div className='big-figure sm'>Needs verification</div>

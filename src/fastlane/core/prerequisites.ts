@@ -1,11 +1,12 @@
 /**
  * Reads UT's printed prerequisite text ("Prerequisite: Accounting 312 or 312H; and Statistics 301 or 301H")
  * into groups of alternatives (all groups required, any course within a group) and compares them with the
- * student's IDA. Deliberately conservative: "met" only when every group has a completed or in-progress course,
- * "unmet" only when no group does, otherwise "check". Non-course conditions (standing, consent, admission)
+ * student's IDA. Deliberately conservative: every AND group is required. In-progress, pending, grade and admission
+ * conditions remain "check"; a definitively missing group is "unmet". Non-course conditions (standing, consent, admission)
  * are surfaced as notes, never decided.
  */
-import { normalizeCourseCode } from './requirements';
+import type { AuditCourse } from '../audit/types';
+import { creditIdentity, earnsCredit } from './degreeRules';
 
 export type PrerequisiteStatus = 'met' | 'unmet' | 'check' | 'none';
 
@@ -133,7 +134,8 @@ export function prerequisiteCourses(text: string, index: Array<[string, string]>
 export function checkPrerequisites(
     text: string | undefined,
     taken: Iterable<string>,
-    index: Array<[string, string]>
+    index: Array<[string, string]>,
+    records?: AuditCourse[]
 ): PrerequisiteCheck {
     if (!text) return { status: 'none', groups: [], missing: [], notes: [] };
     const notes: string[] = [];
@@ -142,9 +144,33 @@ export function checkPrerequisites(
     if (/admission|admitted|restricted to/i.test(text)) notes.push('May be restricted to admitted students');
     const groups = prerequisiteGroups(text, index);
     if (!groups.length) return { status: 'check', groups, missing: [], notes };
-    const have = new Set([...taken].map(normalizeCourseCode));
-    const unmetGroups = groups.filter(g => !g.some(c => have.has(normalizeCourseCode(c))));
-    const status = unmetGroups.length === 0 ? 'met' : unmetGroups.length === groups.length ? 'unmet' : 'check';
+    const identity = creditIdentity(records ? { courses: records } : null);
+    const have = new Set(
+        (records
+            ? records
+                  .filter(c => !c.equivalent && !c.excluded && (earnsCredit(c) || c.status === 'in-progress'))
+                  .flatMap(c => [c.code, ...(c.equivalentCodes ?? [])])
+            : [...taken]
+        ).map(identity)
+    );
+    const unmetGroups = groups.filter(g => !g.some(c => have.has(identity(c))));
+    if (/minimum|grade|concurrent|credit or registration/i.test(text))
+        notes.push('Verify grade and sequencing conditions with UT');
+    const pending =
+        records
+            ?.filter(c => c.status === 'pending-transfer' || c.status === 'in-progress')
+            .map(c => identity(c.code)) ?? [];
+    const conditional = groups.some(g => g.some(c => pending.includes(identity(c))));
+    if (conditional) notes.push('In-progress or pending credit is conditional, not a completed prerequisite');
+    const status =
+        unmetGroups.length === 0
+            ? notes.length
+                ? 'check'
+                : 'met'
+            : /concurrent|or registration/i.test(text) ||
+                unmetGroups.every(g => g.some(c => pending.includes(identity(c))))
+              ? 'check'
+              : 'unmet';
     return { status, groups, missing: unmetGroups.map(g => g.join(' or ')), notes };
 }
 
@@ -167,9 +193,10 @@ export function describePrerequisites(check: PrerequisiteCheck): string {
 export function prerequisiteEligibility(
     section: { prerequisites?: string; isReserved: boolean },
     taken: Iterable<string>,
-    index: Array<[string, string]>
+    index: Array<[string, string]>,
+    records?: AuditCourse[]
 ): { status: 'eligible' | 'unknown' | 'restricted'; notes: string[]; prerequisite: PrerequisiteCheck } {
-    const check = checkPrerequisites(section.prerequisites, taken, index);
+    const check = checkPrerequisites(section.prerequisites, taken, index, records);
     const notes = check.status === 'none' ? [] : [describePrerequisites(check), ...check.notes];
     if (section.isReserved) notes.push('Some seats are reserved; check the reserved-seat details on UT’s listing');
     const status =
