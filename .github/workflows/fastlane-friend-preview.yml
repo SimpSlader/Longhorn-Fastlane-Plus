@@ -1,0 +1,80 @@
+name: Publish Fastlane installable preview
+
+# Successful CI runs on the main Fastlane branch become public, installable ZIPs.
+# PRs do not publish anything; Chrome Web Store releases remain a separate process.
+on:
+  workflow_run:
+    workflows: ['Fastlane CI']
+    types: [completed]
+    branches: [fastlane-plus]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: fastlane-friend-preview
+  cancel-in-progress: true
+
+jobs:
+  verify-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/fastlane-ci.yml
+
+  publish:
+    needs: verify-manual
+    if: >-
+      always() && (
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_repository.full_name == github.repository) ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.ref == 'refs/heads/fastlane-plus' &&
+         needs.verify-manual.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current main Fastlane branch
+        uses: actions/checkout@v4
+        with:
+          ref: fastlane-plus
+          persist-credentials: false
+      - name: Do not publish an older commit as the newest preview
+        env:
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+      - name: Download the ZIP produced by the passing CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: fastlane-build-${{ github.event.workflow_run.head_sha || github.sha }}
+          run-id: ${{ github.event.workflow_run.id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prebuilt
+      - name: Verify the installable package exists and is a valid ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find prebuilt/package -maxdepth 1 -name '*.zip' | wc -l)" -eq 1
+          test -f prebuilt/package/RELEASE.json
+          unzip -t prebuilt/package/*.zip >/dev/null
+          unzip -Z -1 prebuilt/package/*.zip | grep -Fxq manifest.json
+      - name: Publish verified public preview for friends
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          TAG="friend-preview-${VERIFIED_SHA:0:12}"
+          ASSETS=(prebuilt/package/*.zip prebuilt/package/RELEASE.json)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --target "$VERIFIED_SHA" --prerelease \
+              --title "Fastlane friend install (${VERIFIED_SHA:0:12})" \
+              --notes "Verified preview build for manual Chrome sideloading. Download the fastlane-course-planner-*.zip asset (NOT Source code), extract it, then open chrome://extensions, enable Developer mode, and choose Load unpacked. Select the extracted folder containing manifest.json. No Node.js or build tools needed. Unpacked extensions do not update automatically. This is an independent preview, not a Chrome Web Store release."
+          fi
