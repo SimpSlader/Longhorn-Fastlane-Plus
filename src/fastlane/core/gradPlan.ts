@@ -7,6 +7,7 @@ import type { ParsedAudit } from '../audit/types';
 import mccombs from '../data/mccombs-internal-transfer.json';
 import { academicSummary, realCourses } from './academic';
 import { accRoom } from './acc';
+import { earnsCredit } from './degreeRules';
 import { normalizeCourseCode } from './requirements';
 
 export interface GradScenario {
@@ -38,7 +39,10 @@ export interface McCombsStatus {
     rules: typeof mccombs;
     /** UT long semesters (fall/spring) seen on the IDA, including the current one */
     utLongSemesters: number;
-    prerequisites: Array<{ name: string; status: 'done at UT' | 'in progress at UT' | 'transfer credit' | 'not yet' }>;
+    prerequisites: Array<{
+        name: string;
+        status: 'done at UT' | 'in progress at UT' | 'transfer credit' | 'pending verification' | 'not yet';
+    }>;
 }
 
 const isTransfer = (type: string, status: string) => /transfer/i.test(type) || status === 'pending-transfer';
@@ -52,13 +56,15 @@ export function mccombsStatus(audit: ParsedAudit): McCombsStatus {
     const prerequisites = mccombs.prerequisites.map(p => {
         const matches = courses.filter(c => p.codes.includes(c.code));
         const ut = matches.filter(c => !isTransfer(c.type, c.status) && !transfer.has(c.code));
-        const status: McCombsStatus['prerequisites'][number]['status'] = ut.some(c => c.status === 'completed')
+        const status: McCombsStatus['prerequisites'][number]['status'] = ut.some(earnsCredit)
             ? 'done at UT'
             : ut.some(c => c.status === 'in-progress')
               ? 'in progress at UT'
-              : matches.length || p.codes.some(code => transfer.has(code))
-                ? 'transfer credit'
-                : 'not yet';
+              : matches.some(c => c.status === 'pending-transfer' || c.status === 'planned')
+                ? 'pending verification'
+                : matches.some(earnsCredit)
+                  ? 'transfer credit'
+                  : 'not yet';
         return { name: p.name, status };
     });
     const longSemesters = new Set(
@@ -92,10 +98,8 @@ export function gradFacts(audit: ParsedAudit, opts: { mccombs: boolean }): GradF
     const summary = academicSummary(audit);
     const inProgressHours = summary.inProgressHours;
     // the IDA's "applied" figure may already include this semester's classes; only subtract them when it doesn't
-    const appliedIncludesCurrent =
-        summary.degree != null && summary.degree.applied >= summary.completedHours + inProgressHours - 1;
-    const remaining =
-        room.remaining == null ? null : Math.max(0, room.remaining - (appliedIncludesCurrent ? 0 : inProgressHours));
+    // Keep the IDA's degree-applicable balance; enrollment hours cannot be subtracted without an allocation.
+    const remaining = room.remaining;
     const accRoomHours = room.room == null ? null : Math.min(room.room, remaining ?? room.room);
     return {
         program: audit.program ?? null,

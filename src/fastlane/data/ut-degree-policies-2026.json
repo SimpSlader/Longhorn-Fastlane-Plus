@@ -1,0 +1,77 @@
+{
+    "verifiedAt": "2026-10-31",
+    "effectiveTerm": "Fall 2026",
+    "expiresAfterTerm": "Summer 2027",
+    "policies": [
+        {
+            "source": "https://minio.la.utexas.edu/webeditor-files/economics/pdf/26-28%20ECO%20BA.pdf",
+            "programs": ["BA Economics", "B A Economics", "Bachelor of Arts in Economics"],
+            "catalogYear": "2026-2028",
+            "excludedSubjects": ["PED"],
+            "excludedCourses": ["M 301", "PHY 306", "KIN 119", "KIN 106C"],
+            "allowCoreMajorSharing": true
+        },
+        {
+            "source": "https://catalog.utexas.edu/courses/ast/",
+            "programs": [
+                "B S Computer Science, CS",
+                "B S Computer Science",
+                "BS Computer Science",
+                "BSA Computer Science",
+                "B S A Computer Science"
+            ],
+            "catalogYear": "2024-2026",
+            "excludedSubjects": [],
+            "excludedCourses": [
+                "AST 301",
+                "AST 302",
+                "AST 303",
+                "AST 309",
+                "AST 309C",
+                "AST 309G",
+                "AST 309L",
+                "AST 309N",
+                "AST 309Q",
+                "AST 309R",
+                "AST 309S"
+            ],
+            "allowCoreMajorSharing": false
+        },
+        {
+            "source": "https://catalog.utexas.edu/courses/ast/",
+            "programs": [
+                "B S Computer Science, CS",
+                "B S Computer Science",
+                "BS Computer Science",
+                "BSA Computer Science",
+                "B S A Computer Science"
+            ],
+            "catalogYear": "2026-2028",
+            "excludedSubjects": [],
+            "excludedCourses": [
+                "AST 301",
+                "AST 302",
+                "AST 303",
+                "AST 309",
+                "AST 309C",
+                "AST 309G",
+                "AST 309L",
+                "AST 309N",
+                "AST 309Q",
+                "AST 309R",
+                "AST 309S"
+            ],
+            "allowCoreMajorSharing": false
+        }
+    ],
+    "creditExclusions": [
+        {
+            "source": "https://catalog.utexas.edu/courses/ast/",
+            "courses": ["AST 301", "AST 302", "AST 303", "AST 307"]
+        },
+        {
+            "source": "https://catalog.utexas.edu/courses/mus/",
+            "courses": ["MUS 302L", "EUS 307M"]
+        }
+    ]
+}

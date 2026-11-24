@@ -4,6 +4,7 @@ import { useActiveSchedule, useAllSchedules } from '@views/hooks/useSchedules';
 import { useEffect, useMemo, useState } from 'react';
 import { sectionFromCourse } from '../adapters/utrp';
 import type { ParsedAudit } from '../audit/types';
+import { createDegreeMatcher, recordedCourseCodes } from '../core/degreeRules';
 import { DAY_ORDER } from '../core/meetings';
 import {
     catalogPrerequisite,
@@ -459,18 +460,18 @@ export function FinderTab({
     const grades = useGradeStats(gradeTargets, gradeThreshold);
     const activeSections = useMemo(() => active?.courses.map(c => sectionFromCourse(c)) ?? [], [active]);
     const tags = [...new Set(pool.flatMap(s => s.requirementTags))].sort();
-    const needed = new Set(audit?.requirements.filter(r => r.status !== 'completed').flatMap(r => r.tags) ?? []);
-    const finished = new Set(
-        audit?.courses.filter(c => c.status === 'completed').map(c => normalizeCourseCode(c.code)) ?? []
+    const degreeMatch = useMemo(
+        () => (audit ? createDegreeMatcher(audit, { term: filters.semester || undefined }, activeSections) : () => []),
+        [audit, filters.semester, activeSections]
     );
+    const finished = new Set(audit ? recordedCourseCodes(audit) : []);
     const rows = narrowed
         .filter(s =>
             matchesFilters(s, { ...filters, noGaps: generate ? false : filters.noGaps }, grades, activeSections)
         )
         .sort(
             (a, b) =>
-                Number(b.requirementTags.some(t => needed.has(t))) -
-                    Number(a.requirementTags.some(t => needed.has(t))) ||
+                Number(degreeMatch(b).length > 0) - Number(degreeMatch(a).length > 0) ||
                 (grades.get(b.uniqueId)?.result.percent ?? -1) - (grades.get(a.uniqueId)?.result.percent ?? -1)
         );
     const codes = [
@@ -705,9 +706,7 @@ export function FinderTab({
                                         section={s}
                                         grade={grades.get(s.uniqueId)}
                                         badge={
-                                            s.requirementTags.some(t => needed.has(t))
-                                                ? 'May fit an unfinished requirement'
-                                                : undefined
+                                            degreeMatch(s).length > 0 ? 'May fit an unfinished requirement' : undefined
                                         }
                                     >
                                         <button

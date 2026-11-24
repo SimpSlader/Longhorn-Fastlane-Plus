@@ -110,10 +110,10 @@ describe('recommend (emergency backups)', () => {
         expect(new Set(ids).size).toBe(ids.length); // no duplicates
     });
 
-    it('ranks semester, then conflicts, then grades', () => {
+    it('excludes wrong semesters, then ranks conflicts and grades', () => {
         const ids = recommend(base).map(r => r.section.uniqueId);
         // 20002 (clear, 81%), 20003 (clear, async, 65%), then unknown (20004), conflict (20001), then off-semester
-        expect(ids).toEqual([20002, 20003, 20004, 20001, 20006]);
+        expect(ids).toEqual([20002, 20003, 20004, 20001]);
     });
 
     it('reliable grade percentage outranks delivery preference', () => {

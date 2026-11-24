@@ -5,11 +5,12 @@ import { DAY_MAP } from '@shared/types/CourseMeeting';
 import { UserSchedule } from '@shared/types/UserSchedule';
 import { getUnusedColor } from '@shared/util/colors';
 import { sectionFromCourse } from '../adapters/utrp';
+import { creditIdentity } from '../core/degreeRules';
 import { DAY_ORDER } from '../core/meetings';
 import type { PlanMeta } from '../core/plans';
 import type { SectionRecord } from '../core/sections';
 import { semesterKey } from '../core/sections';
-import { FastlanePlanStore } from '../storage/stores';
+import { FastlaneAuditStore, FastlanePlanStore } from '../storage/stores';
 
 const SHARE_FORMAT = 'fastlane-shared-schedule';
 /** Explicit allowlist: never spread serialized course, queue, URL, audit or plan notes into a share. */
@@ -97,12 +98,12 @@ export function parseSharedSchedule(value: unknown): SectionRecord[] {
     });
 }
 export function courseFromSection(s: SectionRecord): Course {
-    if (s.course) return new Course(s.course as Serialized<Course>);
     if (!s.semester) throw new Error('This section has no semester.');
     const match = s.courseCode.match(/^(.*?)\s+(\S+)$/);
     if (!match) throw new Error('Invalid course code.');
     // Imported shares contain public schedule fields only. Never import a registration URL or status.
     return new Course({
+        ...(s.course ? (s.course as Serialized<Course>) : {}),
         uniqueId: s.uniqueId,
         department: match[1]!,
         number: match[2]!,
@@ -126,12 +127,12 @@ export function courseFromSection(s: SectionRecord): Course {
                     : undefined,
             })),
         },
-        isReserved: false,
-        flags: [],
-        core: [],
+        isReserved: s.isReserved,
+        flags: s.flags,
+        core: s.core,
         instructionMode: s.modality.includes('online') ? 'Online' : s.modality === 'hybrid' ? 'Hybrid' : 'In Person',
-        scrapedAt: 0,
-        url: '',
+        scrapedAt: s.capturedAt,
+        url: s.url ?? (s.course as Partial<Course> | undefined)?.url ?? '',
     } as unknown as Serialized<Course>);
 }
 /** A new color for each added class, chosen the way UT Registration Plus does (unused, spread across hues). */
@@ -145,6 +146,14 @@ function withNewColor(course: Course, courses: Course[]): Course {
 }
 
 export async function createPlanningSchedule(name: string, sections: SectionRecord[], plan?: PlanMeta) {
+    const identity = creditIdentity(await FastlaneAuditStore.get('audit'), sections);
+    if (
+        new Set(sections.map(s => identity(s.courseCode))).size !== sections.length ||
+        new Set(sections.map(s => s.uniqueId)).size !== sections.length
+    )
+        throw new Error('Choose only one section of each course or verified equivalent.');
+    if (new Set(sections.map(s => semesterKey(s.semester))).size > 1)
+        throw new Error('A schedule must use one semester.');
     const courses: Course[] = [];
     for (const section of sections) courses.push(withNewColor(courseFromSection(section), courses));
     const schedule = new UserSchedule({
@@ -176,12 +185,19 @@ export async function duplicateSchedule(schedule: UserSchedule) {
 }
 export async function addOrSwap(scheduleId: string, section: SectionRecord, oldUnique?: number) {
     const schedules = await UserScheduleStore.get('schedules');
+    const identity = creditIdentity(await FastlaneAuditStore.get('audit'), [section]);
     const updated = schedules.map(s => {
         if (s.id !== scheduleId) return s;
         if (s.courses.some(c => c.uniqueId !== oldUnique && semesterKey(c.semester) !== semesterKey(section.semester)))
             throw new Error('This section is from a different semester. Create a new schedule for that semester.');
         const courses = s.courses.filter(c => c.uniqueId !== oldUnique);
-        if (courses.some(c => c.uniqueId === section.uniqueId))
+        if (
+            courses.some(
+                c =>
+                    c.uniqueId === section.uniqueId ||
+                    identity(`${c.department} ${c.number}`) === identity(section.courseCode)
+            )
+        )
             throw new Error('This section is already in the schedule.');
         // a swapped section keeps the color of the one it replaces
         const replaced = s.courses.find(c => c.uniqueId === oldUnique)?.colors;

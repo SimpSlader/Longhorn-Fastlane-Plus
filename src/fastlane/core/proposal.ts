@@ -5,7 +5,9 @@
  */
 import type { DayCode } from './meetings';
 import { detectConflicts } from './meetings';
+import type { ValidationReport } from './planValidator';
 import { normalizeCourseCode } from './requirements';
+import type { ScheduleConstraints } from './scheduleSolver';
 import { type SectionRecord, toSectionTimes } from './sections';
 
 export interface ProposalVersion {
@@ -15,6 +17,10 @@ export interface ProposalVersion {
     note: string;
     added: number[];
     removed: number[];
+    /** the independent validator's verdict for exactly these sections (absent on versions from the local solver) */
+    validation?: ValidationReport;
+    /** the rules this version was built under, restored on Undo */
+    constraints?: ScheduleConstraints;
 }
 
 export interface RefineIntent {

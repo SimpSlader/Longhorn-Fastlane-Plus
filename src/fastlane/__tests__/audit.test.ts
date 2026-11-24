@@ -146,7 +146,7 @@ describe('pending transfer credit', () => {
         expect(arts.status).toBe('in-progress');
         expect(arts.confidence).toBe('low');
         expect(arts.issues.join(' ')).toContain('pending transfer');
-        expect(outstandingTags(audit)).toContain('CORE 050');
+        expect(outstandingTags(audit)).not.toContain('CORE 050'); // pending, contradictory completion cannot be a verified recommendation
         expect(takenCourseCodes(audit)).not.toContain('MUS 302L');
     });
 

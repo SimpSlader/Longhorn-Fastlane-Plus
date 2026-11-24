@@ -200,5 +200,6 @@ export function gradeStatFrom(
         source: dataset.source,
         datasetVersion: dataset.version,
         datasetUpdated: dataset.updated,
+        counts: raw.counts,
     });
 }

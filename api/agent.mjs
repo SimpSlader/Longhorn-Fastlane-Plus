@@ -72,7 +72,17 @@ export const TOOLS = [
             prioritizeGrades: { type: 'boolean', description: 'high past A/A− rates' },
             prioritizeRatings: { type: 'boolean', description: 'good Rate My Professors ratings' },
             coreFocus: { type: 'boolean', description: 'core first, nothing major-specific' },
-            includeSubjects: { ...strs, description: 'must include one each, e.g. ["UGS"]' },
+            coreOnly: {
+                type: 'boolean',
+                description:
+                    'HARD rule: every class must fill an outstanding core requirement ("core only", "count toward core"). Never add other classes to reach credits.',
+            },
+            exactCounts: {
+                type: 'object',
+                description: 'HARD exact class count per subject, e.g. {"UGS":1}',
+                additionalProperties: { type: 'number' },
+            },
+            includeSubjects: { ...strs, description: 'exactly one class of each subject, e.g. ["UGS"]' },
             preferCourses: { ...strs, description: 'include if they fit, e.g. ["ECO 304L"]' },
             excludeSubjects: { ...strs, description: 'e.g. ["HIS"]' },
             excludeCourses: strs,
@@ -94,6 +104,10 @@ export const TOOLS = [
             },
             changeOnlyDays: strs,
             changeCredits: { type: 'object', properties: { min: num, max: num }, additionalProperties: false },
+            anotherOption: {
+                type: 'boolean',
+                description: 'a genuinely different valid schedule, not the sections shown',
+            },
         }
     ),
     fn(
@@ -109,6 +123,8 @@ export const SYSTEM_PROMPT = `You are Fastlane, an AI copilot for UT Austin stud
 
 - Understand the whole request, even if long or messy, and cover every part in one reply. Don't ask for things already given.
 - Use tools for UT- or student-specific facts; call several if needed. For a schedule, call build_schedule once with every constraint (credits, days, online count, back-to-back, grades, ratings, core focus, required subjects like UGS, preferred courses, exclusions). For changes ("that professor", "Mondays are fine"), use modify_schedule or rebuild with the updated rules; the schedule on screen is in context.
+- The solver and an independent validator own correctness: you never choose the final classes and you never decide whether rules are met. Every schedule result carries a validation block; repeat its verdict exactly. Say "all rules met" only when allRulesMet is true; otherwise say what is unverified or failed. If a tool returns an error or closestAlternatives, say no schedule satisfies every rule, give the reasons, and present alternatives only as options that need the student's permission to relax one named rule. Never relax a stated rule yourself.
+- Hard rules (stated days, credit range, excluded subjects, core-only, exact counts like one UGS, online cap) go into every build_schedule/modify_schedule call; follow-ups change only what the student mentions.
 - Tool results are evidence: synthesize them. Never reply with only a raw list of sections from one lookup. For schedules list each class (code, name, professor, unique, credits, days/times or online, past A/A− rate, RMP rating, why), total credits, backups, and anything not met.
 - Never invent courses, sections, times, professors, ratings, grades, seats or rules; say when data is missing. Past grades aren't promises; seat status is only what the student saw. Easy grading isn't good teaching.
 - Credit and graduation math only from tools; figures the student confirmed are authoritative.

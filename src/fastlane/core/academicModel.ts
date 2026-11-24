@@ -115,9 +115,24 @@ export function academicModel(audit: ParsedAudit | null, confirmed: ConfirmedFac
     let projectedFromIda: number | null = null;
     if (counted.value != null && included) {
         projectedFromIda = counted.value - (included.planned || included.future ? (plannedRows ?? 0) : 0);
+        if (
+            (included.planned || included.future) &&
+            earnedRows != null &&
+            inProgressRows != null &&
+            plannedRows != null &&
+            Math.abs(counted.value - earnedRows - inProgressRows - plannedRows) > 0.01
+        ) {
+            projectedFromIda = null;
+            issues.push(
+                'The audit includes planned or future work whose degree-applicable hours cannot be separated reliably. Import an audit with planned/future work excluded.'
+            );
+        }
         if (!included.inProgress) projectedFromIda = null; // then the IDA count is earned only
     }
-    const earnedFromIda = counted.value != null && included && !included.inProgress ? counted.value : null;
+    const earnedFromIda =
+        counted.value != null && included && !included.inProgress && !included.future && !included.planned
+            ? counted.value
+            : null;
     // the course list and the IDA's own count should agree (within one hour); if not, say so and trust the rule
     const rowsProjected = earnedRows != null && inProgressRows != null ? earnedRows + inProgressRows : null;
     if (projectedFromIda != null && rowsProjected != null && Math.abs(projectedFromIda - rowsProjected) > 1)
@@ -125,10 +140,10 @@ export function academicModel(audit: ParsedAudit | null, confirmed: ConfirmedFac
             `Your IDA counts ${projectedFromIda} hours toward the degree (including classes in progress), but its course list adds up to ${rowsProjected}. Some listed courses may not apply to the degree, so I use the IDA's own count for degree totals.`
         );
     const reconciled =
-        projectedFromIda == null || rowsProjected == null || Math.abs(projectedFromIda - rowsProjected) <= 1;
+        projectedFromIda != null && rowsProjected != null && Math.abs(projectedFromIda - rowsProjected) < 0.01;
 
     let earned = fig(
-        earnedFromIda ?? earnedRows,
+        earnedFromIda ?? (reconciled ? earnedRows : null),
         earnedFromIda != null ? 'ida' : 'ida-courses',
         earnedFromIda != null
             ? 'IDA counted hours (audit run without in-progress courses)'
@@ -142,22 +157,17 @@ export function academicModel(audit: ParsedAudit | null, confirmed: ConfirmedFac
         at
     );
     let projected = fig(
-        projectedFromIda ?? rowsProjected,
+        projectedFromIda ?? earnedFromIda,
         projectedFromIda != null ? 'ida' : 'calculated',
         projectedFromIda != null
             ? 'IDA counted hours minus planned/future courses it included'
             : 'earned + in progress',
         at
     );
-    if (!reconciled && projectedFromIda != null && inProgressRows != null) {
-        // keep the parts consistent with the IDA's total rather than with a course list that doesn't reconcile
-        earned = fig(
-            Math.max(0, projectedFromIda - inProgressRows),
-            'calculated',
-            'IDA counted hours minus in-progress courses',
-            at
+    if (audit && !reconciled && earnedFromIda == null)
+        issues.push(
+            'Completed course-list hours are not necessarily degree-applicable. Earned degree hours need an official earned-only audit; enrollment hours are kept separately.'
         );
-    }
 
     earned = prefer(earned, confirmed.degreeCreditsEarned, 'Earned credits', discrepancies);
     inProgress = prefer(inProgress, confirmed.degreeCreditsInProgress, 'Credits in progress', discrepancies);
@@ -228,8 +238,12 @@ export function academicModel(audit: ParsedAudit | null, confirmed: ConfirmedFac
         ['projected', projected],
         ['remaining', remainingProjected],
     ] as const)
-        if (f.value != null && f.value < 0)
-            issues.push(`The ${name} figure came out negative (${f.value}); it can't be used.`);
+        if (f.value != null && (!Number.isFinite(f.value) || f.value < 0)) {
+            issues.push(`The ${name} figure is inconsistent (${f.value}); it can't be used.`);
+            f.value = null;
+            f.source = 'unknown';
+            f.method = 'Inconsistent academic figures need verification';
+        }
     if (earned.value != null && projected.value != null && earned.value > projected.value)
         issues.push(
             'Earned credits came out larger than projected credits, which can’t happen; please re-import your IDA.'

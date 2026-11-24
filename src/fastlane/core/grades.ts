@@ -133,6 +133,8 @@ export interface GradeStat {
     /** ISO date the dataset was last updated */
     datasetUpdated: string;
     smallSample: boolean;
+    /** the raw counts behind `result`, for the GPA model (absent on stats built before this field existed) */
+    counts?: GradeCounts;
 }
 
 const SEASON_ORDER: Record<string, number> = { Spring: 1, Summer: 2, Fall: 3 };

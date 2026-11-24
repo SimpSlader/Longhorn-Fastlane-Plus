@@ -1,4 +1,6 @@
 import type { ParsedAudit } from '../audit/types';
+import { academicSummary } from './academic';
+import { creditIdentity, recordedCourseCodes } from './degreeRules';
 import type { GradeStat } from './grades';
 import { DAY_ORDER, type DayCode, detectConflicts, scheduleConflicts } from './meetings';
 import { normalizeCourseCode } from './requirements';
@@ -113,7 +115,10 @@ export function metrics(sections: SectionRecord[], grades: Grades) {
 /** Bounded search, all selected course groups must be represented. No synthetic sections. */
 export function generateSchedules(catalog: SectionRecord[], codes: string[], f: PlannerFilters, grades: Grades) {
     if (!f.semester || !codes.length || codes.length > 8) throw new Error('Select a semester and 1–8 courses.');
+    const identity = creditIdentity(null, catalog);
     const uniqueCodes = [...new Set(codes.map(normalizeCourseCode))];
+    if (new Set(uniqueCodes.map(identity)).size !== uniqueCodes.length)
+        throw new Error('Two selected courses are verified equivalents; choose only one.');
     const groups = uniqueCodes.map(code =>
         catalog.filter(
             s =>
@@ -214,17 +219,13 @@ export interface RoadmapEntry {
     rule: string;
 }
 export function roadmapProjection(entries: RoadmapEntry[], audit: ParsedAudit | null) {
-    const completed = new Set(
-        audit?.courses
-            .filter(c => c.status === 'completed' && !!c.grade.trim() && !/^(F|NC|Q|W|I|X)$/i.test(c.grade.trim()))
-            .map(c => normalizeCourseCode(c.code)) ?? []
-    );
-    const seen = new Set(completed);
+    const identity = creditIdentity(audit);
+    const seen = new Set((audit ? recordedCourseCodes(audit) : []).map(identity));
     const terms = new Map<string, number>();
     const termOrder = (t: string) =>
         Number(t.split(' ')[1]) * 3 + ['Spring', 'Summer', 'Fall'].indexOf(t.split(' ')[0]!);
     for (const e of [...entries].sort((a, b) => termOrder(a.term) - termOrder(b.term))) {
-        const code = normalizeCourseCode(e.code);
+        const code = identity(e.code);
         if (seen.has(code) || !Number.isFinite(e.hours) || e.hours <= 0) continue;
         seen.add(code);
         terms.set(e.term, (terms.get(e.term) ?? 0) + e.hours);
@@ -243,17 +244,5 @@ export function catalogPrerequisite(description?: string[]): string {
     );
 }
 export function confirmedAuditHours(audit: ParsedAudit | null): number {
-    const courses = new Map<string, number>();
-    for (const c of audit?.courses ?? []) {
-        if (
-            c.status !== 'completed' ||
-            !c.grade.trim() ||
-            /^(F|NC|Q|W|I|X)$/i.test(c.grade.trim()) ||
-            !Number.isFinite(c.hours)
-        )
-            continue;
-        const key = normalizeCourseCode(c.code);
-        courses.set(key, Math.max(courses.get(key) ?? 0, c.hours));
-    }
-    return [...courses.values()].reduce((a, b) => a + b, 0);
+    return academicSummary(audit).completedHours;
 }

@@ -25,6 +25,19 @@ export interface AuditRequirement {
     issues: string[];
     /** set once the student corrected or confirmed this item */
     reviewed?: boolean;
+    /** A student correction is not an official university verification. */
+    manuallyChanged?: boolean;
+    /** Explicit approved options from a verified degree rule; never inferred from a department. */
+    approvedCourses?: string[];
+    sharingGroup?: string;
+    optionEvidence?: {
+        source: string;
+        verifiedAt: number;
+        program: string;
+        catalogYear: string;
+        effectiveTerm: string;
+    };
+    kind?: 'requirement' | 'elective';
 }
 
 export type AuditCourseStatus = 'completed' | 'in-progress' | 'planned' | 'pending-transfer';
@@ -41,6 +54,7 @@ export interface AuditCourse {
     status: AuditCourseStatus;
     /** an equivalent or cross-listed course the IDA shows under a real enrollment (unique 00000); never extra hours */
     equivalent?: boolean;
+    equivalentCodes?: string[];
     /** shown with a dash ("- 3"): excluded from the degree's hours */
     excluded?: boolean;
 }

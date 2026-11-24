@@ -8,6 +8,8 @@
  *   5. historical grade rate (reliable samples first), when known
  * Picks are spread across subjects and limited per course so one large department cannot crowd out others.
  */
+import type { ParsedAudit } from '../audit/types';
+import { createDegreeMatcher } from './degreeRules';
 import type { GradeStat } from './grades';
 import { SMALL_SAMPLE_SIZE } from './grades';
 import type { SectionTimes } from './meetings';
@@ -28,6 +30,8 @@ export interface AiCandidate {
 
 export interface AiCandidateInput {
     sections: SectionRecord[];
+    audit?: ParsedAudit | null;
+    selected?: SectionRecord[];
     /** "Spring 2027"; empty = any */
     term: string;
     /** completed and in-progress course codes */
@@ -116,6 +120,7 @@ interface Steps {
  */
 function* rank(input: AiCandidateInput, limit: number): Generator<number, AiCandidate[]> {
     const taken = new Set([...input.taken].map(normalizeCourseCode));
+    const verified = input.audit ? createDegreeMatcher(input.audit, { term: input.term }, input.selected) : null;
     const subject = input.subject?.toUpperCase();
     const pool: AiCandidate[] = [];
     let i = 0;
@@ -127,7 +132,9 @@ function* rank(input: AiCandidateInput, limit: number): Generator<number, AiCand
         if (taken.has(normalizeCourseCode(section.courseCode))) continue;
         pool.push({
             section,
-            applies: input.outstanding.filter(r => sectionMatchesRequirement(section, r)),
+            applies: verified
+                ? verified(section)
+                : input.outstanding.filter(r => !r.startsWith('DEPT ') && sectionMatchesRequirement(section, r)),
             prerequisite: NO_PREREQUISITE,
             conflict: detectConflicts(toSectionTimes(section), input.active).status as AiCandidate['conflict'],
         });
@@ -135,7 +142,8 @@ function* rank(input: AiCandidateInput, limit: number): Generator<number, AiCand
     pool.sort((a, b) => compare(baseKey(a, input), baseKey(b, input)));
     yield i;
     const top = spread(pool, PREREQUISITE_POOL, 3);
-    for (const c of top) c.prerequisite = checkPrerequisites(c.section.prerequisites, taken, input.subjectIndex);
+    for (const c of top)
+        c.prerequisite = checkPrerequisites(c.section.prerequisites, taken, input.subjectIndex, input.audit?.courses);
     top.sort((a, b) => compare(baseKey(a, input), baseKey(b, input)));
     return spread(top, limit, 3);
 }
